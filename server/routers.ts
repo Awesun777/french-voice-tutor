@@ -1,28 +1,514 @@
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { invokeLLM } from "./_core/llm";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import {
+  addVocabEntries,
+  addVocabEntry,
+  clearTutorHistory,
+  deleteVocabEntry,
+  getQuizSessions,
+  getTutorHistory,
+  getVocabByUser,
+  getVocabStats,
+  saveQuizSession,
+  saveTutorMessage,
+  toggleVocabStar,
+  updateVocabEntry,
+} from "./db";
 
+// ─── Dictionary search cache (in-memory, server-side) ─────────────────────────
+// Keyed by normalized term. Evicted after 24 hours to keep memory bounded.
+const dictCache = new Map<string, { result: unknown; ts: number }>();
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 h
+
+function getCached(key: string): unknown | null {
+  const entry = dictCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) { dictCache.delete(key); return null; }
+  return entry.result;
+}
+function setCache(key: string, result: unknown) {
+  // Keep cache bounded to 500 entries (LRU-lite: just delete oldest on overflow)
+  if (dictCache.size >= 500) {
+    const firstKey = dictCache.keys().next().value;
+    if (firstKey) dictCache.delete(firstKey);
+  }
+  dictCache.set(key, { result, ts: Date.now() });
+}
+
+// ─── AI import cache (per-chunk) ──────────────────────────────────────────────
+const importCache = new Map<string, unknown[]>();
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function todayKey() { return new Date().toISOString().split("T")[0]; }
+
+// ─── Routers ──────────────────────────────────────────────────────────────────
 export const appRouter = router({
-    // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
+
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
-      return {
-        success: true,
-      } as const;
+      return { success: true } as const;
     }),
   }),
 
-  // TODO: add feature routers here, e.g.
-  // todo: router({
-  //   list: protectedProcedure.query(({ ctx }) =>
-  //     db.getUserTodos(ctx.user.id)
-  //   ),
-  // }),
+  // ─── Dictionary ─────────────────────────────────────────────────────────────
+  dictionary: router({
+    search: protectedProcedure
+      .input(z.object({ term: z.string().min(1).max(300) }))
+      .mutation(async ({ input }) => {
+        const key = input.term.toLowerCase().trim();
+        const cached = getCached(key);
+        if (cached) return cached;
+
+        const type = detectInputType(input.term);
+        let prompt = "";
+
+        if (type === "question") {
+          prompt = `French-English assistant. User question: "${input.term}". 
+Provide JSON with type:"question", question (string), answer (string, detailed), and options array of 3 items each with {french, english, summary}.
+Return ONLY valid JSON, no markdown.`;
+        } else if (type === "phrase") {
+          prompt = `French-English dictionary for phrase: "${input.term}".
+Provide JSON: {"type":"phrase","phrase":"WITH accents","translation":"English","pronunciation":"phonetic","literalTranslation":"word-by-word","examples":[{"fr":"...","en":"..."},{"fr":"...","en":"..."}],"usage":"usage notes","found":true}
+Return ONLY valid JSON, no markdown.`;
+        } else {
+          prompt = `French-English dictionary for: "${input.term}". User may omit accents; return proper French WITH accents.
+Return ONLY this JSON (no markdown):
+{"type":"word","found":true,"word":"WITH accents","isConjugated":false,"conjugationInfo":null,"baseForm":"infinitive WITH accents","formExplanation":null,"translation":"English","pronunciation":"phonetic","wordType":"noun/verb/adj/adv/etc","isReflexive":false,"reflexiveType":null,"reflexiveExplanation":null,"hasReflexiveForm":false,"usesDePreposition":false,"dePrepositionExplanation":null,"reflexiveForm":null,"nonReflexiveForm":null,"examples":[{"fr":"sentence","en":"translation"},{"fr":"sentence","en":"translation"}],"conjugations":{"present":["je...","tu...","il/elle...","nous...","vous...","ils/elles..."],"imparfait":["je...","tu...","il/elle...","nous...","vous...","ils/elles..."],"passeCompose":["j'ai/je suis...","tu as/es...","il/elle a/est...","nous avons/sommes...","vous avez/êtes...","ils/elles ont/sont..."],"futurSimple":["je...","tu...","il/elle...","nous...","vous...","ils/elles..."],"conditionnel":["je...","tu...","il/elle...","nous...","vous...","ils/elles..."],"subjonctif":["que je...","que tu...","qu'il/elle...","que nous...","que vous...","qu'ils/elles..."]},"synonyms":[{"word":"WITH accents","meaning":"brief"}],"confusingWords":[{"word":"WITH accents","meaning":"brief","difference":"how it differs"}],"grammar":"brief grammar notes"}
+RULES: Always 2 examples. 3-5 synonyms. 1-2 confusing words. All 6 conjugation tenses as arrays of 6 strings. found:false if not a French word/phrase.`;
+        }
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a precise French-English dictionary. Always return valid JSON only." },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" } as any,
+        });
+
+        const rawContent = response.choices[0].message.content ?? "{}";
+        const raw = typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent);
+        let result: unknown;
+        try {
+          result = JSON.parse(raw);
+        } catch {
+          result = { type: "error", message: "Could not parse AI response" };
+        }
+        setCache(key, result);
+        return result;
+      }),
+  }),
+
+  // ─── Vocabulary ──────────────────────────────────────────────────────────────
+  vocab: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return getVocabByUser(ctx.user.id);
+    }),
+
+    add: protectedProcedure
+      .input(
+        z.object({
+          term: z.string().min(1).max(512),
+          translation: z.string().min(1).max(512),
+          entryKind: z.enum(["word", "phrase"]).default("word"),
+          lessonSource: z.string().max(256).optional(),
+          dateKey: z.string().length(10).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const id = await addVocabEntry(ctx.user.id, {
+          ...input,
+          dateKey: input.dateKey ?? todayKey(),
+        });
+        return { id };
+      }),
+
+    bulkAdd: protectedProcedure
+      .input(
+        z.array(
+          z.object({
+            term: z.string().min(1).max(512),
+            translation: z.string().min(1).max(512),
+            entryKind: z.enum(["word", "phrase"]).default("word"),
+            lessonSource: z.string().max(256).optional(),
+            dateKey: z.string().length(10).optional(),
+          })
+        )
+      )
+      .mutation(async ({ ctx, input }) => {
+        await addVocabEntries(
+          ctx.user.id,
+          input.map((e) => ({ ...e, dateKey: e.dateKey ?? todayKey() }))
+        );
+        return { count: input.length };
+      }),
+
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          term: z.string().min(1).max(512).optional(),
+          translation: z.string().min(1).max(512).optional(),
+          entryKind: z.enum(["word", "phrase"]).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...patch } = input;
+        await updateVocabEntry(ctx.user.id, id, patch);
+        return { success: true };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteVocabEntry(ctx.user.id, input.id);
+        return { success: true };
+      }),
+
+    toggleStar: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await toggleVocabStar(ctx.user.id, input.id);
+        return { success: true };
+      }),
+
+    updateQuizProgress: protectedProcedure
+      .input(
+        z.array(
+          z.object({
+            id: z.number(),
+            quizCount: z.number(),
+            lastQuizzed: z.date(),
+          })
+        )
+      )
+      .mutation(async ({ ctx, input }) => {
+        await Promise.all(
+          input.map((item) =>
+            updateVocabEntry(ctx.user.id, item.id, {
+              quizCount: item.quizCount,
+              lastQuizzed: item.lastQuizzed,
+            })
+          )
+        );
+        return { success: true };
+      }),
+  }),
+
+  // ─── Quiz ────────────────────────────────────────────────────────────────────
+  quiz: router({
+    saveSession: protectedProcedure
+      .input(
+        z.object({
+          score: z.number(),
+          total: z.number(),
+          direction: z.enum(["fr2en", "en2fr"]),
+          bucketStart: z.string().optional(),
+          bucketEnd: z.string().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        await saveQuizSession({ userId: ctx.user.id, ...input });
+        return { success: true };
+      }),
+
+    history: protectedProcedure.query(async ({ ctx }) => {
+      return getQuizSessions(ctx.user.id);
+    }),
+
+    gradeAnswer: protectedProcedure
+      .input(
+        z.object({
+          userAnswer: z.string(),
+          correctAnswer: z.string(),
+          term: z.string(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const prompt = `Grade this French language answer:
+Correct answer: "${input.correctAnswer}"
+User's answer: "${input.userAnswer}"
+French term being tested: "${input.term}"
+
+Is the user's answer correct? Consider:
+- Accents are optional (e.g., "etudier" = "étudier" ✓)
+- Minor spelling variations are OK if unambiguous
+- Wrong word = incorrect
+
+Return ONLY this JSON: {"correct": true/false, "note": "brief explanation if wrong, empty string if correct"}`;
+
+        const response = await invokeLLM({
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" } as any,
+        });
+        const gradeRaw = response.choices[0].message.content ?? '{"correct":false,"note":""}';
+        const gradeStr = typeof gradeRaw === 'string' ? gradeRaw : JSON.stringify(gradeRaw);
+        return JSON.parse(gradeStr) as { correct: boolean; note: string };
+      }),
+  }),
+
+  // ─── AI Import ───────────────────────────────────────────────────────────────
+  import: router({
+    extractFromText: protectedProcedure
+      .input(
+        z.object({
+          text: z.string().min(1).max(20000),
+          instructions: z.string().max(500).optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const cacheKey = input.text.slice(0, 200) + (input.instructions ?? "");
+        if (importCache.has(cacheKey)) return { items: importCache.get(cacheKey)! };
+
+        // Step 1: Correct typos
+        let correctedText = input.text;
+        let corrections: { original: string; fixed: string; note: string }[] = [];
+        try {
+          const corrResp = await invokeLLM({
+            messages: [
+              {
+                role: "user",
+                content: `You are a French language proofreader. Correct typos, wrong accents, and clear grammar mistakes in the French text below. Keep structure and non-French parts EXACTLY the same. Return ONLY this JSON:
+{"corrected":"full corrected text","corrections":[{"original":"bonjure","fixed":"bonjour","note":"spelling"}]}
+
+Text:
+${input.text.slice(0, 8000)}`,
+              },
+            ],
+            response_format: { type: "json_object" } as any,
+          });
+          const corrRaw = corrResp.choices[0].message.content ?? "{}";
+          const corrStr = typeof corrRaw === 'string' ? corrRaw : JSON.stringify(corrRaw);
+          const parsed = JSON.parse(corrStr);
+          if (parsed.corrected) correctedText = parsed.corrected;
+          if (Array.isArray(parsed.corrections)) corrections = parsed.corrections;
+        } catch {
+          // Non-fatal
+        }
+
+        // Step 2: Extract vocabulary
+        const extraRules = input.instructions?.trim()
+          ? `\nAdditional instructions: ${input.instructions.trim()}\n`
+          : "";
+
+        const extractPrompt = `You are a French language teacher's assistant. Extract all distinct French vocabulary words and phrases from the text below.
+Ignore headings, titles, page numbers, dates, and purely English metadata.
+Focus only on French words, expressions, and sentences a student would want to learn.
+${extraRules}
+Rules:
+- "term": French word or phrase WITH accents preserved
+- "translation": English meaning, brief (1-6 words)  
+- "kind": "word" for single words or 2-word expressions; "phrase" for 3+ word expressions or full sentences
+
+Return ONLY a complete valid JSON array. Example:
+[{"term":"bonjour","translation":"hello","kind":"word"},{"term":"Comment allez-vous ?","translation":"How are you?","kind":"phrase"}]
+
+Text:
+${correctedText.slice(0, 8000)}`;
+
+        const extractResp = await invokeLLM({
+          messages: [{ role: "user", content: extractPrompt }],
+          response_format: { type: "json_array" } as any,
+        });
+
+        let items: { term: string; translation: string; kind: string }[] = [];
+        try {
+          const extractRaw = extractResp.choices[0].message.content ?? '[]';
+          const extractStr = typeof extractRaw === 'string' ? extractRaw : JSON.stringify(extractRaw);
+          // Handle both array and object wrapping
+          const parsed = JSON.parse(extractStr.trim().replace(/^```json\n?|```\n?$/g, ""));
+          items = Array.isArray(parsed) ? parsed : (parsed.items ?? parsed.vocabulary ?? []);
+        } catch {
+          items = [];
+        }
+
+        // Deduplicate
+        const seen = new Set<string>();
+        const deduped = items.filter((item) => {
+          const k = (item.term ?? "").toLowerCase().trim();
+          if (!k || seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+
+        importCache.set(cacheKey, deduped);
+        return { items: deduped, corrections };
+      }),
+
+    quickTranslate: protectedProcedure
+      .input(z.object({ term: z.string().min(1).max(200) }))
+      .mutation(async ({ input }) => {
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "user",
+              content: `Translate this French word or phrase to English. Return ONLY JSON: {"translation":"concise English meaning"}\nFrench: "${input.term}"`,
+            },
+          ],
+          response_format: { type: "json_object" } as any,
+        });
+        const rawC = response.choices[0].message.content ?? '{"translation":""}';
+        const rawStr = typeof rawC === 'string' ? rawC : JSON.stringify(rawC);
+        const parsed = JSON.parse(rawStr);
+        return { translation: parsed.translation ?? "" };
+      }),
+  }),
+
+  // ─── Tutor ───────────────────────────────────────────────────────────────────
+  tutor: router({
+    history: protectedProcedure.query(async ({ ctx }) => {
+      return getTutorHistory(ctx.user.id, 40);
+    }),
+
+    chat: protectedProcedure
+      .input(z.object({ message: z.string().min(1).max(2000) }))
+      .mutation(async ({ ctx, input }) => {
+        // Save user message
+        await saveTutorMessage(ctx.user.id, "user", input.message);
+
+        // Get recent history for context
+        const history = await getTutorHistory(ctx.user.id, 20);
+        const messages = history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert French language tutor. Help the user learn French through conversation, grammar explanations, sentence building, and vocabulary practice. 
+- Always provide French examples WITH proper accents
+- Correct mistakes gently and explain why
+- Encourage the user
+- Keep responses concise but helpful
+- When showing French text, also provide the English translation`,
+            },
+            ...messages,
+          ],
+        });
+
+        const replyRaw = response.choices[0].message.content ?? "Je suis désolé, je n'ai pas pu répondre.";
+        const reply = typeof replyRaw === 'string' ? replyRaw : JSON.stringify(replyRaw);
+        await saveTutorMessage(ctx.user.id, "assistant", reply);
+        return { reply };
+      }),
+
+    clear: protectedProcedure.mutation(async ({ ctx }) => {
+      await clearTutorHistory(ctx.user.id);
+      return { success: true };
+    }),
+  }),
+
+  // ─── Voice transcription ─────────────────────────────────────────────────────
+  // ─── Storage ────────────────────────────────────────────────────────────────
+  storage: router({
+    uploadAudio: protectedProcedure
+      .input(z.object({ base64: z.string(), mimeType: z.string().default("audio/webm") }))
+      .mutation(async ({ ctx, input }) => {
+        const buffer = Buffer.from(input.base64, "base64");
+        const ext = input.mimeType.split("/")[1] ?? "webm";
+        const key = `audio/${ctx.user.id}-${Date.now()}.${ext}`;
+        const result = await storagePut(key, buffer, input.mimeType);
+        return result;
+      }),
+  }),
+
+  voice: router({
+    transcribe: protectedProcedure
+      .input(z.object({ audioUrl: z.string().url(), targetTerm: z.string() }))
+      .mutation(async ({ input }) => {
+        const result = await transcribeAudio({
+          audioUrl: input.audioUrl,
+          language: "fr",
+          prompt: `French pronunciation of: ${input.targetTerm}`,
+        });
+        if ('error' in result) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: result.error });
+        }
+        return { transcription: result.text ?? "" };
+      }),
+  }),
+
+  // ─── Progress / Stats ────────────────────────────────────────────────────────
+  progress: router({
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      const [vocabStats, quizHistory, allWords] = await Promise.all([
+        getVocabStats(ctx.user.id),
+        getQuizSessions(ctx.user.id),
+        getVocabByUser(ctx.user.id),
+      ]);
+
+      // Streak calculation
+      const days = Array.from(new Set(allWords.map((w) => w.dateKey))).sort().reverse();
+      const today = todayKey();
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+      let currentStreak = 0;
+      if (days.length > 0 && (days[0] === today || days[0] === yesterday)) {
+        currentStreak = 1;
+        for (let i = 1; i < days.length; i++) {
+          const prev = new Date(days[i - 1] + "T12:00:00");
+          const curr = new Date(days[i] + "T12:00:00");
+          if (prev.getTime() - curr.getTime() <= 86400000 + 1000) currentStreak++;
+          else break;
+        }
+      }
+      let longestStreak = 1, run = 1;
+      const asc = [...days].sort();
+      for (let i = 1; i < asc.length; i++) {
+        const prev = new Date(asc[i - 1] + "T12:00:00");
+        const curr = new Date(asc[i] + "T12:00:00");
+        if (curr.getTime() - prev.getTime() <= 86400000 + 1000) { run++; longestStreak = Math.max(longestStreak, run); }
+        else run = 1;
+      }
+      longestStreak = Math.max(longestStreak, currentStreak);
+
+      // Due for review count
+      const dueCount = allWords.filter((w) => {
+        if (w.starred) return true;
+        const seen = w.quizCount ?? 0;
+        if (seen === 0) return true;
+        const lastQ = w.lastQuizzed ? new Date(w.lastQuizzed) : new Date(0);
+        const daysSince = (Date.now() - lastQ.getTime()) / 86400000;
+        if (seen === 1) return daysSince >= 1;
+        return daysSince >= 3;
+      }).length;
+
+      return {
+        totalWords: vocabStats.total,
+        todayWords: vocabStats.today,
+        byDay: vocabStats.byDay,
+        currentStreak,
+        longestStreak,
+        totalDays: days.length,
+        dueCount,
+        recentQuizzes: quizHistory.slice(0, 5),
+      };
+    }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function detectInputType(input: string): "question" | "phrase" | "word" {
+  const lower = input.toLowerCase().trim();
+  if (
+    lower.includes("how do") ||
+    lower.includes("how to") ||
+    lower.includes("what is") ||
+    lower.startsWith("how") ||
+    lower.startsWith("what") ||
+    lower.endsWith("?")
+  )
+    return "question";
+  if (input.trim().split(/\s+/).length > 1) return "phrase";
+  return "word";
+}

@@ -1,0 +1,79 @@
+# French Dictionary & Tutor - TODO
+
+## Backend / Database
+- [x] Database schema: users, vocab_entries, quiz_sessions, tutor_messages tables
+- [x] tRPC router: vocab CRUD (add, edit, delete, star, list)
+- [x] tRPC router: dictionary search (AI-powered, with server-side caching)
+- [x] tRPC router: quiz (start session, submit answer, complete session)
+- [x] tRPC router: import (paste text AI extraction + CSV)
+- [x] tRPC router: tutor chat (conversational AI)
+- [x] tRPC router: progress stats (streak, daily counts, growth chart)
+- [x] tRPC router: voice transcription (flashcard pronunciation feedback)
+- [x] Server-side LLM caching for dictionary lookups (in-memory Map)
+
+## Frontend - Layout & Auth
+- [x] Dark theme with French-inspired color palette (deep navy + gold accents)
+- [x] DashboardLayout with sidebar tabs: Dictionary, Library, Quiz, Flashcards, Tutor, Progress
+- [x] Auth gate: login prompt for unauthenticated users
+- [x] Notification/toast system
+
+## Frontend - Dictionary Tab
+- [x] Search bar with instant lookup
+- [x] Word result card: translation, pronunciation, word type, examples
+- [x] Conjugation table (for verbs)
+- [x] Synonyms and confusing words sections
+- [x] Reflexive verb info display
+- [x] "Add to Library" button on results
+- [x] Search history display
+
+## Frontend - Vocabulary Library Tab
+- [x] Words grouped by date, with search/filter
+- [x] Star toggle, delete with confirm
+- [x] Lesson source label display
+- [x] CSV export button
+- [x] Import button (opens modal)
+- [x] Due-for-review badge count
+
+## Frontend - Import Modal
+- [x] Paste text mode with AI extraction + typo correction
+- [x] CSV upload mode
+- [x] Review cards: keep / skip / edit / go back
+- [x] Lesson name input
+- [x] Corrections bar (shows typos fixed)
+- [x] Progress indicator during AI processing
+
+## Frontend - Quiz Tab
+- [x] Bucket selector (date ranges)
+- [x] Direction toggle: FR→EN (multiple choice) and EN→FR (fill-in-the-blank)
+- [x] Quiz question card with progress bar
+- [x] Multiple choice answer buttons
+- [x] Fill-in-the-blank with AI grading
+- [x] Score display and wrong answers review
+- [x] Spaced repetition: update quizCount + lastQuizzed after quiz
+
+## Frontend - Flashcard Tab
+- [x] Flip card animation (French front / English back)
+- [x] Shuffle and starred-only modes
+- [x] Audio pronunciation button (Web Speech API)
+- [x] Voice recording for pronunciation attempts
+- [x] AI transcription feedback comparing user vs correct pronunciation
+- [x] Navigation: prev / next
+
+## Frontend - Tutor Chat Tab
+- [x] Chat interface with message history
+- [x] Sentence builder / grammar questions
+- [x] Streaming AI responses
+- [x] Markdown rendering
+
+## Frontend - Progress Tab
+- [x] Current streak, longest streak, total days
+- [x] Words learned today / this week / total
+- [x] Daily vocabulary growth chart (recharts)
+- [x] Due-for-review count
+
+## Testing
+- [x] Vitest: vocab CRUD procedures
+- [x] Vitest: quiz session procedures
+- [x] Vitest: auth logout (already exists)
+- [x] Vitest: storage upload procedure
+- [x] Vitest: progress stats procedure
