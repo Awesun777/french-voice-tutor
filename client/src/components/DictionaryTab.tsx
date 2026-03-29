@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { DictResult, DictWordResult, DictPhraseResult, DictQuestionResult } from "@/types";
-import { Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp, MessageCircle, Send, Sparkles } from "lucide-react";
+import { Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp, MessageCircle, Send, Sparkles, RefreshCw, ArrowLeftRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Streamdown } from "streamdown";
@@ -50,10 +50,16 @@ function WordResult({ result, onAdd }: { result: DictWordResult; onAdd: (term: s
             </div>
             {result.pronunciation && <p className="text-sm text-muted-foreground font-mono">[{result.pronunciation}]</p>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {result.wordType && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-primary/15 text-primary font-semibold capitalize">
                 {result.wordType}
+              </span>
+            )}
+            {(result.isReflexive || result.hasReflexiveForm) && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-1">
+                <RefreshCw className="w-3 h-3" />
+                {result.isReflexive ? "reflexive" : "has reflexive"}
               </span>
             )}
             <button
@@ -75,9 +81,67 @@ function WordResult({ result, onAdd }: { result: DictWordResult; onAdd: (term: s
           </div>
         )}
 
-        {result.isReflexive && result.reflexiveExplanation && (
-          <div className="bg-primary/8 border border-primary/20 rounded-xl p-3 mb-3 text-sm text-foreground">
-            <span className="text-primary font-semibold">Reflexive: </span>{result.reflexiveExplanation}
+        {/* ── Reflexive verb banner ── */}
+        {(result.isReflexive || result.hasReflexiveForm) && (
+          <div className="border border-amber-500/40 bg-amber-500/10 rounded-xl p-4 mb-3 space-y-2">
+            {/* Header row */}
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span className="text-sm font-bold text-amber-300 uppercase tracking-wide">
+                {result.isReflexive ? "Reflexive Verb (verbe pronominal)" : "Has Reflexive Form"}
+              </span>
+              {result.reflexiveType && (
+                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold capitalize">
+                  {result.reflexiveType}
+                </span>
+              )}
+            </div>
+
+            {/* Reflexive ↔ non-reflexive form comparison */}
+            {(result.reflexiveForm || result.nonReflexiveForm) && (
+              <div className="flex items-center gap-3 text-sm">
+                {result.nonReflexiveForm && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground text-xs">Base:</span>
+                    <button
+                      onClick={() => pronounce(result.nonReflexiveForm!)}
+                      className="font-semibold text-foreground hover:text-primary transition-colors"
+                    >
+                      {result.nonReflexiveForm}
+                    </button>
+                    <Volume2 className="w-3 h-3 text-muted-foreground" />
+                  </div>
+                )}
+                {result.reflexiveForm && result.nonReflexiveForm && (
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                )}
+                {result.reflexiveForm && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground text-xs">Reflexive:</span>
+                    <button
+                      onClick={() => pronounce(result.reflexiveForm!)}
+                      className="font-bold text-amber-300 hover:text-amber-200 transition-colors"
+                    >
+                      {result.reflexiveForm}
+                    </button>
+                    <Volume2 className="w-3 h-3 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Explanation */}
+            {result.reflexiveExplanation && (
+              <p className="text-sm text-amber-100/80 leading-relaxed">{result.reflexiveExplanation}</p>
+            )}
+
+            {/* Meaning difference note */}
+            {result.isReflexive && result.reflexiveForm && result.nonReflexiveForm && (
+              <p className="text-xs text-amber-300/70 italic">
+                Note: <span className="font-medium">{result.nonReflexiveForm}</span> (transitive) vs{" "}
+                <span className="font-medium">{result.reflexiveForm}</span> (intransitive/reflexive) — these often have different meanings.
+              </p>
+            )}
           </div>
         )}
 

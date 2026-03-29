@@ -89,3 +89,4 @@
 ## Bug Fixes
 - [x] Fix "Could not parse AI response" error on dictionary search for reflexive/irregular verbs like "promener"
 - [x] Fix: "promener" search returns result from API but nothing renders on screen
+- [x] Clearly highlight reflexive verb info on dictionary result card (reflexive form, type, explanation badge)
