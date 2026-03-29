@@ -459,7 +459,7 @@ Return ONLY this JSON: {"correct": true/false, "note": "brief explanation if wro
 {"corrected":"full corrected text","corrections":[{"original":"bonjure","fixed":"bonjour","note":"spelling"}]}
 
 Text:
-${input.text.slice(0, 8000)}`,
+${input.text.slice(0, 20000)}`,
               },
             ],
             response_format: { type: "json_object" } as any,
@@ -492,7 +492,7 @@ Return ONLY a JSON object with an "items" array. Example:
 {"items":[{"term":"bonjour","translation":"hello","kind":"word","dateKey":"2024-03-15"},{"term":"Comment allez-vous ?","translation":"How are you?","kind":"phrase","dateKey":"today"}]}
 
 Text:
-${correctedText.slice(0, 8000)}`;
+${correctedText.slice(0, 20000)}`;
 
         const extractResp = await invokeLLM({
           messages: [{ role: "user", content: extractPrompt }],
@@ -580,7 +580,7 @@ ${correctedText.slice(0, 8000)}`;
               content: `You are a French language proofreader. Correct typos, wrong accents, and clear grammar mistakes in the French text below. Keep structure and non-French parts EXACTLY the same. Return ONLY this JSON:
 {"corrected":"full corrected text","corrections":[{"original":"bonjure","fixed":"bonjour","note":"spelling"}]}
 Text:
-${docText.slice(0, 8000)}`,
+${docText.slice(0, 20000)}`,
             }],
             response_format: { type: "json_object" } as any,
           });
@@ -605,7 +605,7 @@ Rules:
 Return ONLY a JSON object with an "items" array. Example:
 {"items":[{"term":"bonjour","translation":"hello","kind":"word","dateKey":"2024-03-15"}]}
 Text:
-${correctedText.slice(0, 8000)}`;
+${correctedText.slice(0, 20000)}`;
         const extractResp = await invokeLLM({
           messages: [{ role: "user", content: extractPrompt }],
           response_format: { type: "json_object" } as any,

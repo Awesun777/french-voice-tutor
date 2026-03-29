@@ -96,3 +96,10 @@
 - [x] Library: one-click delete (no confirmation dialog, just immediate delete on icon click)
 - [x] Flashcards: date-group filter so user can choose which lesson date to review
 - [x] Quiz: date-group filter so user can choose which lesson date to quiz on
+
+## Improvements (Round 4)
+- [x] Raise import text slice limit from 8000 to 20000 characters (both text and Google Docs paths)
+- [x] Sort date filters newest-first in Quiz and Flashcards dropdowns
+- [x] Quiz date picker: fixed-height scrollable window so Start Quiz button is always visible
+- [x] Quiz: add "I don't know" button that reveals the answer without penalizing
+- [x] Persist quiz state across tab navigation (return to same question when switching back)

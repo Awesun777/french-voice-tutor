@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
 import { Volume2, Loader2, Star } from "lucide-react";
@@ -30,7 +30,8 @@ function buildBuckets(words: VocabEntry[]) {
   if (!words.length) return [];
   const byDay: Record<string, VocabEntry[]> = {};
   words.forEach((w) => { const k = w.dateKey ?? "unknown"; if (!byDay[k]) byDay[k] = []; byDay[k].push(w); });
-  const sortedDays = Object.keys(byDay).sort();
+  // Sort newest-first
+  const sortedDays = Object.keys(byDay).sort().reverse();
   const raw: { words: VocabEntry[]; start: string; end: string }[] = [];
   let current: { words: VocabEntry[]; start: string; end: string } | null = null;
   for (const day of sortedDays) {
@@ -50,7 +51,7 @@ function buildBuckets(words: VocabEntry[]) {
 function fmtRange(start: string, end: string) {
   if (start === end) {
     const d = new Date(start + "T12:00:00");
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   }
   const s = new Date(start + "T12:00:00"), e = new Date(end + "T12:00:00");
   return `${s.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${e.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
@@ -77,20 +78,52 @@ function buildChoices(word: VocabEntry, allWords: VocabEntry[], direction: "fr2e
   ]);
 }
 
+// ─── Persistent quiz state (survives tab switches) ────────────────────────────
+interface PersistedQuiz {
+  questions: QuizQuestion[];
+  qIndex: number;
+  score: number;
+  selected: string | null;
+  fillInput: string;
+  fillResult: { correct: boolean; note: string } | null;
+  wrongAnswers: { word: VocabEntry; chosenDisplay: string }[];
+  direction: "fr2en" | "en2fr";
+  selectedBucket: number | null;
+  revealedDontKnow: boolean;
+}
+
+// Module-level variable so it persists across component unmounts
+let savedQuizState: PersistedQuiz | null = null;
+
 export default function QuizTab() {
   const { data: words = [] } = trpc.vocab.list.useQuery();
-  const [phase, setPhase] = useState<"select" | "quiz" | "done">("select");
-  const [selectedBucket, setSelectedBucket] = useState<number | null>(null);
-  const [direction, setDirection] = useState<"fr2en" | "en2fr">("fr2en");
+  const [phase, setPhase] = useState<"select" | "quiz" | "done">(
+    savedQuizState ? "quiz" : "select"
+  );
+  const [selectedBucket, setSelectedBucket] = useState<number | null>(
+    savedQuizState?.selectedBucket ?? null
+  );
+  const [direction, setDirection] = useState<"fr2en" | "en2fr">(
+    savedQuizState?.direction ?? "fr2en"
+  );
   const [dueOnly, setDueOnly] = useState(false);
-  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [qIndex, setQIndex] = useState(0);
-  const [score, setScore] = useState(0);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [fillInput, setFillInput] = useState("");
-  const [fillResult, setFillResult] = useState<{ correct: boolean; note: string } | null>(null);
+  const [questions, setQuestions] = useState<QuizQuestion[]>(
+    savedQuizState?.questions ?? []
+  );
+  const [qIndex, setQIndex] = useState(savedQuizState?.qIndex ?? 0);
+  const [score, setScore] = useState(savedQuizState?.score ?? 0);
+  const [selected, setSelected] = useState<string | null>(savedQuizState?.selected ?? null);
+  const [fillInput, setFillInput] = useState(savedQuizState?.fillInput ?? "");
+  const [fillResult, setFillResult] = useState<{ correct: boolean; note: string } | null>(
+    savedQuizState?.fillResult ?? null
+  );
   const [fillGrading, setFillGrading] = useState(false);
-  const [wrongAnswers, setWrongAnswers] = useState<{ word: VocabEntry; chosenDisplay: string }[]>([]);
+  const [wrongAnswers, setWrongAnswers] = useState<{ word: VocabEntry; chosenDisplay: string }[]>(
+    savedQuizState?.wrongAnswers ?? []
+  );
+  const [revealedDontKnow, setRevealedDontKnow] = useState(
+    savedQuizState?.revealedDontKnow ?? false
+  );
   const fillRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
 
@@ -105,6 +138,28 @@ export default function QuizTab() {
   const quizableWords = selectedBucket !== null
     ? (dueOnly ? buckets[selectedBucket]?.words.filter(isDue) : buckets[selectedBucket]?.words) ?? []
     : (dueOnly ? words.filter((w) => w.translation && isDue(w)) : words.filter((w) => w.translation));
+
+  // Persist quiz state to module-level variable whenever it changes
+  const persistState = useCallback(() => {
+    if (phase === "quiz" && questions.length > 0) {
+      savedQuizState = {
+        questions,
+        qIndex,
+        score,
+        selected,
+        fillInput,
+        fillResult,
+        wrongAnswers,
+        direction,
+        selectedBucket,
+        revealedDontKnow,
+      };
+    } else if (phase !== "quiz") {
+      savedQuizState = null;
+    }
+  }, [phase, questions, qIndex, score, selected, fillInput, fillResult, wrongAnswers, direction, selectedBucket, revealedDontKnow]);
+
+  useEffect(() => { persistState(); }, [persistState]);
 
   const startQuiz = () => {
     if (quizableWords.length < 2) { toast.error("Need at least 2 words to start a quiz"); return; }
@@ -123,11 +178,12 @@ export default function QuizTab() {
     setFillInput("");
     setFillResult(null);
     setWrongAnswers([]);
+    setRevealedDontKnow(false);
     setPhase("quiz");
   };
 
   const handleSelect = (choice: { display: string; isCorrect: boolean }) => {
-    if (selected) return;
+    if (selected || revealedDontKnow) return;
     setSelected(choice.display);
     if (choice.isCorrect) {
       setScore((s) => s + 1);
@@ -135,6 +191,13 @@ export default function QuizTab() {
       setWrongAnswers((wa) => [...wa, { word: questions[qIndex].word, chosenDisplay: choice.display }]);
     }
     setTimeout(() => nextQuestion(), 900);
+  };
+
+  const handleDontKnow = () => {
+    if (selected || revealedDontKnow) return;
+    setRevealedDontKnow(true);
+    // Count as wrong
+    setWrongAnswers((wa) => [...wa, { word: questions[qIndex].word, chosenDisplay: "" }]);
   };
 
   const handleFillSubmit = async () => {
@@ -157,6 +220,13 @@ export default function QuizTab() {
     setFillGrading(false);
   };
 
+  const handleFillDontKnow = () => {
+    if (fillResult || fillGrading) return;
+    const q = questions[qIndex];
+    setFillResult({ correct: false, note: "" });
+    setWrongAnswers((wa) => [...wa, { word: q.word, chosenDisplay: "" }]);
+  };
+
   const nextQuestion = () => {
     if (qIndex + 1 >= questions.length) {
       finishQuiz();
@@ -165,11 +235,13 @@ export default function QuizTab() {
       setSelected(null);
       setFillInput("");
       setFillResult(null);
+      setRevealedDontKnow(false);
       setTimeout(() => fillRef.current?.focus(), 100);
     }
   };
 
   const finishQuiz = () => {
+    savedQuizState = null;
     setPhase("done");
     const bucket = selectedBucket !== null ? buckets[selectedBucket] : null;
     saveSessionMutation.mutate({
@@ -179,7 +251,6 @@ export default function QuizTab() {
       bucketStart: bucket?.start,
       bucketEnd: bucket?.end,
     });
-    // Update spaced repetition
     const now = new Date();
     updateProgressMutation.mutate(
       questions.map((q) => ({
@@ -220,7 +291,10 @@ export default function QuizTab() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground">{wa.word.term}</p>
                       <p className="text-xs text-emerald-400">✓ {wa.word.translation}</p>
-                      {wa.chosenDisplay && <p className="text-xs text-red-400 mt-0.5">✗ You wrote: "{wa.chosenDisplay}"</p>}
+                      {wa.chosenDisplay
+                        ? <p className="text-xs text-red-400 mt-0.5">✗ You wrote: "{wa.chosenDisplay}"</p>
+                        : <p className="text-xs text-amber-400 mt-0.5">✗ Didn't know</p>
+                      }
                     </div>
                     <button onClick={() => starMutation.mutate({ id: wa.word.id })} className={cn("p-1.5 rounded-lg transition-colors", wa.word.starred ? "text-accent" : "text-muted-foreground hover:text-accent")}>
                       <Star className={cn("w-3.5 h-3.5", wa.word.starred && "fill-current")} />
@@ -253,7 +327,9 @@ export default function QuizTab() {
           <div className="flex justify-between items-center pt-2">
             <button onClick={() => setPhase("select")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">← Back</button>
             <div className="flex items-center gap-2">
-              <span className={cn("text-xs px-2 py-0.5 rounded-full font-semibold", direction === "fr2en" ? "bg-primary/15 text-primary" : "bg-emerald-500/15 text-emerald-400")}>
+              <span className={cn("text-xs px-2 py-0.5 rounded-full font-semibold",
+                direction === "fr2en" ? "bg-primary/15 text-primary" : "bg-violet-500/15 text-violet-400"
+              )}>
                 {direction === "fr2en" ? "FR → EN" : "EN → FR"}
               </span>
               <p className="text-sm font-mono text-muted-foreground">{qIndex + 1} / {questions.length}</p>
@@ -305,7 +381,7 @@ export default function QuizTab() {
                     <p className="text-emerald-300 font-semibold text-sm">✓ Correct!</p>
                   ) : (
                     <>
-                      <p className="text-amber-300 font-semibold text-sm mb-1">The answer was:</p>
+                      <p className="text-amber-300 font-semibold text-sm mb-1">The answer is:</p>
                       <div className="flex items-center gap-2">
                         <p className="text-foreground font-bold">{q.word.term}</p>
                         <button onClick={() => pronounce(q.word.term)} className="p-1 bg-muted rounded-full hover:bg-muted/80">
@@ -317,38 +393,68 @@ export default function QuizTab() {
                   )}
                 </div>
               )}
-              <button
-                onClick={handleFillSubmit}
-                disabled={(fillResult === null && !fillInput.trim()) || fillGrading}
-                className={cn(
-                  "w-full py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2",
-                  fillResult === null ? "bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50" : "bg-muted hover:bg-muted/80 text-foreground"
+              <div className="flex gap-2">
+                {!fillResult && (
+                  <button
+                    onClick={handleFillDontKnow}
+                    disabled={fillGrading}
+                    className="flex-1 py-3 rounded-xl font-semibold text-sm bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition disabled:opacity-40"
+                  >
+                    I don't know
+                  </button>
                 )}
-              >
-                {fillGrading ? <><Loader2 className="w-4 h-4 animate-spin" /> Grading…</> : fillResult === null ? "Check Answer" : "Next →"}
-              </button>
+                <button
+                  onClick={handleFillSubmit}
+                  disabled={(fillResult === null && !fillInput.trim()) || fillGrading}
+                  className={cn(
+                    "py-3 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2",
+                    fillResult === null ? "flex-1 bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50" : "w-full bg-muted hover:bg-muted/80 text-foreground"
+                  )}
+                >
+                  {fillGrading ? <><Loader2 className="w-4 h-4 animate-spin" /> Grading…</> : fillResult === null ? "Check Answer" : "Next →"}
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {q.choices?.map((c, i) => {
-                const isCorrect = c.isCorrect;
-                const isChosen = selected === c.display;
-                let cls = "relative p-4 rounded-xl border text-sm font-semibold transition-all duration-200 text-left ";
-                if (selected) {
-                  if (isCorrect) cls += "bg-emerald-500/15 border-emerald-500 text-emerald-300";
-                  else if (isChosen) cls += "bg-red-500/15 border-red-500 text-red-300";
-                  else cls += "bg-muted/30 border-border text-muted-foreground opacity-50";
-                } else {
-                  cls += "bg-card border-border text-foreground hover:bg-muted/50 hover:border-primary/50 cursor-pointer";
-                }
-                return (
-                  <button key={i} onClick={() => handleSelect(c)} disabled={!!selected} className={cls}>
-                    {c.display}
-                    {selected && isCorrect && <span className="absolute top-2 right-2 text-emerald-400">✓</span>}
-                    {selected && isChosen && !isCorrect && <span className="absolute top-2 right-2 text-red-400">✗</span>}
-                  </button>
-                );
-              })}
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-3">
+                {q.choices?.map((c, i) => {
+                  const isCorrect = c.isCorrect;
+                  const isChosen = selected === c.display;
+                  const isRevealed = revealedDontKnow;
+                  let cls = "relative p-4 rounded-xl border text-sm font-semibold transition-all duration-200 text-left ";
+                  if (selected || isRevealed) {
+                    if (isCorrect) cls += "bg-emerald-500/15 border-emerald-500 text-emerald-300";
+                    else if (isChosen) cls += "bg-red-500/15 border-red-500 text-red-300";
+                    else cls += "bg-muted/30 border-border text-muted-foreground opacity-50";
+                  } else {
+                    cls += "bg-card border-border text-foreground hover:bg-muted/50 hover:border-primary/50 cursor-pointer";
+                  }
+                  return (
+                    <button key={i} onClick={() => handleSelect(c)} disabled={!!selected || isRevealed} className={cls}>
+                      {c.display}
+                      {(selected || isRevealed) && isCorrect && <span className="absolute top-2 right-2 text-emerald-400">✓</span>}
+                      {selected && isChosen && !isCorrect && <span className="absolute top-2 right-2 text-red-400">✗</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* I don't know / Next row */}
+              {!selected && !revealedDontKnow ? (
+                <button
+                  onClick={handleDontKnow}
+                  className="w-full py-2.5 rounded-xl font-semibold text-sm bg-muted/60 hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition"
+                >
+                  I don't know
+                </button>
+              ) : revealedDontKnow ? (
+                <button
+                  onClick={nextQuestion}
+                  className="w-full py-2.5 rounded-xl font-bold text-sm bg-muted hover:bg-muted/80 text-foreground transition"
+                >
+                  Next →
+                </button>
+              ) : null}
             </div>
           )}
         </div>
@@ -356,99 +462,119 @@ export default function QuizTab() {
     );
   }
 
-  // Select phase
+  // ─── Select phase ─────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="max-w-md mx-auto space-y-6">
-        <div>
-          <h2 className="text-xl font-bold text-foreground mb-1">Quiz Settings</h2>
-          <p className="text-sm text-muted-foreground">Choose your quiz parameters</p>
-        </div>
-
-        {/* Direction */}
-        <div>
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Direction</p>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { id: "fr2en" as const, label: "FR → EN", desc: "Multiple choice" },
-              { id: "en2fr" as const, label: "EN → FR", desc: "Type in French" },
-            ].map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setDirection(d.id)}
-                className={cn(
-                  "p-4 rounded-xl border text-left transition-all",
-                  direction === d.id ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-foreground hover:bg-muted/30"
-                )}
-              >
-                <p className="font-bold text-sm">{d.label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{d.desc}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Due only toggle */}
-        <div className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
+    <div className="flex flex-col h-full">
+      {/* Scrollable settings area */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-md mx-auto space-y-6">
           <div>
-            <p className="text-sm font-semibold text-foreground">Due for review only</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Spaced repetition scheduling</p>
+            <h2 className="text-xl font-bold text-foreground mb-1">Quiz Settings</h2>
+            <p className="text-sm text-muted-foreground">Choose your quiz parameters</p>
           </div>
-          <button
-            onClick={() => setDueOnly(!dueOnly)}
-            className={cn(
-              "w-11 h-6 rounded-full transition-colors relative",
-              dueOnly ? "bg-primary" : "bg-muted"
-            )}
-          >
-            <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform", dueOnly ? "left-5.5 translate-x-0" : "left-0.5")} />
-          </button>
-        </div>
 
-        {/* Bucket selector */}
-        {buckets.length > 1 && (
+          {/* Saved quiz banner */}
+          {savedQuizState && (
+            <button
+              onClick={() => setPhase("quiz")}
+              className="w-full p-4 rounded-xl border border-primary/40 bg-primary/10 text-left hover:bg-primary/15 transition"
+            >
+              <p className="text-sm font-bold text-primary">↩ Resume quiz in progress</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Question {savedQuizState.qIndex + 1} of {savedQuizState.questions.length} · {savedQuizState.score} pts so far
+              </p>
+            </button>
+          )}
+
+          {/* Direction */}
           <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Date Range</p>
-            <div className="space-y-2">
-              <button
-                onClick={() => setSelectedBucket(null)}
-                className={cn(
-                  "w-full p-3 rounded-xl border text-left text-sm transition-all",
-                  selectedBucket === null ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-foreground hover:bg-muted/30"
-                )}
-              >
-                <span className="font-semibold">All words</span>
-                <span className="text-muted-foreground ml-2">({words.filter((w) => w.translation).length} total)</span>
-              </button>
-              {buckets.map((b, i) => (
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Direction</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { id: "fr2en" as const, label: "FR → EN", desc: "Multiple choice" },
+                { id: "en2fr" as const, label: "EN → FR", desc: "Type in French" },
+              ].map((d) => (
                 <button
-                  key={i}
-                  onClick={() => setSelectedBucket(i)}
+                  key={d.id}
+                  onClick={() => setDirection(d.id)}
                   className={cn(
-                    "w-full p-3 rounded-xl border text-left text-sm transition-all",
-                    selectedBucket === i ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-foreground hover:bg-muted/30"
+                    "p-4 rounded-xl border text-left transition-all",
+                    direction === d.id ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-foreground hover:bg-muted/30"
                   )}
                 >
-                  <span className="font-semibold">{fmtRange(b.start, b.end)}</span>
-                  <span className="text-muted-foreground ml-2">({b.words.length} words)</span>
+                  <p className="font-bold text-sm">{d.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{d.desc}</p>
                 </button>
               ))}
             </div>
           </div>
-        )}
 
-        <div className="bg-muted/30 rounded-xl p-4 text-sm text-muted-foreground">
-          {quizableWords.length} words available for quiz
-          {dueOnly && <span className="text-accent ml-1">({words.filter(isDue).length} due)</span>}
+          {/* Due only toggle */}
+          <div className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Due for review only</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Spaced repetition scheduling</p>
+            </div>
+            <button
+              onClick={() => setDueOnly(!dueOnly)}
+              className={cn("w-11 h-6 rounded-full transition-colors relative", dueOnly ? "bg-primary" : "bg-muted")}
+            >
+              <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform", dueOnly ? "left-5.5 translate-x-0" : "left-0.5")} />
+            </button>
+          </div>
+
+          {/* Bucket selector — fixed-height scrollable window */}
+          {buckets.length > 1 && (
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Date Range</p>
+              <div className="overflow-y-auto rounded-xl border border-border" style={{ maxHeight: "220px" }}>
+                <div className="divide-y divide-border/50">
+                  <button
+                    onClick={() => setSelectedBucket(null)}
+                    className={cn(
+                      "w-full p-3 text-left text-sm transition-all",
+                      selectedBucket === null ? "bg-primary/15 text-primary" : "bg-card text-foreground hover:bg-muted/30"
+                    )}
+                  >
+                    <span className="font-semibold">All words</span>
+                    <span className="text-muted-foreground ml-2">({words.filter((w) => w.translation).length} total)</span>
+                  </button>
+                  {buckets.map((b, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedBucket(i)}
+                      className={cn(
+                        "w-full p-3 text-left text-sm transition-all",
+                        selectedBucket === i ? "bg-primary/15 text-primary" : "bg-card text-foreground hover:bg-muted/30"
+                      )}
+                    >
+                      <span className="font-semibold">{fmtRange(b.start, b.end)}</span>
+                      <span className="text-muted-foreground ml-2">({b.words.length} words)</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="bg-muted/30 rounded-xl p-4 text-sm text-muted-foreground">
+            {quizableWords.length} words available for quiz
+            {dueOnly && <span className="text-accent ml-1">({words.filter(isDue).length} due)</span>}
+          </div>
         </div>
+      </div>
 
-        <button
-          onClick={startQuiz}
-          disabled={quizableWords.length < 2}
-          className="w-full py-3.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl font-bold transition-colors"
-        >
-          Start Quiz →
-        </button>
+      {/* Start Quiz button — always visible at the bottom */}
+      <div className="flex-shrink-0 p-4 border-t border-border bg-background/80 backdrop-blur-sm">
+        <div className="max-w-md mx-auto">
+          <button
+            onClick={startQuiz}
+            disabled={quizableWords.length < 2}
+            className="w-full py-3.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl font-bold transition-colors"
+          >
+            Start Quiz →
+          </button>
+        </div>
       </div>
     </div>
   );
