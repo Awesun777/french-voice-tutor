@@ -41,7 +41,6 @@ function exportCSV(words: VocabEntry[]) {
 
 export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void }) {
   const [search, setSearch] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [filterStarred, setFilterStarred] = useState(false);
   const utils = trpc.useUtils();
@@ -81,8 +80,24 @@ export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: Sideb
         translation: item.translation,
         entryKind: (item.kind ?? item.entryKind ?? "word") as "word" | "phrase",
         lessonSource: lessonName || undefined,
-        dateKey: todayKey(),
+        // Preserve dateKey from AI-detected date headers; fall back to today
+        dateKey: item.dateKey ?? todayKey(),
       }))
+    );
+  };
+
+  const handleDelete = (id: number) => {
+    // Optimistic one-click delete — remove immediately, restore on error
+    const prev = utils.vocab.list.getData();
+    utils.vocab.list.setData(undefined, (old) => old?.filter((w) => w.id !== id));
+    deleteMutation.mutate(
+      { id },
+      {
+        onError: () => {
+          if (prev) utils.vocab.list.setData(undefined, prev);
+          toast.error("Failed to delete");
+        },
+      }
     );
   };
 
@@ -202,40 +217,24 @@ export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: Sideb
                         {isDue(w) && (
                           <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-semibold flex-shrink-0">due</span>
                         )}
-                        {confirmDelete === w.id ? (
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <button
-                              onClick={() => { deleteMutation.mutate({ id: w.id }); setConfirmDelete(null); }}
-                              className="px-2.5 py-1 rounded-lg bg-destructive hover:bg-destructive/80 text-destructive-foreground text-xs font-bold transition-colors"
-                            >
-                              Delete
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="px-2.5 py-1 rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground text-xs font-semibold transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <button
-                              onClick={() => starMutation.mutate({ id: w.id })}
-                              className={cn(
-                                "p-1.5 rounded-lg transition-colors",
-                                w.starred ? "text-accent" : "text-muted-foreground hover:text-accent opacity-0 group-hover:opacity-100"
-                              )}
-                            >
-                              <Star className={cn("w-3.5 h-3.5", w.starred && "fill-current")} />
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete(w.id)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => starMutation.mutate({ id: w.id })}
+                            className={cn(
+                              "p-1.5 rounded-lg transition-colors",
+                              w.starred ? "text-accent" : "text-muted-foreground hover:text-accent opacity-0 group-hover:opacity-100"
+                            )}
+                          >
+                            <Star className={cn("w-3.5 h-3.5", w.starred && "fill-current")} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(w.id)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Delete word"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

@@ -90,3 +90,9 @@
 - [x] Fix "Could not parse AI response" error on dictionary search for reflexive/irregular verbs like "promener"
 - [x] Fix: "promener" search returns result from API but nothing renders on screen
 - [x] Clearly highlight reflexive verb info on dictionary result card (reflexive form, type, explanation badge)
+
+## Improvements (Round 3)
+- [x] Import: detect date headers in Google Docs/text and group imported vocab by those dates
+- [x] Library: one-click delete (no confirmation dialog, just immediate delete on icon click)
+- [x] Flashcards: date-group filter so user can choose which lesson date to review
+- [x] Quiz: date-group filter so user can choose which lesson date to quiz on

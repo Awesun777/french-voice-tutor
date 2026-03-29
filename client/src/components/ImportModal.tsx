@@ -53,7 +53,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const afterExtract = (
-    rawItems: { term: string; translation: string; kind: string }[],
+    rawItems: { term: string; translation: string; kind: string; dateKey?: string }[],
     rawCorrections: { original: string; fixed: string; note: string }[],
     preview?: string,
   ) => {
@@ -61,6 +61,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
       term: item.term,
       translation: item.translation,
       kind: (item.kind === "phrase" ? "phrase" : "word") as "word" | "phrase",
+      dateKey: item.dateKey,
     }));
     if (!tagged.length) {
       setError("No French vocabulary found. Try a different source.");
@@ -380,18 +381,49 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
                 </div>
               )}
 
+
               {/* Summary */}
               <div className="text-center py-2">
                 <p className="text-4xl font-bold text-foreground">{items.length}</p>
                 <p className="text-sm text-muted-foreground">words & phrases extracted</p>
               </div>
 
+              {/* Date-group summary — shown when doc had date headers */}
+              {(() => {
+                const dateGroups = items.reduce<Record<string, number>>((acc, item) => {
+                  const dk = item.dateKey ?? "today";
+                  acc[dk] = (acc[dk] ?? 0) + 1;
+                  return acc;
+                }, {});
+                const uniqueDates = Object.keys(dateGroups);
+                if (uniqueDates.length <= 1) return null;
+                return (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
+                    <p className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">📅 Date groups detected</p>
+                    <div className="space-y-1">
+                      {uniqueDates.sort().map((dk) => (
+                        <div key={dk} className="flex items-center justify-between text-xs">
+                          <span className="text-amber-200 font-medium">{dk}</span>
+                          <span className="text-amber-400">{dateGroups[dk]} word{dateGroups[dk] !== 1 ? "s" : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-amber-300/70 mt-2 italic">Words will be saved into their respective date groups in your library.</p>
+                  </div>
+                );
+              })()}
+
               {/* Word preview */}
               <div className="bg-muted/20 border border-border rounded-xl overflow-hidden max-h-44 overflow-y-auto">
                 {items.slice(0, 25).map((item, i) => (
                   <div key={i} className={cn("flex items-center justify-between px-3 py-2 text-sm", i % 2 === 0 ? "" : "bg-muted/10")}>
                     <span className="font-medium text-foreground">{item.term}</span>
-                    <span className="text-muted-foreground text-xs truncate ml-2">{item.translation}</span>
+                    <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                      {item.dateKey && item.dateKey !== new Date().toISOString().slice(0, 10) && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-mono">{item.dateKey}</span>
+                      )}
+                      <span className="text-muted-foreground text-xs truncate max-w-[120px]">{item.translation}</span>
+                    </div>
                   </div>
                 ))}
                 {items.length > 25 && (
@@ -459,12 +491,19 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
 
               {/* Card */}
               <div className="bg-muted/40 border border-border rounded-2xl p-6 text-center mb-5">
-                <span className={cn(
-                  "inline-block text-xs px-2.5 py-1 rounded-full font-bold mb-3",
-                  currentItem.kind === "phrase" ? "bg-violet-500/15 text-violet-400" : "bg-primary/15 text-primary"
-                )}>
-                  {currentItem.kind === "phrase" ? "📝 Phrase" : "📖 Word"}
-                </span>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  <span className={cn(
+                    "inline-block text-xs px-2.5 py-1 rounded-full font-bold",
+                    currentItem.kind === "phrase" ? "bg-violet-500/15 text-violet-400" : "bg-primary/15 text-primary"
+                  )}>
+                    {currentItem.kind === "phrase" ? "📝 Phrase" : "📖 Word"}
+                  </span>
+                  {currentItem.dateKey && (
+                    <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-400 font-mono">
+                      📅 {currentItem.dateKey}
+                    </span>
+                  )}
+                </div>
                 <p className="text-2xl font-bold text-foreground mb-2">{currentItem.term}</p>
                 <p className="text-muted-foreground">{currentItem.translation}</p>
               </div>

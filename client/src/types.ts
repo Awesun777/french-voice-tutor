@@ -75,4 +75,5 @@ export interface ImportItem {
   translation: string;
   kind: "word" | "phrase";
   entryKind?: "word" | "phrase";
+  dateKey?: string; // YYYY-MM-DD, set when document has date headers
 }

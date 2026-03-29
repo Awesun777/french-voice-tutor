@@ -14,9 +14,18 @@ function pronounce(text: string) {
 
 function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
 
+function todayKey() { return new Date().toISOString().split("T")[0]; }
+function yesterdayKey() { return new Date(Date.now() - 86400000).toISOString().split("T")[0]; }
+function fmtDateLabel(dk: string) {
+  if (dk === todayKey()) return "Today";
+  if (dk === yesterdayKey()) return "Yesterday";
+  return new Date(dk + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 export default function FlashcardTab() {
   const { data: allWords = [] } = trpc.vocab.list.useQuery();
   const [filterStarred, setFilterStarred] = useState(false);
+  const [filterDate, setFilterDate] = useState<string | "all">("all");
   const [deck, setDeck] = useState<VocabEntry[]>([]);
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -48,7 +57,14 @@ export default function FlashcardTab() {
 
   const storagePutMutation = trpc.storage.uploadAudio.useMutation();
 
-  const words = filterStarred ? allWords.filter((w) => w.starred) : allWords;
+  // Get unique date keys for the dropdown
+  const dateKeys = Array.from(new Set(allWords.map((w) => w.dateKey))).sort().reverse();
+
+  const words = allWords.filter((w) => {
+    if (filterStarred && !w.starred) return false;
+    if (filterDate !== "all" && w.dateKey !== filterDate) return false;
+    return true;
+  });
 
   useEffect(() => {
     if (words.length > 0 && deck.length === 0) {
@@ -56,6 +72,15 @@ export default function FlashcardTab() {
       setIdx(0);
     }
   }, [words.length]);
+
+  // Reset deck when filters change
+  useEffect(() => {
+    setDeck(words);
+    setIdx(0);
+    setFlipped(false);
+    setAudioBlob(null);
+    setTranscription(null);
+  }, [filterStarred, filterDate]);
 
   const handleShuffle = () => {
     setDeck(shuffle(words));
@@ -164,24 +189,39 @@ export default function FlashcardTab() {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center gap-3">
+      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center gap-2 flex-wrap">
         <button
-          onClick={() => { setFilterStarred(!filterStarred); setDeck([]); setIdx(0); setFlipped(false); }}
+          onClick={() => setFilterStarred(!filterStarred)}
           className={cn(
             "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
             filterStarred ? "bg-accent/20 text-accent" : "bg-card border border-border text-muted-foreground hover:text-foreground"
           )}
         >
           <Star className={cn("w-3.5 h-3.5", filterStarred && "fill-current")} />
-          Starred only
+          Starred
         </button>
+        {/* Date group filter */}
+        {dateKeys.length > 1 && (
+          <select
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="px-3 py-2 bg-card border border-border rounded-xl text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
+          >
+            <option value="all">All dates ({allWords.length})</option>
+            {dateKeys.map((dk) => (
+              <option key={dk} value={dk}>
+                {fmtDateLabel(dk)} ({allWords.filter((w) => w.dateKey === dk).length})
+              </option>
+            ))}
+          </select>
+        )}
         <button
           onClick={handleShuffle}
           className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground rounded-xl text-xs font-semibold transition-colors"
         >
           <Shuffle className="w-3.5 h-3.5" /> Shuffle
         </button>
-        <span className="ml-auto text-xs text-muted-foreground font-mono">{idx + 1} / {deck.length}</span>
+        <span className="ml-auto text-xs text-muted-foreground font-mono">{deck.length > 0 ? `${idx + 1} / ${deck.length}` : "0 / 0"}</span>
       </div>
 
       {/* Card area */}

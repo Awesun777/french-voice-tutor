@@ -479,35 +479,43 @@ ${input.text.slice(0, 8000)}`,
           : "";
 
         const extractPrompt = `You are a French language teacher's assistant. Extract all distinct French vocabulary words and phrases from the text below.
-Ignore headings, titles, page numbers, dates, and purely English metadata.
+The text may contain date headers (e.g. "March 15", "2024-03-15", "Lesson 3 - Monday", "Week 2", "Jan 5th") that separate vocabulary sections. When you find such headers, tag all vocabulary that follows that header with the corresponding dateKey in YYYY-MM-DD format. If no date can be inferred, use "today" as the dateKey. Assume the current year if only month/day is given.
+Ignore headings, titles, page numbers, and purely English metadata that are NOT vocabulary.
 Focus only on French words, expressions, and sentences a student would want to learn.
 ${extraRules}
 Rules:
 - "term": French word or phrase WITH accents preserved
-- "translation": English meaning, brief (1-6 words)  
+- "translation": English meaning, brief (1-6 words)
 - "kind": "word" for single words or 2-word expressions; "phrase" for 3+ word expressions or full sentences
-
-Return ONLY a complete valid JSON array. Example:
-[{"term":"bonjour","translation":"hello","kind":"word"},{"term":"Comment allez-vous ?","translation":"How are you?","kind":"phrase"}]
+- "dateKey": YYYY-MM-DD string if a date header was found above this word, otherwise "today"
+Return ONLY a JSON object with an "items" array. Example:
+{"items":[{"term":"bonjour","translation":"hello","kind":"word","dateKey":"2024-03-15"},{"term":"Comment allez-vous ?","translation":"How are you?","kind":"phrase","dateKey":"today"}]}
 
 Text:
 ${correctedText.slice(0, 8000)}`;
 
         const extractResp = await invokeLLM({
           messages: [{ role: "user", content: extractPrompt }],
-          response_format: { type: "json_array" } as any,
+          response_format: { type: "json_object" } as any,
         });
 
-        let items: { term: string; translation: string; kind: string }[] = [];
+        let items: { term: string; translation: string; kind: string; dateKey?: string }[] = [];
         try {
-          const extractRaw = extractResp.choices[0].message.content ?? '[]';
+          const extractRaw = extractResp.choices[0].message.content ?? '{}';
           const extractStr = typeof extractRaw === 'string' ? extractRaw : JSON.stringify(extractRaw);
-          // Handle both array and object wrapping
           const parsed = JSON.parse(extractStr.trim().replace(/^```json\n?|```\n?$/g, ""));
-          items = Array.isArray(parsed) ? parsed : (parsed.items ?? parsed.vocabulary ?? []);
+          const arr = Array.isArray(parsed) ? parsed : (parsed.items ?? parsed.vocabulary ?? parsed.words ?? []);
+          items = arr;
         } catch {
           items = [];
         }
+
+        // Resolve "today" dateKeys to actual today string
+        const todayStr = todayKey();
+        items = items.map((item) => ({
+          ...item,
+          dateKey: (!item.dateKey || item.dateKey === "today") ? todayStr : item.dateKey,
+        }));
 
         // Deduplicate
         const seen = new Set<string>();
@@ -585,27 +593,36 @@ ${docText.slice(0, 8000)}`,
         // Extract vocabulary
         const extraRules = input.instructions?.trim() ? `\nAdditional instructions: ${input.instructions.trim()}\n` : "";
         const extractPrompt = `You are a French language teacher's assistant. Extract all distinct French vocabulary words and phrases from the text below.
-Ignore headings, titles, page numbers, dates, and purely English metadata.
+The text may contain date headers (e.g. "March 15", "2024-03-15", "Lesson 3 - Monday", "Week 2", "Jan 5th") that separate vocabulary sections. When you find such headers, tag all vocabulary that follows that header with the corresponding dateKey in YYYY-MM-DD format. If no date can be inferred, use "today" as the dateKey. Assume the current year if only month/day is given.
+Ignore headings, titles, page numbers, and purely English metadata that are NOT vocabulary.
 Focus only on French words, expressions, and sentences a student would want to learn.
 ${extraRules}
 Rules:
 - "term": French word or phrase WITH accents preserved
 - "translation": English meaning, brief (1-6 words)
 - "kind": "word" for single words or 2-word expressions; "phrase" for 3+ word expressions or full sentences
-Return ONLY a complete valid JSON array.
+- "dateKey": YYYY-MM-DD string if a date header was found above this word, otherwise "today"
+Return ONLY a JSON object with an "items" array. Example:
+{"items":[{"term":"bonjour","translation":"hello","kind":"word","dateKey":"2024-03-15"}]}
 Text:
 ${correctedText.slice(0, 8000)}`;
         const extractResp = await invokeLLM({
           messages: [{ role: "user", content: extractPrompt }],
-          response_format: { type: "json_array" } as any,
+          response_format: { type: "json_object" } as any,
         });
-        let items: { term: string; translation: string; kind: string }[] = [];
+        let items: { term: string; translation: string; kind: string; dateKey?: string }[] = [];
         try {
-          const extractRaw = extractResp.choices[0].message.content ?? '[]';
+          const extractRaw = extractResp.choices[0].message.content ?? '{}';
           const extractStr = typeof extractRaw === 'string' ? extractRaw : JSON.stringify(extractRaw);
           const parsed = JSON.parse(extractStr.trim().replace(/^```json\n?|```\n?$/g, ""));
-          items = Array.isArray(parsed) ? parsed : (parsed.items ?? parsed.vocabulary ?? []);
+          const arr = Array.isArray(parsed) ? parsed : (parsed.items ?? parsed.vocabulary ?? parsed.words ?? []);
+          items = arr;
         } catch { items = []; }
+        const todayStr = todayKey();
+        items = items.map((item) => ({
+          ...item,
+          dateKey: (!item.dateKey || item.dateKey === "today") ? todayStr : item.dateKey,
+        }));
         const seen = new Set<string>();
         const deduped = items.filter((item) => {
           const k = (item.term ?? "").toLowerCase().trim();
