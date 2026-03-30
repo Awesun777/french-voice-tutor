@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
-import { Volume2, Shuffle, Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Volume2, Shuffle, Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +36,44 @@ export default function FlashcardTab() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const utils = trpc.useUtils();
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const deleteMutation = trpc.vocab.delete.useMutation({
+    onMutate: async ({ id }) => {
+      await utils.vocab.list.cancel();
+      const prev = utils.vocab.list.getData();
+      utils.vocab.list.setData(undefined, (old) => old?.filter((w) => w.id !== id));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) utils.vocab.list.setData(undefined, ctx.prev);
+      toast.error("Failed to delete");
+    },
+    onSuccess: () => {
+      // Advance to next card (deck shrinks automatically via allWords)
+      setDeck((d) => {
+        const next = d.filter((w) => w.id !== confirmDeleteId);
+        setIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
+        return next;
+      });
+      setFlipped(false);
+      setAudioBlob(null);
+      setTranscription(null);
+      toast.success("Word removed from library");
+    },
+    onSettled: () => utils.vocab.list.invalidate(),
+  });
+
+  const handleDeleteCurrent = () => {
+    if (!currentWord) return;
+    if (confirmDeleteId === currentWord.id) {
+      deleteMutation.mutate({ id: currentWord.id });
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(currentWord.id);
+    }
+  };
 
   const starMutation = trpc.vocab.toggleStar.useMutation({
     onMutate: async ({ id }) => {
@@ -95,6 +133,7 @@ export default function FlashcardTab() {
     setFlipped(false);
     setAudioBlob(null);
     setTranscription(null);
+    setConfirmDeleteId(null);
   };
 
   const handleNext = () => {
@@ -102,6 +141,7 @@ export default function FlashcardTab() {
     setFlipped(false);
     setAudioBlob(null);
     setTranscription(null);
+    setConfirmDeleteId(null);
   };
 
   const handleFlip = () => setFlipped((f) => !f);
@@ -272,13 +312,14 @@ export default function FlashcardTab() {
               <ChevronLeft className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => starMutation.mutate({ id: currentWord.id })}
                 className={cn(
                   "p-3 rounded-xl border transition-colors",
                   currentWord.starred ? "bg-accent/20 border-accent/50 text-accent" : "bg-card border-border text-muted-foreground hover:text-accent hover:border-accent/50"
                 )}
+                title="Star this word"
               >
                 <Star className={cn("w-5 h-5", currentWord.starred && "fill-current")} />
               </button>
@@ -295,6 +336,31 @@ export default function FlashcardTab() {
               >
                 {recording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </button>
+              {/* Delete current word */}
+              {confirmDeleteId === currentWord.id ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleDeleteCurrent}
+                    className="px-3 py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:bg-destructive/80 transition-colors"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="px-3 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-bold hover:bg-muted/80 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleDeleteCurrent}
+                  className="p-3 rounded-xl border border-border bg-card text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10 transition-colors"
+                  title="Delete this word from library"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
             </div>
 
             <button

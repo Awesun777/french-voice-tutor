@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
-import { Volume2, Loader2, Star } from "lucide-react";
+import { Volume2, Loader2, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -130,6 +130,42 @@ export default function QuizTab() {
   const gradeMutation = trpc.quiz.gradeAnswer.useMutation();
   const saveSessionMutation = trpc.quiz.saveSession.useMutation();
   const updateProgressMutation = trpc.vocab.updateQuizProgress.useMutation();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  const deleteMutation = trpc.vocab.delete.useMutation({
+    onMutate: async ({ id }) => {
+      await utils.vocab.list.cancel();
+      const prev = utils.vocab.list.getData();
+      utils.vocab.list.setData(undefined, (old) => old?.filter((w) => w.id !== id));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) utils.vocab.list.setData(undefined, ctx.prev);
+      toast.error("Failed to delete");
+    },
+    onSuccess: () => {
+      // Remove the deleted word's question and advance
+      setQuestions((qs) => {
+        const next = qs.filter((q) => q.word.id !== confirmDeleteId);
+        if (next.length === 0) { finishQuiz(); return qs; }
+        setQIndex((i) => Math.min(i, next.length - 1));
+        setSelected(null); setFillInput(""); setFillResult(null); setRevealedDontKnow(false);
+        return next;
+      });
+      setConfirmDeleteId(null);
+      toast.success("Word removed from library");
+    },
+    onSettled: () => utils.vocab.list.invalidate(),
+  });
+
+  const handleDeleteCurrentWord = (id: number) => {
+    if (confirmDeleteId === id) {
+      deleteMutation.mutate({ id });
+    } else {
+      setConfirmDeleteId(id);
+    }
+  };
+
   const starMutation = trpc.vocab.toggleStar.useMutation({
     onSettled: () => utils.vocab.list.invalidate(),
   });
@@ -335,9 +371,33 @@ export default function QuizTab() {
               <p className="text-sm font-mono text-muted-foreground">{qIndex + 1} / {questions.length}</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => starMutation.mutate({ id: q.word.id })} className={cn("p-1.5 rounded-lg transition-colors", q.word.starred ? "text-accent" : "text-muted-foreground hover:text-accent")}>
+              <button onClick={() => starMutation.mutate({ id: q.word.id })} className={cn("p-1.5 rounded-lg transition-colors", q.word.starred ? "text-accent" : "text-muted-foreground hover:text-accent")} title="Star this word">
                 <Star className={cn("w-3.5 h-3.5", q.word.starred && "fill-current")} />
               </button>
+              {confirmDeleteId === q.word.id ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleDeleteCurrentWord(q.word.id)}
+                    className="px-2 py-1 rounded-lg bg-destructive text-destructive-foreground text-xs font-bold hover:bg-destructive/80 transition-colors"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="px-2 py-1 rounded-lg bg-muted text-muted-foreground text-xs font-bold hover:bg-muted/80 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleDeleteCurrentWord(q.word.id)}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                  title="Delete this word from library"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
               <p className="text-sm font-semibold text-emerald-400">{score} pts</p>
             </div>
           </div>

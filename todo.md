@@ -119,3 +119,7 @@
 
 ## Improvements (Round 6)
 - [x] Library: delete entire group (all words in a date group) with one button on the group header
+
+## Improvements (Round 7)
+- [x] Quiz: add delete-word button on the active quiz card so user can remove incorrect imports mid-quiz
+- [x] Flashcards: add delete-word button on each flashcard so user can remove incorrect imports during study
