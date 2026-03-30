@@ -126,3 +126,7 @@
 
 ## Improvements (Round 8)
 - [x] Import: when a date header has no year, default it to 2026 in the AI extraction prompt
+
+## Improvements (Round 9)
+- [x] Quiz: upgrade gradeAnswer AI prompt to give grammar-aware feedback (e.g. "you forgot the past participle agreement", "missing reflexive pronoun", "wrong gender")
+- [x] Quiz: update feedback UI to display the grammar explanation prominently below the correct answer

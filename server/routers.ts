@@ -422,7 +422,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
       return getQuizSessions(ctx.user.id);
     }),
 
-    gradeAnswer: protectedProcedure
+     gradeAnswer: protectedProcedure
       .input(
         z.object({
           userAnswer: z.string(),
@@ -431,25 +431,39 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         })
       )
       .mutation(async ({ input }) => {
-        const prompt = `Grade this French language answer:
-Correct answer: "${input.correctAnswer}"
-User's answer: "${input.userAnswer}"
+        const prompt = `You are a French language teacher grading a student's answer.
+
 French term being tested: "${input.term}"
+Expected answer: "${input.correctAnswer}"
+Student's answer: "${input.userAnswer}"
 
-Is the user's answer correct? Consider:
-- Accents are optional (e.g., "etudier" = "étudier" ✓)
-- Minor spelling variations are OK if unambiguous
+Grading rules:
+- Accents are optional ("etudier" = "étudier" ✓)
+- Minor unambiguous spelling variations are OK
 - Wrong word = incorrect
+- Completely missing answer = incorrect
 
-Return ONLY this JSON: {"correct": true/false, "note": "brief explanation if wrong, empty string if correct"}`;
+If the answer is WRONG, provide:
+1. "note": a short correction (e.g. "The correct answer is: se promener")
+2. "grammarNote": a specific grammar explanation of WHY it is wrong. Be precise and educational. Examples:
+   - "You forgot the reflexive pronoun — se promener is a pronominal verb and always needs 'se' (or me/te/nous/vous) before it."
+   - "The past participle must agree in gender: 'allée' for feminine subjects, not 'allé'."
+   - "This verb uses être, not avoir, in the passé composé because it expresses movement."
+   - "The subjunctive is required after 'il faut que' — use 'aille' not 'va'."
+   - "Adjective agreement: the noun is feminine plural, so the adjective needs the -es ending."
+   - "You used the infinitive instead of the conjugated form — conjugate for the subject 'nous'."
+   If the error is simply a wrong word with no specific grammar issue, set grammarNote to empty string.
 
+If the answer is CORRECT, set note and grammarNote to empty strings.
+
+Return ONLY this JSON: {"correct": true/false, "note": "...", "grammarNote": "..."}`;
         const response = await invokeLLM({
           messages: [{ role: "user", content: prompt }],
           response_format: { type: "json_object" } as any,
         });
-        const gradeRaw = response.choices[0].message.content ?? '{"correct":false,"note":""}';
+        const gradeRaw = response.choices[0].message.content ?? '{"correct":false,"note":"","grammarNote":""}';
         const gradeStr = typeof gradeRaw === 'string' ? gradeRaw : JSON.stringify(gradeRaw);
-        return JSON.parse(gradeStr) as { correct: boolean; note: string };
+        return JSON.parse(gradeStr) as { correct: boolean; note: string; grammarNote: string };
       }),
   }),
 

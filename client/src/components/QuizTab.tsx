@@ -85,7 +85,7 @@ interface PersistedQuiz {
   score: number;
   selected: string | null;
   fillInput: string;
-  fillResult: { correct: boolean; note: string } | null;
+  fillResult: { correct: boolean; note: string; grammarNote?: string } | null;
   wrongAnswers: { word: VocabEntry; chosenDisplay: string }[];
   direction: "fr2en" | "en2fr";
   selectedBucket: number | null;
@@ -114,7 +114,7 @@ export default function QuizTab() {
   const [score, setScore] = useState(savedQuizState?.score ?? 0);
   const [selected, setSelected] = useState<string | null>(savedQuizState?.selected ?? null);
   const [fillInput, setFillInput] = useState(savedQuizState?.fillInput ?? "");
-  const [fillResult, setFillResult] = useState<{ correct: boolean; note: string } | null>(
+  const [fillResult, setFillResult] = useState<{ correct: boolean; note: string; grammarNote?: string } | null>(
     savedQuizState?.fillResult ?? null
   );
   const [fillGrading, setFillGrading] = useState(false);
@@ -436,19 +436,27 @@ export default function QuizTab() {
                 )}
               />
               {fillResult && (
-                <div className={cn("rounded-xl p-4 border", fillResult.correct ? "bg-emerald-500/10 border-emerald-700" : "bg-amber-500/10 border-amber-700")}>
+                <div className={cn("rounded-xl p-4 border space-y-2", fillResult.correct ? "bg-emerald-500/10 border-emerald-700" : "bg-red-500/10 border-red-700")}>
                   {fillResult.correct ? (
                     <p className="text-emerald-300 font-semibold text-sm">✓ Correct!</p>
                   ) : (
                     <>
-                      <p className="text-amber-300 font-semibold text-sm mb-1">The answer is:</p>
                       <div className="flex items-center gap-2">
+                        <p className="text-red-300 font-semibold text-sm">✗ Incorrect — correct answer:</p>
                         <p className="text-foreground font-bold">{q.word.term}</p>
-                        <button onClick={() => pronounce(q.word.term)} className="p-1 bg-muted rounded-full hover:bg-muted/80">
+                        <button onClick={() => pronounce(q.word.term)} className="p-1 bg-muted rounded-full hover:bg-muted/80" title="Pronounce">
                           <Volume2 className="w-3.5 h-3.5 text-primary" />
                         </button>
                       </div>
-                      {fillResult.note && <p className="text-xs text-amber-400 mt-1">{fillResult.note}</p>}
+                      {fillResult.note && (
+                        <p className="text-xs text-red-300">{fillResult.note}</p>
+                      )}
+                      {fillResult.grammarNote && (
+                        <div className="mt-1 p-3 rounded-lg bg-amber-500/10 border border-amber-700/50">
+                          <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">📚 Grammar note</p>
+                          <p className="text-sm text-amber-200 leading-relaxed">{fillResult.grammarNote}</p>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
