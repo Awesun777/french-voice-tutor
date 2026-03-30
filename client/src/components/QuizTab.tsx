@@ -587,7 +587,7 @@ export default function QuizTab() {
           {buckets.length > 1 && (
             <div>
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Date Range</p>
-              <div className="overflow-y-auto rounded-xl border border-border" style={{ maxHeight: "220px" }}>
+              <div className="overflow-y-auto rounded-xl border border-border" style={{ maxHeight: "320px" }}>
                 <div className="divide-y divide-border/50">
                   <button
                     onClick={() => setSelectedBucket(null)}
