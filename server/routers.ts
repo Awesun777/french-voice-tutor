@@ -725,6 +725,53 @@ ${correctedText.slice(0, 20000)}`;
       await clearTutorHistory(ctx.user.id);
       return { success: true };
     }),
+
+    // Context-aware chat: user asks about a specific vocab card
+    contextChat: protectedProcedure
+      .input(
+        z.object({
+          message: z.string().min(1).max(2000),
+          vocabContext: z.object({
+            term: z.string(),
+            translation: z.string(),
+            wordType: z.string().optional(),
+            pronunciation: z.string().optional(),
+            grammar: z.string().optional(),
+            examples: z.array(z.object({ fr: z.string(), en: z.string() })).optional(),
+            conjugationInfo: z.string().optional(),
+            synonyms: z.array(z.string()).optional(),
+            reflexiveInfo: z.string().optional(),
+          }).optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        let systemPrompt = `You are an expert French language tutor. Help the user understand French vocabulary, grammar, and usage.
+- Always provide French examples WITH proper accents
+- Correct mistakes gently and explain why
+- Keep responses concise but helpful
+- When showing French text, also provide the English translation`;
+
+        if (input.vocabContext) {
+          const ctx = input.vocabContext;
+          const examplesText = ctx.examples?.map(e => `  • ${e.fr} — ${e.en}`).join('\n') ?? '';
+          systemPrompt += `\n\n## Current vocabulary card in context:
+**Term:** ${ctx.term}
+**Translation:** ${ctx.translation}${ctx.wordType ? `\n**Type:** ${ctx.wordType}` : ''}${ctx.pronunciation ? `\n**Pronunciation:** [${ctx.pronunciation}]` : ''}${ctx.grammar ? `\n**Grammar note:** ${ctx.grammar}` : ''}${ctx.conjugationInfo ? `\n**Conjugation info:** ${ctx.conjugationInfo}` : ''}${ctx.reflexiveInfo ? `\n**Reflexive info:** ${ctx.reflexiveInfo}` : ''}${examplesText ? `\n**Examples:**\n${examplesText}` : ''}${ctx.synonyms?.length ? `\n**Synonyms:** ${ctx.synonyms.join(', ')}` : ''}
+
+The user is asking about this specific word/phrase. Answer in the context of this vocabulary entry.`;
+        }
+
+        const response = await invokeLLM({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: input.message },
+          ],
+        });
+
+        const replyRaw = response.choices[0].message.content ?? 'Je suis désolé, je n\'ai pas pu répondre.';
+        const reply = typeof replyRaw === 'string' ? replyRaw : JSON.stringify(replyRaw);
+        return { reply };
+      }),
   }),
 
   // ─── Voice transcription ─────────────────────────────────────────────────────

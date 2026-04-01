@@ -135,3 +135,9 @@
 - [x] Dictionary: auto-add searched word to library on search result, with a toggle button to de-add
 - [x] Dictionary: always show the base/infinitive form (canonicalForm) when user searches a conjugated/gendered form
 - [x] Backend: add canonicalForm field to word search schema so AI always returns the base form
+
+## Improvements (Round 11)
+- [x] Dictionary: auto-add phrases and sentences (type="phrase") to library on search result, same as words
+- [x] Dictionary: right-side context chat panel — user can select a result card and ask follow-up questions; the AI receives the full card content as context
+- [x] Dictionary: selected card is highlighted; chat panel shows which card is in context
+- [x] Backend: new tutor.contextChat procedure that accepts a vocabContext object (word, translation, examples, etc.) alongside the user message
