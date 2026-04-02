@@ -9,6 +9,7 @@ export interface VocabEntry {
   lessonSource?: string | null;
   starred: boolean;
   quizCount: number;
+  wrongCount: number;
   lastQuizzed?: Date | null;
   dateKey: string;
   createdAt: Date;

@@ -148,3 +148,8 @@
 ## Bug Fixes (Round 5)
 - [x] Quiz: star/favorite button not working
 - [x] Flashcard: star/favorite button not working
+
+## Improvements (Round 12)
+- [x] Quiz: prioritize words by: never tested → previously wrong → starred → previously correct
+- [x] Flashcard: prioritize deck order by: never tested → starred → previously wrong → previously correct
+- [x] Backend: expose quizCount, lastQuizzed, and a "wrongCount" or similar field to support priority sorting

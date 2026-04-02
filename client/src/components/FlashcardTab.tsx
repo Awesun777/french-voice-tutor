@@ -13,7 +13,18 @@ function pronounce(text: string) {
 }
 
 function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
-
+/** Priority tier: 0=never tested, 1=previously wrong, 2=starred, 3=previously correct */
+function priorityTier(w: VocabEntry): number {
+  if ((w.quizCount ?? 0) === 0) return 0;
+  if ((w.wrongCount ?? 0) > 0) return 1;
+  if (w.starred) return 2;
+  return 3;
+}
+function prioritySort(words: VocabEntry[]): VocabEntry[] {
+  const tiers: VocabEntry[][] = [[], [], [], []];
+  for (const w of words) tiers[priorityTier(w)].push(w);
+  return tiers.flatMap((t) => shuffle(t));
+}
 function todayKey() { return new Date().toISOString().split("T")[0]; }
 function yesterdayKey() { return new Date(Date.now() - 86400000).toISOString().split("T")[0]; }
 function fmtDateLabel(dk: string) {
@@ -110,16 +121,16 @@ export default function FlashcardTab() {
     return true;
   });
 
-  useEffect(() => {
+   useEffect(() => {
     if (words.length > 0 && deck.length === 0) {
-      setDeck(words);
+      // Priority order: never tested → previously wrong → starred → previously correct
+      setDeck(prioritySort(words));
       setIdx(0);
     }
   }, [words.length]);
-
   // Reset deck when filters change
   useEffect(() => {
-    setDeck(words);
+    setDeck(prioritySort(words));
     setIdx(0);
     setFlipped(false);
     setAudioBlob(null);
@@ -286,6 +297,11 @@ export default function FlashcardTab() {
                 className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 border border-border rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg"
                 onClick={handleFlip}
               >
+                <div className="absolute top-3 left-3 flex items-center gap-1">
+                  {priorityTier(currentWord) === 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold">New</span>}
+                  {priorityTier(currentWord) === 1 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-semibold">Review</span>}
+                  {priorityTier(currentWord) === 2 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 font-semibold">Starred</span>}
+                </div>
                 <span className="text-xs font-bold text-primary uppercase tracking-widest mb-4">French</span>
                 <p className="text-3xl font-bold text-foreground text-center mb-3">{currentWord.term}</p>
                 <button

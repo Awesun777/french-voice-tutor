@@ -13,7 +13,22 @@ function pronounce(text: string) {
 }
 
 function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
-
+/**
+ * Priority tier for quiz/flashcard ordering:
+ * 0 = never tested, 1 = previously wrong, 2 = starred (but correct), 3 = previously correct
+ */
+function priorityTier(w: VocabEntry): number {
+  if ((w.quizCount ?? 0) === 0) return 0;          // never tested
+  if ((w.wrongCount ?? 0) > 0) return 1;            // previously wrong
+  if (w.starred) return 2;                          // starred (user flagged as unsure)
+  return 3;                                         // previously correct
+}
+function prioritySort(words: VocabEntry[]): VocabEntry[] {
+  // Within each tier, shuffle randomly so order varies each session
+  const tiers: VocabEntry[][] = [[], [], [], []];
+  for (const w of words) tiers[priorityTier(w)].push(w);
+  return tiers.flatMap((t) => shuffle(t));
+}
 function isDue(w: VocabEntry) {
   if (w.starred) return true;
   const seen = w.quizCount ?? 0;
@@ -216,7 +231,8 @@ export default function QuizTab() {
 
   const startQuiz = () => {
     if (quizableWords.length < 2) { toast.error("Need at least 2 words to start a quiz"); return; }
-    const pool = shuffle(quizableWords).slice(0, 20);
+    // Priority order: never tested → previously wrong → starred → previously correct
+    const pool = prioritySort(quizableWords).slice(0, 20);
     const qs: QuizQuestion[] = pool.map((word) => ({
       word,
       isPhrase: word.entryKind === "phrase",
@@ -305,10 +321,13 @@ export default function QuizTab() {
       bucketEnd: bucket?.end,
     });
     const now = new Date();
+    const wrongIds = new Set(wrongAnswers.map((wa) => wa.word.id));
     updateProgressMutation.mutate(
       questions.map((q) => ({
         id: q.word.id,
         quizCount: (q.word.quizCount ?? 0) + 1,
+        // Increment wrongCount only for words answered incorrectly this session
+        wrongCount: wrongIds.has(q.word.id) ? (q.word.wrongCount ?? 0) + 1 : (q.word.wrongCount ?? 0),
         lastQuizzed: now,
       }))
     );
@@ -385,6 +404,9 @@ export default function QuizTab() {
               )}>
                 {direction === "fr2en" ? "FR → EN" : "EN → FR"}
               </span>
+              {priorityTier(q.word) === 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold">New</span>}
+              {priorityTier(q.word) === 1 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-semibold">Review</span>}
+              {priorityTier(q.word) === 2 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 font-semibold">Starred</span>}
               <p className="text-sm font-mono text-muted-foreground">{qIndex + 1} / {questions.length}</p>
             </div>
             <div className="flex items-center gap-2">

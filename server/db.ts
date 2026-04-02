@@ -132,7 +132,7 @@ export async function addVocabEntries(
 export async function updateVocabEntry(
   userId: number,
   id: number,
-  patch: Partial<Pick<VocabEntry, "term" | "translation" | "entryKind" | "starred" | "quizCount" | "lastQuizzed">>
+  patch: Partial<Pick<VocabEntry, "term" | "translation" | "entryKind" | "starred" | "quizCount" | "wrongCount" | "lastQuizzed">>
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;

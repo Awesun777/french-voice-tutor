@@ -367,6 +367,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
           z.object({
             id: z.number(),
             quizCount: z.number(),
+            wrongCount: z.number().optional(),
             lastQuizzed: z.date(),
           })
         )
@@ -376,6 +377,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
           input.map((item) =>
             updateVocabEntry(ctx.user.id, item.id, {
               quizCount: item.quizCount,
+              wrongCount: item.wrongCount,
               lastQuizzed: item.lastQuizzed,
             })
           )

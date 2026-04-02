@@ -1,0 +1,1 @@
+ALTER TABLE `vocab_entries` ADD `wrongCount` int DEFAULT 0 NOT NULL;

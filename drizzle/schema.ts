@@ -38,6 +38,7 @@ export const vocabEntries = mysqlTable("vocab_entries", {
   starred: boolean("starred").default(false).notNull(),
   // Spaced repetition fields
   quizCount: int("quizCount").default(0).notNull(),
+  wrongCount: int("wrongCount").default(0).notNull(),
   lastQuizzed: timestamp("lastQuizzed"),
   // Date key for grouping (YYYY-MM-DD or custom label up to 100 chars)
   dateKey: varchar("dateKey", { length: 100 }).notNull(),
