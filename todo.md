@@ -153,3 +153,6 @@
 - [x] Quiz: prioritize words by: never tested → previously wrong → starred → previously correct
 - [x] Flashcard: prioritize deck order by: never tested → starred → previously wrong → previously correct
 - [x] Backend: expose quizCount, lastQuizzed, and a "wrongCount" or similar field to support priority sorting
+
+## Bug Fixes (Round 6)
+- [x] Library: delete button not visible on mobile

@@ -155,7 +155,7 @@ function GroupHeader({
           </p>
           <button
             onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-0 group-hover/header:opacity-100 flex-shrink-0"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
             title="Rename group"
           >
             <Pencil className="w-3 h-3" />
@@ -189,7 +189,7 @@ function GroupHeader({
         ) : (
           <button
             onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}
-            className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover/header:opacity-100 flex-shrink-0"
+            className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
             title="Delete all words in this group"
           >
             <Trash2 className="w-3 h-3" />
@@ -491,14 +491,14 @@ export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: Sideb
                                 "p-1.5 rounded-lg transition-colors",
                                 w.starred
                                   ? "text-accent"
-                                  : "text-muted-foreground hover:text-accent opacity-0 group-hover:opacity-100"
+                                  : "text-muted-foreground hover:text-accent sm:opacity-0 sm:group-hover:opacity-100"
                               )}
                             >
                               <Star className={cn("w-3.5 h-3.5", w.starred && "fill-current")} />
                             </button>
                             <button
                               onClick={() => handleDelete(w.id)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
                               title="Delete word"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
