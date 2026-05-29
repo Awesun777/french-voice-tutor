@@ -429,13 +429,13 @@ export default function VoiceChatTab() {
             voice: "marin",
             // Enable Whisper transcription for user speech → gives us transcript events
             input_audio_transcription: { model: "whisper-1" },
-            // Slow VAD: wait 1.5s of silence before treating turn as done
-            // This prevents interrupting the student while they form French sentences
+            // Noise-resistant VAD: higher threshold + longer silence window
+            // Reduces false triggers from coughs, background noise, breathing
             turn_detection: {
               type: "server_vad",
-              threshold: 0.4,
-              prefix_padding_ms: 500,
-              silence_duration_ms: 1500,
+              threshold: 0.6,      // 0.4 → 0.6: ignores quieter sounds like coughs
+              prefix_padding_ms: 800,  // 500 → 800ms: more buffer before speech is detected
+              silence_duration_ms: 2000, // 1500 → 2000ms: waits longer before end-of-turn
             },
           },
         }));
