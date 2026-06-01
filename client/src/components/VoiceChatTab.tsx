@@ -612,6 +612,12 @@ export default function VoiceChatTab() {
   };
 
   const cleanupWebRTC = () => {
+    // Pause + clear the audio element FIRST so buffered AI audio stops immediately.
+    // Setting srcObject=null without pausing first still plays out already-buffered audio.
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.srcObject = null;
+    }
     dcRef.current?.close();
     pcRef.current?.close();
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -622,7 +628,6 @@ export default function VoiceChatTab() {
     userAnalyserRef.current = null;
     aiAnalyserRef.current = null;
     audioCtxRef.current = null;
-    if (audioRef.current) { audioRef.current.srcObject = null; }
   };
 
   const endSession = async () => {

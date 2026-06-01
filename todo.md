@@ -190,3 +190,7 @@
 - [x] Inject summary as a system message via data channel conversation.item.create
 - [x] Delete the old raw turns from Realtime context via conversation.item.delete events
 - [x] Show a subtle "Context summarized" indicator in the UI when summarization runs
+
+## Bug Fix & Import UX (Round 17)
+- [x] Fix: call audioRef.current.pause() before setting srcObject=null in cleanupWebRTC so buffered AI audio stops immediately on End
+- [x] My Library import: add "Name group by date" button that opens a shadcn Calendar popover pre-selected to today; chosen date becomes the import group name (e.g. "June 1, 2026")

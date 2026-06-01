@@ -1,9 +1,11 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { ImportItem } from "@/types";
-import { X, ChevronDown, ChevronUp, Upload, ArrowLeft, FileText, Link2, ClipboardPaste, CheckCircle2, SkipForward, Layers, ListChecks, Loader2 } from "lucide-react";
+import { X, ChevronDown, ChevronUp, Upload, ArrowLeft, FileText, Link2, ClipboardPaste, CheckCircle2, SkipForward, Layers, ListChecks, Loader2, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface ImportModalProps {
   onClose: () => void;
@@ -40,6 +42,8 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
   const [gdocUrl, setGdocUrl] = useState("");
   const [gdocPreview, setGdocPreview] = useState("");
   const [lessonName, setLessonName] = useState("");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [instructions, setInstructions] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [items, setItems] = useState<ImportItem[]>([]);
@@ -240,13 +244,74 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
               ))}
             </div>
 
-            {/* Lesson name */}
-            <input
-              value={lessonName}
-              onChange={(e) => setLessonName(e.target.value)}
-              placeholder="Lesson name (optional)"
-              className="w-full px-3 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-            />
+            {/* Lesson name + date-picker */}
+            <div className="flex gap-2">
+              <input
+                value={lessonName}
+                onChange={(e) => setLessonName(e.target.value)}
+                placeholder="Lesson name (optional)"
+                className="flex-1 min-w-0 px-3 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all whitespace-nowrap flex-shrink-0",
+                      selectedDate
+                        ? "bg-primary/15 border-primary/50 text-primary"
+                        : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    )}
+                    title="Name group by date"
+                  >
+                    <CalendarIcon className="w-3.5 h-3.5" />
+                    {selectedDate
+                      ? selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                      : "By date"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <div className="p-3 border-b border-border">
+                    <p className="text-xs font-semibold text-foreground">Name group by date</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">The chosen date will be used as the group name</p>
+                  </div>
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate ?? new Date()}
+                    defaultMonth={selectedDate ?? new Date()}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelectedDate(date);
+                        // Format as "June 1, 2026" and set as lesson name
+                        const formatted = date.toLocaleDateString("en-US", {
+                          month: "long",
+                          day: "numeric",
+                          year: "numeric",
+                        });
+                        setLessonName(formatted);
+                      }
+                      setCalendarOpen(false);
+                    }}
+                    initialFocus
+                  />
+                  {selectedDate && (
+                    <div className="p-2 border-t border-border flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(undefined);
+                          setLessonName("");
+                          setCalendarOpen(false);
+                        }}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded"
+                      >
+                        Clear date
+                      </button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
 
             {/* ── Paste mode ── */}
             {inputMode === "paste" && (
