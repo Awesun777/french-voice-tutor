@@ -136,6 +136,8 @@ export function AnnaVoiceTab() {
   const [endedSummary, setEndedSummary] = useState<string | null>(null);
   const [showPastSessions, setShowPastSessions] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  // True while reconnecting after a pause (so transcript stays visible)
+  const [isResuming, setIsResuming] = useState(false);
 
   const conversationRef = useRef<VoiceConversation | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -151,6 +153,9 @@ export function AnnaVoiceTab() {
   const isSummarizingRef = useRef(false);
   // Ref mirror of aiSpeaking to avoid stale closure in onModeChange callback
   const aiSpeakingRef = useRef(false);
+  // Set to true while we deliberately end the session for pause, so onDisconnect
+  // doesn't trigger the "ending" state transition and save the session to DB.
+  const isPausingRef = useRef(false);
 
   const utils = trpc.useUtils();
   const createSessionMutation = trpc.voiceSession.create.useMutation();
@@ -241,6 +246,8 @@ export function AnnaVoiceTab() {
       annaTurnCountRef.current = 0;
       isSummarizingRef.current = false;
       aiSpeakingRef.current = false;
+      isPausingRef.current = false;
+      setIsResuming(false);
 
       // 1. Create session record in DB
       const { id } = await createSessionMutation.mutateAsync();
@@ -258,7 +265,8 @@ export function AnnaVoiceTab() {
         },
 
         onDisconnect: () => {
-          // Only transition if we haven't already triggered ending
+          // Don't transition to "ending" if we deliberately disconnected for pause
+          if (isPausingRef.current) return;
           setSessionState((prev) => (prev === "active" || prev === "paused") ? "ending" : prev);
         },
 
@@ -370,21 +378,134 @@ export function AnnaVoiceTab() {
     }
   };
 
-  const togglePause = () => {
-    const conv = conversationRef.current;
-    if (!conv) return;
+  /**
+   * True pause: end the ElevenLabs WebSocket session so the server stops
+   * generating and the mic is fully released. Resume re-connects with a
+   * fresh signed URL while preserving the local transcript / saved words.
+   *
+   * Background: the SDK has no pause primitive. setMicMuted(true) still
+   * sends zeroed audio frames to the server, so VAD keeps firing and Anna
+   * continues generating. The only reliable stop is endSession().
+   */
+  const togglePause = async () => {
     if (!isPaused) {
-      // Mute microphone so user's voice is not sent to Anna
-      conv.setMicMuted(true);
-      // Also lower Anna's output volume so she stops speaking
-      conv.setVolume({ volume: 0 });
+      // ── PAUSE: disconnect from ElevenLabs ──────────────────────────────
+      const conv = conversationRef.current;
+      if (conv) {
+        isPausingRef.current = true; // prevent onDisconnect from triggering endSession
+        try { await conv.endSession(); } catch { /* ignore */ }
+        conversationRef.current = null;
+        isPausingRef.current = false;
+      }
       setIsPaused(true);
       setSessionState("paused");
+      setAiSpeaking(false);
+      setUserSpeaking(false);
+      aiSpeakingRef.current = false;
     } else {
-      conv.setMicMuted(false);
-      conv.setVolume({ volume: 1 });
+      // ── RESUME: reconnect with a new signed URL ─────────────────────────
+      setSessionState("connecting");
+      setIsResuming(true);
       setIsPaused(false);
-      setSessionState("active");
+      try {
+        const { signedUrl } = await annaSignedUrlMutation.mutateAsync();
+
+        // Build a brief context note so Anna knows this is a resumed session
+        const contextNote = completedTurnsRef.current.length > 0
+          ? `[Session resumed after a brief pause. Earlier conversation summary: ${completedTurnsRef.current.slice(-6).map(t => `${t.role === "assistant" ? "Anna" : "User"}: ${t.text}`).join(" | ")}]`
+          : "[Session resumed after a brief pause.]"
+
+        const conversation = await Conversation.startSession({
+          signedUrl,
+
+          onConnect: () => {
+            setSessionState("active");
+            setIsResuming(false);
+            // Inject context so Anna remembers what was discussed
+            setTimeout(() => {
+              conversationRef.current?.sendContextualUpdate(contextNote);
+            }, 800);
+          },
+
+          onDisconnect: () => {
+            if (isPausingRef.current) return;
+            setSessionState((prev) =>
+              prev === "active" || prev === "paused" ? "ending" : prev
+            );
+          },
+
+          onError: (error) => {
+            console.error("[Anna] ElevenLabs error:", error);
+            toast.error("Connection error with Anna");
+          },
+
+          onModeChange: ({ mode }) => {
+            const wasAiSpeaking = aiSpeakingRef.current;
+            aiSpeakingRef.current = mode === "speaking";
+            setAiSpeaking(mode === "speaking");
+            setUserSpeaking(mode === "listening");
+            if (wasAiSpeaking && mode === "listening") {
+              aiStreamIdRef.current = null;
+              maybeSummarize();
+            }
+          },
+
+          onMessage: ({ message, source }) => {
+            const text = (message ?? "").trim();
+            if (!text) return;
+            if (source === "ai") {
+              const lineId = aiStreamIdRef.current ?? `ai-${Date.now()}`;
+              aiStreamIdRef.current = lineId;
+              setTranscript((prev) => {
+                const existing = prev.find((l) => l.id === lineId);
+                if (existing) return prev.map((l) => l.id === lineId ? { ...l, text } : l);
+                return [...prev, { role: "assistant", text, timestamp: Date.now(), id: lineId }];
+              });
+              completedTurnsRef.current = [
+                ...completedTurnsRef.current.filter(
+                  (t) => t !== completedTurnsRef.current[completedTurnsRef.current.length - 1] || t.role !== "assistant"
+                ),
+                { role: "assistant", text },
+              ];
+            } else {
+              completedTurnsRef.current = [...completedTurnsRef.current, { role: "user", text }];
+            }
+          },
+
+          clientTools: {
+            save_vocab: async ({ term, translation, kind }: { term: string; translation: string; kind: string }): Promise<string> => {
+              if (!term) return "error: missing term";
+              const word: SavedWord = { term, translation: translation ?? "", kind: kind ?? "word" };
+              setSavedWords((prev) => [...prev, word]);
+              try {
+                await saveWordMutation.mutateAsync(
+                  { term: word.term, translation: word.translation, kind: word.kind as "word" | "phrase" }
+                );
+                toast.success(`Saved "${word.term}" to your library`);
+                utils.vocab.list.invalidate();
+              } catch {
+                toast.error(`Failed to save "${word.term}"`);
+              }
+              return `saved:${term}`;
+            },
+            web_search: async ({ query }: { query: string }): Promise<string> => {
+              try {
+                const data = await webSearchMutation.mutateAsync({ query });
+                return data.result ?? "";
+              } catch {
+                return "Je n'ai pas pu trouver une réponse à cette question.";
+              }
+            },
+          },
+        });
+
+        conversationRef.current = conversation as VoiceConversation;
+      } catch (e: any) {
+        toast.error(e.message ?? "Failed to resume session with Anna");
+        setSessionState("active"); // fall back to showing controls
+        setIsResuming(false);
+        setIsPaused(false);
+      }
     }
   };
 
@@ -400,7 +521,8 @@ export function AnnaVoiceTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionState]);
 
-  const isSessionLive = sessionState === "active" || sessionState === "paused";
+  // Also treat connecting-while-resuming as "live" so transcript stays visible
+  const isSessionLive = sessionState === "active" || sessionState === "paused" || (sessionState === "connecting" && isResuming);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -491,8 +613,8 @@ export function AnnaVoiceTab() {
           </div>
         )}
 
-        {/* Connecting state */}
-        {sessionState === "connecting" && (
+        {/* Connecting state (initial only — resume shows transcript instead) */}
+        {sessionState === "connecting" && !isResuming && (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4">
             <Loader2 className="w-10 h-10 text-pink-400 animate-spin" />
             <p className="text-sm text-muted-foreground">Connecting to Anna…</p>
@@ -504,22 +626,29 @@ export function AnnaVoiceTab() {
           <div className="flex flex-col h-full">
             {/* Waveform area */}
             <div className="flex-shrink-0 px-4 py-4 space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className={cn("bg-card border rounded-xl p-3 transition-colors", userSpeaking && sessionState === "active" ? "border-pink-500/60 bg-pink-500/5" : "border-border")}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                    {sessionState === "paused" ? <MicOff className="w-3 h-3 text-amber-400" /> : <Mic className="w-3 h-3" />}
-                    You {sessionState === "paused" && <span className="text-amber-400">(paused)</span>}
-                  </p>
-                  <Waveform active={userSpeaking && sessionState === "active"} color="#f472b6" />
+              {isResuming ? (
+                <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 text-pink-400 animate-spin" />
+                  Reconnecting to Anna…
                 </div>
-                <div className={cn("bg-card border rounded-xl p-3 transition-colors", aiSpeaking ? "border-pink-500/60 bg-pink-500/5" : "border-border")}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                    <Volume2 className="w-3 h-3" />
-                    Anna {aiSpeaking && <span className="text-pink-400 animate-pulse">speaking…</span>}
-                  </p>
-                  <Waveform active={aiSpeaking} color="#f472b6" />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className={cn("bg-card border rounded-xl p-3 transition-colors", userSpeaking && sessionState === "active" ? "border-pink-500/60 bg-pink-500/5" : "border-border")}>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                      {sessionState === "paused" ? <MicOff className="w-3 h-3 text-amber-400" /> : <Mic className="w-3 h-3" />}
+                      You {sessionState === "paused" && <span className="text-amber-400">(paused)</span>}
+                    </p>
+                    <Waveform active={userSpeaking && sessionState === "active"} color="#f472b6" />
+                  </div>
+                  <div className={cn("bg-card border rounded-xl p-3 transition-colors", aiSpeaking ? "border-pink-500/60 bg-pink-500/5" : "border-border")}>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                      <Volume2 className="w-3 h-3" />
+                      Anna {aiSpeaking && <span className="text-pink-400 animate-pulse">speaking…</span>}
+                    </p>
+                    <Waveform active={aiSpeaking} color="#f472b6" />
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Saved words this session */}
               {savedWords.length > 0 && (
@@ -582,15 +711,18 @@ export function AnnaVoiceTab() {
               <div className="flex items-center justify-center gap-4">
                 <button
                   onClick={togglePause}
+                  disabled={isResuming}
                   className={cn(
                     "flex flex-col items-center gap-1.5 px-6 py-3 rounded-2xl border font-semibold text-sm transition-all",
-                    isPaused
-                      ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30"
-                      : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    isResuming
+                      ? "opacity-50 cursor-not-allowed bg-card border-border text-muted-foreground"
+                      : isPaused
+                        ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30"
+                        : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
                 >
-                  {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
-                  <span className="text-xs">{isPaused ? "Resume" : "Pause"}</span>
+                  {isResuming ? <Loader2 className="w-5 h-5 animate-spin" /> : isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
+                  <span className="text-xs">{isResuming ? "Connecting…" : isPaused ? "Resume" : "Pause"}</span>
                 </button>
                 <button
                   onClick={endSession}
