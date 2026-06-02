@@ -227,5 +227,5 @@
 - [x] Verify PronounceButton works on Dictionary, Flashcards, My Library, and Quiz pages (same hook API, no component changes needed)
 
 ## Context Summarization Improvements (Round 23)
-- [ ] Romain: replace fixed 10-turn trigger with token-budget estimator (3,500 token threshold); summarize oldest 50% of raw turns when budget exceeded
-- [ ] Anna: add 10-turn summarization using conversation.sendContextualUpdate with the same voice.summarizeContext tRPC procedure
+- [x] Romain: replace fixed 10-turn trigger with token-budget estimator (3,500 token threshold); summarize oldest 50% of raw turns when budget exceeded
+- [x] Anna: add 10-turn summarization using conversation.sendContextualUpdate with the same voice.summarizeContext tRPC procedure

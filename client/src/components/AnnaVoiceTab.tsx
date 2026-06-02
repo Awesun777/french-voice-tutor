@@ -149,6 +149,8 @@ export function AnnaVoiceTab() {
   const completedTurnsRef = useRef<Array<{ role: "user" | "assistant"; text: string }>>([]);
   const annaTurnCountRef = useRef(0);
   const isSummarizingRef = useRef(false);
+  // Ref mirror of aiSpeaking to avoid stale closure in onModeChange callback
+  const aiSpeakingRef = useRef(false);
 
   const utils = trpc.useUtils();
   const createSessionMutation = trpc.voiceSession.create.useMutation();
@@ -238,6 +240,7 @@ export function AnnaVoiceTab() {
       completedTurnsRef.current = [];
       annaTurnCountRef.current = 0;
       isSummarizingRef.current = false;
+      aiSpeakingRef.current = false;
 
       // 1. Create session record in DB
       const { id } = await createSessionMutation.mutateAsync();
@@ -265,37 +268,49 @@ export function AnnaVoiceTab() {
         },
 
         onModeChange: ({ mode }) => {
+          const wasAiSpeaking = aiSpeakingRef.current;
+          aiSpeakingRef.current = mode === "speaking";
           setAiSpeaking(mode === "speaking");
           setUserSpeaking(mode === "listening");
+
+          // When Anna finishes speaking (speaking → listening), finalize her turn
+          if (wasAiSpeaking && mode === "listening") {
+            // Signal that the current AI stream is complete
+            aiStreamIdRef.current = null;
+            // Trigger summarization check — a full Anna turn just completed
+            maybeSummarize();
+          }
         },
 
         onMessage: ({ message, source }) => {
           const text = (message ?? "").trim();
           if (!text) return;
 
-          // Track completed turns for summarization (both user and Anna)
-          completedTurnsRef.current = [
-            ...completedTurnsRef.current,
-            { role: source === "ai" ? "assistant" : "user", text },
-          ];
-
-          // Only show Anna's speech in the live transcript
-          if (source !== "ai") return;
-
-          // AI messages may arrive incrementally — update last AI line or append
-          const lineId = aiStreamIdRef.current ?? `ai-${Date.now()}`;
-          aiStreamIdRef.current = lineId;
-          setTranscript((prev) => {
-            const existing = prev.find((l) => l.id === lineId);
-            if (existing) {
-              return prev.map((l) => l.id === lineId ? { ...l, text } : l);
-            }
-            aiStreamIdRef.current = null;
-            return [...prev, { role: "assistant", text, timestamp: Date.now(), id: lineId }];
-          });
-
-          // Trigger summarization check after each Anna turn
-          maybeSummarize();
+          if (source === "ai") {
+            // AI messages may arrive incrementally — update last AI line or append
+            const lineId = aiStreamIdRef.current ?? `ai-${Date.now()}`;
+            aiStreamIdRef.current = lineId;
+            setTranscript((prev) => {
+              const existing = prev.find((l) => l.id === lineId);
+              if (existing) {
+                // Update the streaming line with the latest (longer) text
+                return prev.map((l) => l.id === lineId ? { ...l, text } : l);
+              }
+              // New AI line started
+              return [...prev, { role: "assistant", text, timestamp: Date.now(), id: lineId }];
+            });
+            // Track the latest AI text for summarization (overwrite same-turn entry)
+            completedTurnsRef.current = [
+              ...completedTurnsRef.current.filter((t) => t !== completedTurnsRef.current[completedTurnsRef.current.length - 1] || t.role !== "assistant"),
+              { role: "assistant", text },
+            ];
+          } else {
+            // User turn — each onMessage for user source is a finalized utterance
+            completedTurnsRef.current = [
+              ...completedTurnsRef.current,
+              { role: "user", text },
+            ];
+          }
         },
 
         // ElevenLabs client tool calls (save_vocab, web_search)
