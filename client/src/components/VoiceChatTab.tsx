@@ -216,6 +216,7 @@ export default function VoiceChatTab() {
   const saveWordMutation = trpc.voiceSession.saveWord.useMutation();
   const endSessionMutation = trpc.voiceSession.end.useMutation();
   const summarizeContextMutation = trpc.voiceSession.summarizeContext.useMutation();
+  const webSearchMutation = trpc.voice.webSearch.useMutation();
   const { data: pastSessions = [], refetch: refetchSessions } = trpc.voiceSession.list.useQuery(
     undefined,
     { enabled: showPastSessions }
@@ -454,7 +455,42 @@ export default function VoiceChatTab() {
         }
       }
 
-      // ── Tool call: save_vocab ───────────────────────────────────────────────
+      // ── Tool call: web_search ─────────────────────────────────────────────────────────────────────────
+      if (msg.type === "response.function_call_arguments.done" && msg.name === "web_search") {
+        try {
+          const args = JSON.parse(msg.arguments);
+          const query: string = args.query ?? "";
+          const callId: string = msg.call_id;
+          if (query && dcRef.current?.readyState === "open") {
+            webSearchMutation.mutate(
+              { query },
+              {
+                onSuccess: (data) => {
+                  if (dcRef.current?.readyState === "open") {
+                    dcRef.current.send(JSON.stringify({
+                      type: "conversation.item.create",
+                      item: { type: "function_call_output", call_id: callId, output: data.result },
+                    }));
+                    dcRef.current.send(JSON.stringify({ type: "response.create" }));
+                  }
+                },
+                onError: () => {
+                  if (dcRef.current?.readyState === "open") {
+                    dcRef.current.send(JSON.stringify({
+                      type: "conversation.item.create",
+                      item: { type: "function_call_output", call_id: callId, output: "Je n'ai pas pu trouver une réponse." },
+                    }));
+                    dcRef.current.send(JSON.stringify({ type: "response.create" }));
+                  }
+                },
+              }
+            );
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+      // ── Tool call: save_vocab ─────────────────────────────────────────────────────────────────────────────
       if (msg.type === "response.function_call_arguments.done" && msg.name === "save_vocab") {
         try {
           const args = JSON.parse(msg.arguments);
@@ -495,7 +531,7 @@ export default function VoiceChatTab() {
     } catch {
       // ignore non-JSON messages
     }
-  }, [saveWordMutation, utils, maybeSummarize, transcript]);
+  }, [saveWordMutation, webSearchMutation, utils, maybeSummarize, transcript]);
 
   const startSession = async () => {
     try {

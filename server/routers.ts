@@ -807,6 +807,33 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         }
         return { transcription: result.text ?? "" };
       }),
+    // Called by the voice client when Romain invokes the web_search tool.
+    // Uses the LLM to answer factual queries and returns a short plain-text
+    // snippet that the client sends back to Romain as a function_call_output.
+    webSearch: protectedProcedure
+      .input(z.object({ query: z.string().min(1).max(500) }))
+      .mutation(async ({ input }) => {
+        try {
+          const resp = await invokeLLM({
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a helpful assistant that answers factual questions concisely. " +
+                  "Provide a short, accurate answer (2-4 sentences max). " +
+                  "If the question is about very recent events after your knowledge cutoff, say so briefly. " +
+                  "Do not use markdown formatting — plain text only, suitable for text-to-speech.",
+              },
+              { role: "user", content: input.query },
+            ],
+          });
+          const raw = resp.choices[0].message.content ?? "";
+          const result = typeof raw === "string" ? raw.trim() : JSON.stringify(raw);
+          return { result };
+        } catch {
+          return { result: "Je n'ai pas pu trouver une réponse à cette question." };
+        }
+      }),
   }),
 
   // ─── Voice Chat Sessions ─────────────────────────────────────────────────────
@@ -935,7 +962,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
     }),
   }),
 
-  // ─── Progress / Stats ────────────────────────────────────────────────────────
+  // ─── Progress / Stats ────────────────────────────────────────────
   progress: router({
     stats: protectedProcedure.query(async ({ ctx }) => {
       const [vocabStats, quizHistory, allWords] = await Promise.all([

@@ -194,3 +194,9 @@
 ## Bug Fix & Import UX (Round 17)
 - [x] Fix: call audioRef.current.pause() before setting srcObject=null in cleanupWebRTC so buffered AI audio stops immediately on End
 - [x] My Library import: add "Name group by date" button that opens a shadcn Calendar popover pre-selected to today; chosen date becomes the import group name (e.g. "June 1, 2026")
+
+## Romain Prompt & Web Search Tool (Round 18)
+- [x] Update VOICE_SYSTEM_PROMPT with new personality, voice/tone, and response style sections
+- [x] Add web_search tool definition to VOICE_TOOLS in server/_core/index.ts
+- [x] Add voice.webSearch tRPC procedure in server/routers.ts (uses LLM to answer factual queries, returns concise plain-text result suitable for TTS)
+- [x] Handle web_search tool call in VoiceChatTab: call voice.webSearch mutation, send function_call_output back over data channel
