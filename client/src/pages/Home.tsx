@@ -10,7 +10,50 @@ import FlashcardTab from "@/components/FlashcardTab";
 import TutorTab from "@/components/TutorTab";
 import ProgressTab from "@/components/ProgressTab";
 import VoiceChatTab from "@/components/VoiceChatTab";
+import { AnnaVoiceTab } from "@/components/AnnaVoiceTab";
 import { Loader2, BookOpen } from "lucide-react";
+
+type VoiceAgent = "romain" | "anna";
+
+function VoiceAgentSelector() {
+  const [agent, setAgent] = useState<VoiceAgent>("romain");
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Persistent top toggle */}
+      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-2 flex items-center gap-2">
+        <span className="text-xs font-semibold text-muted-foreground mr-2">Tutor:</span>
+        <button
+          onClick={() => setAgent("romain")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            agent === "romain"
+              ? "bg-primary/15 text-primary border border-primary/40"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+          }`}
+        >
+          <span>🧑‍🏫</span> Romain
+          <span className="text-[10px] opacity-60 font-normal">GPT-4o</span>
+        </button>
+        <button
+          onClick={() => setAgent("anna")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+            agent === "anna"
+              ? "bg-pink-500/15 text-pink-400 border border-pink-500/40"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent"
+          }`}
+        >
+          <span>👩‍🏫</span> Anna
+          <span className="text-[10px] opacity-60 font-normal">ElevenLabs</span>
+        </button>
+      </div>
+
+      {/* Agent panel */}
+      <div className="flex-1 overflow-hidden">
+        {agent === "romain" ? <VoiceChatTab /> : <AnnaVoiceTab />}
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -90,7 +133,7 @@ export default function Home() {
         {activeTab === "quiz" && <QuizTab />}
         {activeTab === "flashcards" && <FlashcardTab />}
         {activeTab === "tutor" && <TutorTab />}
-        {activeTab === "voice-chat" && <VoiceChatTab />}
+        {activeTab === "voice-chat" && <VoiceAgentSelector />}
         {activeTab === "progress" && <ProgressTab />}
       </main>
     </div>

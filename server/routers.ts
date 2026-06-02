@@ -807,6 +807,25 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         }
         return { transcription: result.text ?? "" };
       }),
+    // Returns a signed WebSocket URL for starting a private ElevenLabs Anna session.
+    annaSignedUrl: protectedProcedure.mutation(async () => {
+      const apiKey = process.env.ELEVENLABS_API_KEY;
+      const agentId = process.env.ELEVENLABS_ANNA_AGENT_ID;
+      if (!apiKey || !agentId) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ElevenLabs not configured' });
+      }
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${agentId}`,
+        { headers: { 'xi-api-key': apiKey } }
+      );
+      if (!res.ok) {
+        const err = await res.text();
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `ElevenLabs error: ${err}` });
+      }
+      const data = await res.json() as { signed_url: string };
+      return { signedUrl: data.signed_url };
+    }),
+
     // Called by the voice client when Romain invokes the web_search tool.
     // Uses the LLM to answer factual queries and returns a short plain-text
     // snippet that the client sends back to Romain as a function_call_output.

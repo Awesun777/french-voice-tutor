@@ -200,3 +200,15 @@
 - [x] Add web_search tool definition to VOICE_TOOLS in server/_core/index.ts
 - [x] Add voice.webSearch tRPC procedure in server/routers.ts (uses LLM to answer factual queries, returns concise plain-text result suitable for TTS)
 - [x] Handle web_search tool call in VoiceChatTab: call voice.webSearch mutation, send function_call_output back over data channel
+
+## Anna — ElevenLabs Voice Agent (Round 19)
+- [x] Store ELEVENLABS_API_KEY as project secret
+- [x] Create Anna agent via ElevenLabs API (voice ID: nVPCtAFzgyMX3FZKNzH0, same system prompt as Romain) and store agent ID as ELEVENLABS_ANNA_AGENT_ID secret
+- [x] Add voice.annaSignedUrl tRPC protectedProcedure that calls ElevenLabs get-signed-url endpoint and returns the signed WebSocket URL
+- [x] Build AnnaVoiceTab component: ElevenLabs @elevenlabs/client SDK, real-time transcript via onMessage callback, waveform indicators, save_vocab support, pause/end controls, session summary
+- [x] Add agent selector card UI to Voice Chat page (Romain card vs Anna card) — selecting one shows the corresponding session tab
+- [x] Update VoiceChat page routing so both agents share the same page with a toggle at the top
+
+## Anna Gap Fixes (Round 19b)
+- [x] AnnaVoiceTab: implement ElevenLabs client tool handler for save_vocab (call saveWordMutation, update savedWords state, show toast)
+- [x] Voice Chat page: replace one-time chooser with persistent top-level agent toggle so user can switch between Romain and Anna without re-selecting from scratch
