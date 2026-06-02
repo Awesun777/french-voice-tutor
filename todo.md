@@ -212,3 +212,8 @@
 ## Anna Gap Fixes (Round 19b)
 - [x] AnnaVoiceTab: implement ElevenLabs client tool handler for save_vocab (call saveWordMutation, update savedWords state, show toast)
 - [x] Voice Chat page: replace one-time chooser with persistent top-level agent toggle so user can switch between Romain and Anna without re-selecting from scratch
+
+## Anna Fixes (Round 20)
+- [x] Anna pause: use conversation.setMicMuted(true/false) + setVolume(0/1) for reliable pause/resume
+- [x] Anna transcript: only show Anna's speech in the live transcript (filter out user lines during active session)
+- [x] Register save_vocab tool schema on Anna's ElevenLabs agent via API (PATCH /v1/convai/agents/{agent_id} prompt.tools)

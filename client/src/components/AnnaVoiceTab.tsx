@@ -12,7 +12,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Conversation } from "@elevenlabs/client";
+import { Conversation, type VoiceConversation } from "@elevenlabs/client";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -131,7 +131,7 @@ export function AnnaVoiceTab() {
   const [showPastSessions, setShowPastSessions] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
-  const conversationRef = useRef<Awaited<ReturnType<typeof Conversation.startSession>> | null>(null);
+  const conversationRef = useRef<VoiceConversation | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   // Track the current in-progress user and assistant streaming lines
   const userStreamIdRef = useRef<string | null>(null);
@@ -201,30 +201,24 @@ export function AnnaVoiceTab() {
         },
 
         onMessage: ({ message, source }) => {
-          // source: "ai" | "user"
-          const role = source === "ai" ? "assistant" : "user";
+          // Only show Anna's speech in the live transcript
+          if (source !== "ai") return;
           const text = (message ?? "").trim();
           if (!text) return;
 
-          if (role === "user") {
-            // Each completed user utterance comes as a new message — append as a new line
-            userStreamIdRef.current = null; // reset so next utterance gets a fresh line
-            setTranscript((prev) => [
-              ...prev,
-              { role: "user", text, timestamp: Date.now(), id: `user-${Date.now()}` },
-            ]);
-          } else {
-            // AI messages may arrive incrementally — update last AI line or append
-            const lineId = aiStreamIdRef.current ?? `ai-${Date.now()}`;
-            aiStreamIdRef.current = lineId;
-            setTranscript((prev) => {
-              const existing = prev.find((l) => l.id === lineId);
-              if (existing) {
-                return prev.map((l) => l.id === lineId ? { ...l, text } : l);
-              }
-              return [...prev, { role: "assistant", text, timestamp: Date.now(), id: lineId }];
-            });
-          }
+          // AI messages may arrive incrementally — update last AI line or append
+          const lineId = aiStreamIdRef.current ?? `ai-${Date.now()}`;
+          aiStreamIdRef.current = lineId;
+          setTranscript((prev) => {
+            const existing = prev.find((l) => l.id === lineId);
+            if (existing) {
+              // If the new message is longer/different, update; otherwise keep
+              return prev.map((l) => l.id === lineId ? { ...l, text } : l);
+            }
+            // New message from Anna — reset stream ID so next message gets a fresh line
+            aiStreamIdRef.current = null;
+            return [...prev, { role: "assistant", text, timestamp: Date.now(), id: lineId }];
+          });
         },
 
         // ElevenLabs client tool calls (save_vocab, web_search)
@@ -256,7 +250,7 @@ export function AnnaVoiceTab() {
         },
       });
 
-      conversationRef.current = conversation;
+      conversationRef.current = conversation as VoiceConversation;
     } catch (e: any) {
       toast.error(e.message ?? "Failed to start session with Anna");
       setSessionState("idle");
@@ -284,16 +278,18 @@ export function AnnaVoiceTab() {
     }
   };
 
-  const togglePause = async () => {
+  const togglePause = () => {
     const conv = conversationRef.current;
     if (!conv) return;
     if (!isPaused) {
-      // Mute microphone by ending and not restarting — ElevenLabs SDK doesn't have a pause API,
-      // so we use the volume approach: set output volume to 0 and mute mic via track
+      // Mute microphone so user's voice is not sent to Anna
+      conv.setMicMuted(true);
+      // Also lower Anna's output volume so she stops speaking
       conv.setVolume({ volume: 0 });
       setIsPaused(true);
       setSessionState("paused");
     } else {
+      conv.setMicMuted(false);
       conv.setVolume({ volume: 1 });
       setIsPaused(false);
       setSessionState("active");
