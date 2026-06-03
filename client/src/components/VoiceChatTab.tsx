@@ -41,13 +41,27 @@ import {
  * Token budget for the active Realtime context.
  * When the estimated token count of all completed turns exceeds this threshold,
  * the oldest 50% of raw turns are summarized and deleted.
- * 3,500 tokens ≈ system prompt (600) + ~36 turns (80 tokens each) before first prune.
+ *
+ * Lowered from 3,500 → 2,000 so pruning fires earlier, before the context
+ * grows large enough to noticeably slow Romain's generation.
+ * Real context cost is higher than text-only estimates because the Realtime
+ * API also counts audio tokens, tool call overhead, and per-item metadata.
  */
-const TOKEN_BUDGET = 3500;
-/** Approximate tokens consumed by the static system prompt + tool schemas */
-const SYSTEM_PROMPT_TOKENS = 600;
+const TOKEN_BUDGET = 2000;
+/**
+ * Approximate tokens consumed by the static system prompt + tool schemas.
+ * Actual measured value: ~694 tokens (prompt 497 + tools 197).
+ * We use 750 to add a small safety margin for Realtime API overhead.
+ */
+const SYSTEM_PROMPT_TOKENS = 750;
 /** Always keep at least this many recent raw turns after pruning */
-const KEEP_RECENT = 10;
+const KEEP_RECENT = 8;
+/**
+ * Delay (ms) before running summarization after a turn completes.
+ * This ensures summarization never fires while Romain is mid-response,
+ * which would cause context mutations during active generation.
+ */
+const SUMMARIZE_DEFER_MS = 600;
 
 /** Estimate token count for a string (chars ÷ 4 is the standard approximation) */
 function estimateTokens(text: string): number {
@@ -215,6 +229,7 @@ export default function VoiceChatTab() {
   // Token budget is checked on every completed turn; no fixed counter needed.
   const completedTurnsRef = useRef<TranscriptLine[]>([]);
   const isSummarizingRef = useRef(false); // prevent concurrent summarization
+  const summarizeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // deferred summarization timer
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
@@ -335,6 +350,20 @@ export default function VoiceChatTab() {
     }
   }, [summarizeContextMutation]);
 
+  /**
+   * Schedule summarization to run after SUMMARIZE_DEFER_MS.
+   * Debounced: if called multiple times in quick succession (e.g. user turn
+   * immediately followed by assistant turn), only one summarization runs.
+   * This prevents context mutations while Romain is mid-response.
+   */
+  const deferredSummarize = useCallback(() => {
+    if (summarizeTimerRef.current) clearTimeout(summarizeTimerRef.current);
+    summarizeTimerRef.current = setTimeout(() => {
+      summarizeTimerRef.current = null;
+      maybeSummarize();
+    }, SUMMARIZE_DEFER_MS);
+  }, [maybeSummarize]);
+
   // Handle DataChannel events from OpenAI Realtime
   const handleDataChannelMessage = useCallback((event: MessageEvent) => {
     try {
@@ -363,8 +392,8 @@ export default function VoiceChatTab() {
           // Track completed user turn for summarization
           completedTurnsRef.current = [...completedTurnsRef.current, newLine];
           setUserSpeaking(false);
-          // Check if we should summarize after user turn completes
-          maybeSummarize();
+          // Defer summarization so it never fires while Romain is mid-response
+          deferredSummarize();
         }
       }
 
@@ -445,8 +474,8 @@ export default function VoiceChatTab() {
           if (text) {
             const completedLine: TranscriptLine = { role: "assistant", text, timestamp: Date.now(), itemId };
             completedTurnsRef.current = [...completedTurnsRef.current, completedLine];
-            // Check if we should summarize after assistant turn completes
-            maybeSummarize();
+            // Defer summarization so it never fires while Romain is mid-response
+            deferredSummarize();
           }
         }
       }
@@ -467,7 +496,7 @@ export default function VoiceChatTab() {
               // Track as completed turn
               const completedLine: TranscriptLine = { role: "assistant", text, timestamp: Date.now(), itemId };
               completedTurnsRef.current = [...completedTurnsRef.current, completedLine];
-              maybeSummarize();
+              deferredSummarize();
             }
           }
         }
@@ -549,7 +578,7 @@ export default function VoiceChatTab() {
     } catch {
       // ignore non-JSON messages
     }
-  }, [saveWordMutation, webSearchMutation, utils, maybeSummarize, transcript]);
+  }, [saveWordMutation, webSearchMutation, utils, deferredSummarize, transcript]);
 
   const startSession = async () => {
     try {
@@ -561,6 +590,7 @@ export default function VoiceChatTab() {
       streamingLineIdRef.current = null;
        completedTurnsRef.current = [];
       isSummarizingRef.current = false;
+      if (summarizeTimerRef.current) { clearTimeout(summarizeTimerRef.current); summarizeTimerRef.current = null; }
       // 1. Create a session record in our DB
       const { id } = await createSessionMutation.mutateAsync();
       setSessionId(id);
@@ -615,13 +645,15 @@ export default function VoiceChatTab() {
             voice: "marin",
             // Enable Whisper transcription for user speech → gives us transcript events
             input_audio_transcription: { model: "whisper-1" },
-            // Noise-resistant VAD: higher threshold + longer silence window
-            // Reduces false triggers from coughs, background noise, breathing
+            // Noise-resistant VAD: higher threshold + adequate silence window.
+            // silence_duration_ms reduced from 2000 → 1200ms to cut fixed per-turn
+            // latency while still giving slow French speakers enough time to pause
+            // between words without triggering a premature response.
             turn_detection: {
               type: "server_vad",
               threshold: 0.6,
-              prefix_padding_ms: 800,
-              silence_duration_ms: 2000,
+              prefix_padding_ms: 600,
+              silence_duration_ms: 1200,
             },
           },
         }));
