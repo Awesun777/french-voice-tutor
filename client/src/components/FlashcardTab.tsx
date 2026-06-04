@@ -1,15 +1,13 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
-import { Shuffle, Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react";
+import { Shuffle, Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2, Brain, BookOpen, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
 
 function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
-/** Priority tier: 0=never tested, 1=previously wrong, 2=starred, 3=previously correct */
 function priorityTier(w: VocabEntry): number {
   if ((w.quizCount ?? 0) === 0) return 0;
   if ((w.wrongCount ?? 0) > 0) return 1;
@@ -29,8 +27,37 @@ function fmtDateLabel(dk: string) {
   return new Date(dk + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+const SM2_STATUS_LABELS: Record<string, string> = {
+  new: "New",
+  learning: "Learning",
+  review: "Review",
+  mastered: "Mastered",
+};
+const SM2_STATUS_COLORS: Record<string, string> = {
+  new: "bg-blue-500/20 text-blue-300",
+  learning: "bg-amber-500/20 text-amber-300",
+  review: "bg-violet-500/20 text-violet-300",
+  mastered: "bg-emerald-500/20 text-emerald-300",
+};
+
+type ReviewMode = "due" | "all";
+
+interface SessionResult {
+  total: number;
+  again: number;
+  hard: number;
+  good: number;
+  easy: number;
+  perfect: number;
+}
+
 export default function FlashcardTab() {
   const { data: allWords = [] } = trpc.vocab.list.useQuery();
+  const { data: dueWords = [], refetch: refetchDue } = trpc.review.getDueToday.useQuery();
+  const { data: reviewStats, refetch: refetchStats } = trpc.review.getStats.useQuery();
+  const { data: reviewSettings } = trpc.review.getSettings.useQuery();
+
+  const [mode, setMode] = useState<ReviewMode>("due");
   const [filterStarred, setFilterStarred] = useState(false);
   const [filterDate, setFilterDate] = useState<string | "all">("all");
   const [deck, setDeck] = useState<VocabEntry[]>([]);
@@ -40,12 +67,40 @@ export default function FlashcardTab() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [transcription, setTranscription] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
+  const [sessionDone, setSessionDone] = useState(false);
+  const [sessionResult, setSessionResult] = useState<SessionResult>({ total: 0, again: 0, hard: 0, good: 0, easy: 0, perfect: 0 });
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingNewWords, setSettingNewWords] = useState<number>(10);
+  const [settingReviewCap, setSettingReviewCap] = useState<number>(20);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
-
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+
+  // Sync settings from server
+  useEffect(() => {
+    if (reviewSettings) {
+      setSettingNewWords(reviewSettings.dailyNewWords);
+      setSettingReviewCap(reviewSettings.dailyReviewCap);
+    }
+  }, [reviewSettings?.dailyNewWords, reviewSettings?.dailyReviewCap]);
+
+  const submitReviewMutation = trpc.review.submitReview.useMutation({
+    onSuccess: () => {
+      refetchDue();
+      refetchStats();
+      utils.vocab.list.invalidate();
+    },
+  });
+
+  const updateSettingsMutation = trpc.review.updateSettings.useMutation({
+    onSuccess: () => {
+      refetchDue();
+      toast.success("Review settings saved");
+    },
+  });
 
   const deleteMutation = trpc.vocab.delete.useMutation({
     onMutate: async ({ id }) => {
@@ -59,7 +114,6 @@ export default function FlashcardTab() {
       toast.error("Failed to delete");
     },
     onSuccess: () => {
-      // Advance to next card (deck shrinks automatically via allWords)
       setDeck((d) => {
         const next = d.filter((w) => w.id !== confirmDeleteId);
         setIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
@@ -73,16 +127,6 @@ export default function FlashcardTab() {
     onSettled: () => utils.vocab.list.invalidate(),
   });
 
-  const handleDeleteCurrent = () => {
-    if (!currentWord) return;
-    if (confirmDeleteId === currentWord.id) {
-      deleteMutation.mutate({ id: currentWord.id });
-      setConfirmDeleteId(null);
-    } else {
-      setConfirmDeleteId(currentWord.id);
-    }
-  };
-
   const starMutation = trpc.vocab.toggleStar.useMutation({
     onMutate: async ({ id }) => {
       await utils.vocab.list.cancel();
@@ -90,13 +134,11 @@ export default function FlashcardTab() {
       utils.vocab.list.setData(undefined, (old) =>
         old?.map((w) => (w.id === id ? { ...w, starred: !w.starred } : w))
       );
-      // Also update the deck snapshot so the star icon reflects immediately
       setDeck((d) => d.map((w) => (w.id === id ? { ...w, starred: !w.starred } : w)));
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) utils.vocab.list.setData(undefined, ctx.prev);
-      // Rollback deck snapshot too
       setDeck((d) => d.map((w) => (w.id === _vars.id ? { ...w, starred: !w.starred } : w)));
     },
     onSettled: () => utils.vocab.list.invalidate(),
@@ -109,33 +151,43 @@ export default function FlashcardTab() {
 
   const storagePutMutation = trpc.storage.uploadAudio.useMutation();
 
-  // Get unique date keys for the dropdown
-  const dateKeys = Array.from(new Set(allWords.map((w) => w.dateKey))).sort().reverse();
-
-  const words = allWords.filter((w) => {
+  // Build deck based on mode
+  const freePracticeWords = allWords.filter((w) => {
     if (filterStarred && !w.starred) return false;
     if (filterDate !== "all" && w.dateKey !== filterDate) return false;
     return true;
   });
 
-   useEffect(() => {
-    if (words.length > 0 && deck.length === 0) {
-      // Priority order: never tested → previously wrong → starred → previously correct
-      setDeck(prioritySort(words));
-      setIdx(0);
-    }
-  }, [words.length]);
-  // Reset deck when filters change
+  const dateKeys = Array.from(new Set(allWords.map((w) => w.dateKey))).sort().reverse();
+
+  // Initialize deck when mode or source changes
   useEffect(() => {
-    setDeck(prioritySort(words));
+    setSessionDone(false);
+    setSessionResult({ total: 0, again: 0, hard: 0, good: 0, easy: 0, perfect: 0 });
     setIdx(0);
     setFlipped(false);
     setAudioBlob(null);
     setTranscription(null);
+    if (mode === "due") {
+      setDeck([...dueWords] as VocabEntry[]);
+    } else {
+      setDeck(prioritySort(freePracticeWords));
+    }
+  }, [mode, dueWords.length]);
+
+  // Reset free-practice deck when filters change
+  useEffect(() => {
+    if (mode === "all") {
+      setDeck(prioritySort(freePracticeWords));
+      setIdx(0);
+      setFlipped(false);
+      setAudioBlob(null);
+      setTranscription(null);
+    }
   }, [filterStarred, filterDate]);
 
   const handleShuffle = () => {
-    setDeck(shuffle(words));
+    setDeck(shuffle(mode === "due" ? [...dueWords] as VocabEntry[] : freePracticeWords));
     setIdx(0);
     setFlipped(false);
     setAudioBlob(null);
@@ -151,14 +203,62 @@ export default function FlashcardTab() {
   };
 
   const handleNext = () => {
-    setIdx((i) => Math.min(deck.length - 1, i + 1));
-    setFlipped(false);
-    setAudioBlob(null);
-    setTranscription(null);
-    setConfirmDeleteId(null);
+    if (idx < deck.length - 1) {
+      setIdx((i) => i + 1);
+      setFlipped(false);
+      setAudioBlob(null);
+      setTranscription(null);
+      setConfirmDeleteId(null);
+    }
   };
 
   const handleFlip = () => setFlipped((f) => !f);
+
+  const handleDeleteCurrent = () => {
+    if (!currentWord) return;
+    if (confirmDeleteId === currentWord.id) {
+      deleteMutation.mutate({ id: currentWord.id });
+      setConfirmDeleteId(null);
+    } else {
+      setConfirmDeleteId(currentWord.id);
+    }
+  };
+
+  const currentWord = deck[idx];
+
+  // SM-2 grade submission
+  const handleGrade = useCallback((grade: 1 | 2 | 3 | 4 | 5) => {
+    if (!currentWord) return;
+    submitReviewMutation.mutate({ vocabId: currentWord.id, grade });
+
+    const gradeKey = grade === 1 ? "again" : grade === 2 ? "hard" : grade === 3 ? "good" : grade === 4 ? "easy" : "perfect";
+    setSessionResult((prev) => ({ ...prev, total: prev.total + 1, [gradeKey]: prev[gradeKey as keyof SessionResult] as number + 1 }));
+
+    // If grade 1 (Again), push card to end of deck for re-review
+    if (grade === 1) {
+      setDeck((d) => {
+        const next = [...d];
+        const card = next.splice(idx, 1)[0];
+        next.push(card);
+        return next;
+      });
+      setFlipped(false);
+      setAudioBlob(null);
+      setTranscription(null);
+      return;
+    }
+
+    // Advance to next card
+    if (idx < deck.length - 1) {
+      setIdx((i) => i + 1);
+      setFlipped(false);
+      setAudioBlob(null);
+      setTranscription(null);
+    } else {
+      // Session complete
+      setSessionDone(true);
+    }
+  }, [currentWord, idx, deck.length, submitReviewMutation]);
 
   const startRecording = async () => {
     try {
@@ -190,7 +290,6 @@ export default function FlashcardTab() {
     if (!deck[idx]) return;
     setTranscribing(true);
     try {
-      // Convert blob to base64 for server upload
       const arrayBuffer = await blob.arrayBuffer();
       const uint8 = new Uint8Array(arrayBuffer);
       const base64 = btoa(Array.from(uint8).map((b) => String.fromCharCode(b)).join(""));
@@ -202,9 +301,36 @@ export default function FlashcardTab() {
     }
   };
 
-  const currentWord = deck[idx];
+  // ── Empty states ──────────────────────────────────────────────────────────
+  if (mode === "due" && dueWords.length === 0 && !sessionDone) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-4">
+        {/* Mode toggle */}
+        <div className="flex items-center gap-2 p-1 bg-card border border-border rounded-xl mb-2">
+          <button onClick={() => setMode("due")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground">
+            <Brain className="w-3.5 h-3.5" /> Due Today {reviewStats ? `(${reviewStats.dueToday})` : ""}
+          </button>
+          <button onClick={() => setMode("all")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
+            <BookOpen className="w-3.5 h-3.5" /> Free Practice
+          </button>
+        </div>
+        <p className="text-5xl">🎉</p>
+        <p className="text-xl font-semibold text-foreground">All caught up!</p>
+        <p className="text-sm text-muted-foreground">No cards due for review today. Come back tomorrow or switch to Free Practice.</p>
+        {reviewStats && (
+          <div className="flex gap-3 mt-2">
+            {(["new", "learning", "review", "mastered"] as const).map((s) => (
+              <div key={s} className={cn("px-3 py-1.5 rounded-xl text-xs font-semibold", SM2_STATUS_COLORS[s])}>
+                {SM2_STATUS_LABELS[s]}: {reviewStats[s]}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
-  if (!words.length) {
+  if (mode === "all" && freePracticeWords.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
         <p className="text-5xl mb-4">🃏</p>
@@ -214,18 +340,48 @@ export default function FlashcardTab() {
     );
   }
 
-  if (!currentWord) {
+  // ── Session complete screen ────────────────────────────────────────────────
+  if (sessionDone) {
+    const pct = sessionResult.total > 0 ? Math.round(((sessionResult.good + sessionResult.easy + sessionResult.perfect) / sessionResult.total) * 100) : 0;
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-        <p className="text-4xl mb-4">⭐</p>
-        <p className="text-lg font-semibold text-foreground mb-2">No starred words</p>
-        <p className="text-sm text-muted-foreground mb-4">Star some words in your library first.</p>
-        <button onClick={() => setFilterStarred(false)} className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors">
-          Show all cards
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-4">
+        <p className="text-5xl">{pct >= 80 ? "🏆" : pct >= 50 ? "👍" : "💪"}</p>
+        <p className="text-2xl font-bold text-foreground">Session Complete!</p>
+        <p className="text-sm text-muted-foreground">{sessionResult.total} cards reviewed</p>
+        <div className="grid grid-cols-5 gap-2 mt-2">
+          {([
+            { label: "Again", key: "again", color: "bg-red-500/20 text-red-300" },
+            { label: "Hard", key: "hard", color: "bg-orange-500/20 text-orange-300" },
+            { label: "Good", key: "good", color: "bg-blue-500/20 text-blue-300" },
+            { label: "Easy", key: "easy", color: "bg-emerald-500/20 text-emerald-300" },
+            { label: "Perfect", key: "perfect", color: "bg-violet-500/20 text-violet-300" },
+          ] as const).map(({ label, key, color }) => (
+            <div key={key} className={cn("px-3 py-2 rounded-xl text-xs font-semibold text-center", color)}>
+              <div className="text-lg font-bold">{sessionResult[key as keyof SessionResult]}</div>
+              <div>{label}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 text-sm text-muted-foreground">
+          {pct >= 80 ? "Excellent recall! Keep it up." : pct >= 50 ? "Good progress. Review the harder ones tomorrow." : "Keep practicing — repetition builds memory."}
+        </div>
+        <button
+          onClick={() => {
+            setSessionDone(false);
+            setSessionResult({ total: 0, again: 0, hard: 0, good: 0, easy: 0, perfect: 0 });
+            setIdx(0);
+            setFlipped(false);
+            refetchDue();
+          }}
+          className="mt-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors"
+        >
+          Done
         </button>
       </div>
     );
   }
+
+  if (!currentWord) return null;
 
   const matchScore = transcription && currentWord
     ? (() => {
@@ -240,43 +396,114 @@ export default function FlashcardTab() {
       })()
     : null;
 
+  const sm2Status = (currentWord as any).sm2Status as string | undefined;
+
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center gap-2 flex-wrap">
-        <button
-          onClick={() => setFilterStarred(!filterStarred)}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
-            filterStarred ? "bg-accent/20 text-accent" : "bg-card border border-border text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Star className={cn("w-3.5 h-3.5", filterStarred && "fill-current")} />
-          Starred
-        </button>
-        {/* Date group filter */}
-        {dateKeys.length > 1 && (
-          <select
-            value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
-            className="px-3 py-2 bg-card border border-border rounded-xl text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
+        {/* Mode toggle */}
+        <div className="flex items-center gap-1 p-0.5 bg-card border border-border rounded-xl">
+          <button
+            onClick={() => setMode("due")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+              mode === "due" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <option value="all">All dates ({allWords.length})</option>
-            {dateKeys.map((dk) => (
-              <option key={dk} value={dk}>
-                {fmtDateLabel(dk)} ({allWords.filter((w) => w.dateKey === dk).length})
-              </option>
-            ))}
-          </select>
+            <Brain className="w-3.5 h-3.5" />
+            Due Today {reviewStats ? `(${reviewStats.dueToday})` : ""}
+          </button>
+          <button
+            onClick={() => setMode("all")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+              mode === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            Free Practice
+          </button>
+        </div>
+
+        {/* Free practice filters */}
+        {mode === "all" && (
+          <>
+            <button
+              onClick={() => setFilterStarred(!filterStarred)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
+                filterStarred ? "bg-accent/20 text-accent" : "bg-card border border-border text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Star className={cn("w-3.5 h-3.5", filterStarred && "fill-current")} />
+              Starred
+            </button>
+            {dateKeys.length > 1 && (
+              <select
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="px-3 py-2 bg-card border border-border rounded-xl text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
+              >
+                <option value="all">All dates ({allWords.length})</option>
+                {dateKeys.map((dk) => (
+                  <option key={dk} value={dk}>
+                    {fmtDateLabel(dk)} ({allWords.filter((w) => w.dateKey === dk).length})
+                  </option>
+                ))}
+              </select>
+            )}
+          </>
         )}
+
         <button
           onClick={handleShuffle}
           className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground rounded-xl text-xs font-semibold transition-colors"
         >
           <Shuffle className="w-3.5 h-3.5" /> Shuffle
         </button>
-        <span className="ml-auto text-xs text-muted-foreground font-mono">{deck.length > 0 ? `${idx + 1} / ${deck.length}` : "0 / 0"}</span>
+
+        {/* Settings button */}
+        <button
+          onClick={() => setShowSettings((s) => !s)}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors border",
+            showSettings ? "bg-primary/20 border-primary/50 text-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"
+          )}
+          title="Review settings"
+        >
+          <Settings2 className="w-3.5 h-3.5" />
+        </button>
+
+        <span className="ml-auto text-xs text-muted-foreground font-medium">
+          {idx + 1} / {deck.length}
+        </span>
       </div>
+
+      {/* Settings panel */}
+      {showSettings && (
+        <div className="flex-shrink-0 border-b border-border bg-card/50 px-4 py-3 space-y-3">
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Daily Review Settings</p>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-muted-foreground w-32">New words/day: <span className="text-foreground font-semibold">{settingNewWords}</span></label>
+              <input type="range" min={1} max={50} step={1} value={settingNewWords} onChange={(e) => setSettingNewWords(Number(e.target.value))}
+                className="w-32 accent-primary" />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-muted-foreground w-32">Reviews/day: <span className="text-foreground font-semibold">{settingReviewCap}</span></label>
+              <input type="range" min={5} max={100} step={5} value={settingReviewCap} onChange={(e) => setSettingReviewCap(Number(e.target.value))}
+                className="w-32 accent-primary" />
+            </div>
+            <button
+              onClick={() => updateSettingsMutation.mutate({ dailyNewWords: settingNewWords, dailyReviewCap: settingReviewCap })}
+              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold transition-colors"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Card area */}
       <div className="flex-1 flex flex-col items-center justify-center p-6 overflow-y-auto">
@@ -295,9 +522,11 @@ export default function FlashcardTab() {
                 onClick={handleFlip}
               >
                 <div className="absolute top-3 left-3 flex items-center gap-1">
-                  {priorityTier(currentWord) === 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold">New</span>}
-                  {priorityTier(currentWord) === 1 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-semibold">Review</span>}
-                  {priorityTier(currentWord) === 2 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 font-semibold">Starred</span>}
+                  {sm2Status && (
+                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-semibold", SM2_STATUS_COLORS[sm2Status] ?? "bg-muted text-muted-foreground")}>
+                      {SM2_STATUS_LABELS[sm2Status] ?? sm2Status}
+                    </span>
+                  )}
                 </div>
                 <span className="text-xs font-bold text-primary uppercase tracking-widest mb-4">French</span>
                 <p className="text-3xl font-bold text-foreground text-center mb-3">{currentWord.term}</p>
@@ -323,75 +552,86 @@ export default function FlashcardTab() {
             </div>
           </div>
 
-          {/* Controls */}
-          <div className="flex items-center justify-between">
-            <button
-              onClick={handlePrev}
-              disabled={idx === 0}
-              className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => starMutation.mutate({ id: currentWord.id })}
-                className={cn(
-                  "p-3 rounded-xl border transition-colors",
-                  currentWord.starred ? "bg-accent/20 border-accent/50 text-accent" : "bg-card border-border text-muted-foreground hover:text-accent hover:border-accent/50"
-                )}
-                title="Star this word"
-              >
-                <Star className={cn("w-5 h-5", currentWord.starred && "fill-current")} />
-              </button>
-              <button
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-                onTouchStart={startRecording}
-                onTouchEnd={stopRecording}
-                className={cn(
-                  "p-3 rounded-xl border transition-all",
-                  recording ? "bg-red-500/20 border-red-500 text-red-400 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50"
-                )}
-                title="Hold to record your pronunciation"
-              >
-                {recording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
-              {/* Delete current word */}
-              {confirmDeleteId === currentWord.id ? (
-                <div className="flex items-center gap-1">
+          {/* SM-2 rating row — only shown after flip in Due Today mode */}
+          {mode === "due" && flipped && (
+            <div className="space-y-1">
+              <p className="text-xs text-center text-muted-foreground font-medium">How well did you know this?</p>
+              <div className="flex gap-1.5 justify-center">
+                {([
+                  { grade: 1, label: "Again", color: "bg-red-500/20 hover:bg-red-500/40 text-red-300 border-red-500/30" },
+                  { grade: 2, label: "Hard", color: "bg-orange-500/20 hover:bg-orange-500/40 text-orange-300 border-orange-500/30" },
+                  { grade: 3, label: "Good", color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 border-blue-500/30" },
+                  { grade: 4, label: "Easy", color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border-emerald-500/30" },
+                  { grade: 5, label: "Perfect", color: "bg-violet-500/20 hover:bg-violet-500/40 text-violet-300 border-violet-500/30" },
+                ] as const).map(({ grade, label, color }) => (
                   <button
-                    onClick={handleDeleteCurrent}
-                    className="px-3 py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:bg-destructive/80 transition-colors"
+                    key={grade}
+                    onClick={() => handleGrade(grade)}
+                    className={cn("flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors", color)}
                   >
-                    Delete
+                    {label}
                   </button>
-                  <button
-                    onClick={() => setConfirmDeleteId(null)}
-                    className="px-3 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-bold hover:bg-muted/80 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={handleDeleteCurrent}
-                  className="p-3 rounded-xl border border-border bg-card text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10 transition-colors"
-                  title="Delete this word from library"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              )}
+                ))}
+              </div>
             </div>
+          )}
 
-            <button
-              onClick={handleNext}
-              disabled={idx === deck.length - 1}
-              className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
+          {/* Controls (nav + star + mic + delete) — shown in free practice or before flip in due mode */}
+          {(mode === "all" || !flipped) && (
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handlePrev}
+                disabled={idx === 0}
+                className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => starMutation.mutate({ id: currentWord.id })}
+                  className={cn(
+                    "p-3 rounded-xl border transition-colors",
+                    currentWord.starred ? "bg-accent/20 border-accent/50 text-accent" : "bg-card border-border text-muted-foreground hover:text-accent hover:border-accent/50"
+                  )}
+                  title="Star this word"
+                >
+                  <Star className={cn("w-5 h-5", currentWord.starred && "fill-current")} />
+                </button>
+                <button
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onTouchStart={startRecording}
+                  onTouchEnd={stopRecording}
+                  className={cn(
+                    "p-3 rounded-xl border transition-all",
+                    recording ? "bg-red-500/20 border-red-500 text-red-400 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50"
+                  )}
+                  title="Hold to record your pronunciation"
+                >
+                  {recording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                </button>
+                {confirmDeleteId === currentWord.id ? (
+                  <div className="flex items-center gap-1">
+                    <button onClick={handleDeleteCurrent} className="px-3 py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:bg-destructive/80 transition-colors">Delete</button>
+                    <button onClick={() => setConfirmDeleteId(null)} className="px-3 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-bold hover:bg-muted/80 transition-colors">Cancel</button>
+                  </div>
+                ) : (
+                  <button onClick={handleDeleteCurrent} className="p-3 rounded-xl border border-border bg-card text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10 transition-colors" title="Delete this word">
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              <button
+                onClick={handleNext}
+                disabled={idx === deck.length - 1}
+                className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          )}
 
           {/* Recording feedback */}
           {recording && (
@@ -432,8 +672,9 @@ export default function FlashcardTab() {
             </div>
           )}
 
-          {/* Keyboard hint */}
-          <p className="text-center text-xs text-muted-foreground">Hold mic button to record your pronunciation</p>
+          {mode === "all" && (
+            <p className="text-center text-xs text-muted-foreground">Hold mic button to record your pronunciation</p>
+          )}
         </div>
       </div>
     </div>

@@ -247,3 +247,25 @@
 - [x] Romain: apply speed and language mix via session.update instructions at session start and on change mid-session
 - [x] Anna: apply speed via ElevenLabs voice_settings.speed at session start; apply language mix via sendContextualUpdate
 - [x] Both: show "Say 'On commence une conversation' to start a natural conversation" hint in the UI
+
+## SM-2 Spaced Repetition System (Round 26)
+- [x] DB: add SM-2 columns to vocab table (easeFactor, interval, repetitions, nextReviewAt, lastReviewAt, status)
+- [x] DB: add review_settings table (userId, dailyNewWords default 10, dailyReviewCap default 20)
+- [x] Backend: SM-2 formula helper (computeNextReview)
+- [x] Backend: vocab.getDueToday procedure (new cap + review cap, ordered by overdue first, new words interleaved)
+- [x] Backend: vocab.submitReview procedure (grade 1-5, updates SM-2 fields, returns updated word)
+- [x] Backend: vocab.getStats procedure (counts per status: new/learning/review/mastered)
+- [x] Backend: vocab.getReviewSettings + vocab.updateReviewSettings procedures
+- [x] Flashcards: Due Today mode (default) with 1-5 rating row (Again/Hard/Good/Easy/Perfect), failed cards repeat at end
+- [x] Flashcards: Free Practice toggle (existing random behavior preserved)
+- [x] Flashcards: queue header showing new/review counts before session starts
+- [x] Flashcards: session summary screen (cards reviewed, words to revisit)
+- [x] Quiz: Due Today mode with auto-grade (correct=4, wrong=1)
+- [x] Quiz: keep existing Random/date-group mode unchanged
+- [x] My Library: status badge per word (New/Learning/Review/Mastered)
+- [x] My Library: due indicator on words due today
+- [x] My Library: filter bar by status
+- [x] Review settings panel: daily new words (5/10/20), review cap (10/20/40), accessible from Flashcards and Quiz
+- [x] Nav badge: show due count on Flashcards nav item
+- [x] Voice: add flag_word tool to Romain (server prompt + data channel handler, auto-submit grade-1 on session end)
+- [x] Voice: add flag_word tool to Anna (ElevenLabs API + clientTools handler, auto-submit grade-1 on session end)

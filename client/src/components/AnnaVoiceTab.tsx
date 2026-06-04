@@ -175,6 +175,12 @@ export function AnnaVoiceTab() {
   const annaSignedUrlMutation = trpc.voice.annaSignedUrl.useMutation();
   const webSearchMutation = trpc.voice.webSearch.useMutation();
   const summarizeContextMutation = trpc.voiceSession.summarizeContext.useMutation();
+  const submitReviewMutation = trpc.review.submitReview.useMutation();
+  // Vocab list — used by flag_word to look up a word's ID before submitting a review
+  const { data: vocabList = [] } = trpc.vocab.list.useQuery();
+  // Stable ref so closures inside startSession always see the latest vocab list
+  const vocabListRef = useRef(vocabList);
+  useEffect(() => { vocabListRef.current = vocabList; }, [vocabList]);
   const { data: userMemoryData } = trpc.voiceSession.getUserMemory.useQuery();
   // Stable ref so closures inside startSession always see the latest memory value
   const userMemoryRef = useRef<string | null>(null);
@@ -401,6 +407,24 @@ export function AnnaVoiceTab() {
             }, 100);
             return "starting conversation mode";
           },
+          flag_word: async ({ term }: { term: string; translation: string }): Promise<string> => {
+            const flaggedTerm = (term ?? "").trim().toLowerCase();
+            if (!flaggedTerm) return "error: missing term";
+            const match = vocabListRef.current.find(
+              (w) => w.term.trim().toLowerCase() === flaggedTerm
+            );
+            if (match) {
+              try {
+                await submitReviewMutation.mutateAsync(
+                  { vocabId: match.id, grade: 1 }
+                );
+                utils.review.getStats.invalidate();
+              } catch {
+                // silent — don't distract the conversation
+              }
+            }
+            return `flagged:${flaggedTerm}:${match ? "found" : "not_in_library"}`;
+          },
         },
       });
 
@@ -570,6 +594,24 @@ export function AnnaVoiceTab() {
                 }
               }, 100);
               return "starting conversation mode";
+            },
+            flag_word: async ({ term }: { term: string; translation: string }): Promise<string> => {
+              const flaggedTerm = (term ?? "").trim().toLowerCase();
+              if (!flaggedTerm) return "error: missing term";
+              const match = vocabListRef.current.find(
+                (w) => w.term.trim().toLowerCase() === flaggedTerm
+              );
+              if (match) {
+                try {
+                  await submitReviewMutation.mutateAsync(
+                    { vocabId: match.id, grade: 1 }
+                  );
+                  utils.review.getStats.invalidate();
+                } catch {
+                  // silent — don't distract the conversation
+                }
+              }
+              return `flagged:${flaggedTerm}:${match ? "found" : "not_in_library"}`;
             },
           },
         });

@@ -14,6 +14,13 @@ export interface VocabEntry {
   dateKey: string;
   createdAt: Date;
   updatedAt: Date;
+  // SM-2 fields
+  sm2EaseFactor?: number | null;
+  sm2Interval?: number | null;
+  sm2Repetitions?: number | null;
+  sm2NextReviewAt?: number | null;
+  sm2LastReviewAt?: number | null;
+  sm2Status?: "new" | "learning" | "review" | "mastered" | null;
 }
 
 export interface DictWordResult {

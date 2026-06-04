@@ -1,0 +1,9 @@
+{
+  "query": "\nCREATE TABLE `review_settings` (\n  `userId` int NOT NULL,\n  `dailyNewWords` int NOT NULL DEFAULT 10,\n  `dailyReviewCap` int NOT NULL DEFAULT 20,\n  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n  CONSTRAINT `review_settings_userId` PRIMARY KEY(`userId`)\n);\n\nALTER TABLE `vocab_entries` ADD `sm2EaseFactor` double DEFAULT 2.5 NOT NULL;\nALTER TABLE `vocab_entries` ADD `sm2Interval` int DEFAULT 0 NOT NULL;\nALTER TABLE `vocab_entries` ADD `sm2Repetitions` int DEFAULT 0 NOT NULL;\nALTER TABLE `vocab_entries` ADD `sm2NextReviewAt` bigint;\nALTER TABLE `vocab_entries` ADD `sm2LastReviewAt` bigint;\nALTER TABLE `vocab_entries` ADD `sm2Status` enum('new','learning','review','mastered') DEFAULT 'new' NOT NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2tViCNPNqR8WkNK.5a13a40b8b26 --database 8baQdh3xy5GA4FRvuUk9AV --execute \nCREATE TABLE `review_settings` (\n  `userId` int NOT NULL,\n  `dailyNewWords` int NOT NULL DEFAULT 10,\n  `dailyReviewCap` int NOT NULL DEFAULT 20,\n  `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,\n  CONSTRAINT `review_settings_userId` PRIMARY KEY(`userId`)\n);\n\nALTER TABLE `vocab_entries` ADD `sm2EaseFactor` double DEFAULT 2.5 NOT NULL;\nALTER TABLE `vocab_entries` ADD `sm2Interval` int DEFAULT 0 NOT NULL;\nALTER TABLE `vocab_entries` ADD `sm2Repetitions` int DEFAULT 0 NOT NULL;\nALTER TABLE `vocab_entries` ADD `sm2NextReviewAt` bigint;\nALTER TABLE `vocab_entries` ADD `sm2LastReviewAt` bigint;\nALTER TABLE `vocab_entries` ADD `sm2Status` enum('new','learning','review','mastered') DEFAULT 'new' NOT NULL;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1464
+}

@@ -284,6 +284,9 @@ export default function VoiceChatTab() {
   const endSessionMutation = trpc.voiceSession.end.useMutation();
   const summarizeContextMutation = trpc.voiceSession.summarizeContext.useMutation();
   const webSearchMutation = trpc.voice.webSearch.useMutation();
+  const submitReviewMutation = trpc.review.submitReview.useMutation();
+  // Vocab list — used by flag_word to look up a word's ID before submitting a review
+  const { data: vocabList = [] } = trpc.vocab.list.useQuery();
   const { data: pastSessions = [], refetch: refetchSessions } = trpc.voiceSession.list.useQuery(
     undefined,
     { enabled: showPastSessions }
@@ -635,6 +638,43 @@ export default function VoiceChatTab() {
         }
       }
 
+      // ── Tool call: flag_word ─────────────────────────────────────────────────────────────────────────────
+      if (msg.type === "response.function_call_arguments.done" && msg.name === "flag_word") {
+        try {
+          const args = JSON.parse(msg.arguments);
+          const flaggedTerm: string = (args.term ?? "").trim().toLowerCase();
+          if (flaggedTerm) {
+            // Look up the word in the user's library (case-insensitive)
+            const match = vocabList.find(
+              (w) => w.term.trim().toLowerCase() === flaggedTerm
+            );
+            if (match) {
+              submitReviewMutation.mutate(
+                { vocabId: match.id, grade: 1 },
+                {
+                  onSuccess: () => utils.review.getStats.invalidate(),
+                  onError: () => { /* silent — don't distract the conversation */ },
+                }
+              );
+            }
+            // Acknowledge the tool call so the model can continue
+            if (dcRef.current?.readyState === "open") {
+              dcRef.current.send(JSON.stringify({
+                type: "conversation.item.create",
+                item: {
+                  type: "function_call_output",
+                  call_id: msg.call_id,
+                  output: JSON.stringify({ flagged: flaggedTerm, found: !!match }),
+                },
+              }));
+              dcRef.current.send(JSON.stringify({ type: "response.create" }));
+            }
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+
       // ── Tool call: start_conversation ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
       if (msg.type === "response.function_call_arguments.done" && msg.name === "start_conversation") {
         // Acknowledge the tool call so the model can proceed
@@ -665,7 +705,7 @@ export default function VoiceChatTab() {
     } catch {
       // ignore non-JSON messages
     }
-  }, [saveWordMutation, webSearchMutation, utils, deferredSummarize, transcript]);
+  }, [saveWordMutation, webSearchMutation, submitReviewMutation, vocabList, utils, deferredSummarize, transcript]);
 
   const startSession = async () => {
     try {

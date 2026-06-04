@@ -50,6 +50,13 @@
       "when": 1780526100712,
       "tag": "0006_past_invaders",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1780610105238,
+      "tag": "0007_pale_cassandra_nova",
+      "breakpoints": true
     }
   ]
 }

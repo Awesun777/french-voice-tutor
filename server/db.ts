@@ -320,3 +320,235 @@ export async function getVocabStats(userId: number) {
 
   return { total, today: todayCount, byDay };
 }
+
+// ─── SM-2 helpers ──────────────────────────────────────────────────────────────
+
+import { ReviewSettings, reviewSettings } from "../drizzle/schema";
+import { lte, or, isNull } from "drizzle-orm";
+
+/**
+ * SM-2 algorithm: given current state and a grade (1-5), compute the next
+ * review interval, ease factor, repetitions count, and status.
+ *
+ * Grade scale:
+ *   1 = Again (complete blackout)
+ *   2 = Hard (significant difficulty)
+ *   3 = Good (correct with some effort)
+ *   4 = Easy (correct with minor hesitation)
+ *   5 = Perfect (instant recall)
+ */
+export function computeNextReview(
+  current: {
+    easeFactor: number;
+    interval: number;
+    repetitions: number;
+  },
+  grade: 1 | 2 | 3 | 4 | 5
+): {
+  easeFactor: number;
+  interval: number;
+  repetitions: number;
+  status: "new" | "learning" | "review" | "mastered";
+  nextReviewAt: number; // UTC ms
+} {
+  let { easeFactor, interval, repetitions } = current;
+
+  if (grade < 3) {
+    // Failed: reset repetitions, short interval
+    repetitions = 0;
+    interval = grade === 1 ? 0 : 1; // Again=same day, Hard=tomorrow
+  } else {
+    // Passed
+    if (repetitions === 0) {
+      interval = 1;
+    } else if (repetitions === 1) {
+      interval = 6;
+    } else {
+      interval = Math.round(interval * easeFactor);
+    }
+    repetitions += 1;
+    // Update ease factor (min 1.3)
+    easeFactor = Math.max(1.3, easeFactor + 0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02));
+  }
+
+  // Determine status
+  let status: "new" | "learning" | "review" | "mastered";
+  if (repetitions === 0) {
+    status = "new";
+  } else if (interval <= 1) {
+    status = "learning";
+  } else if (interval < 21) {
+    status = "review";
+  } else {
+    status = "mastered";
+  }
+
+  const nextReviewAt = Date.now() + interval * 24 * 60 * 60 * 1000;
+
+  return { easeFactor, interval, repetitions, status, nextReviewAt };
+}
+
+/**
+ * Get words due for review today for a user.
+ * Returns up to (dailyNewWords) new words + up to (dailyReviewCap) review words,
+ * ordered: overdue first, then new words interleaved every 3 review cards.
+ */
+export async function getDueVocab(
+  userId: number,
+  dailyNewWords: number,
+  dailyReviewCap: number
+): Promise<VocabEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const now = Date.now();
+
+  // Fetch new words (never reviewed)
+  const newWords = await db
+    .select()
+    .from(vocabEntries)
+    .where(and(eq(vocabEntries.userId, userId), eq(vocabEntries.sm2Status, "new")))
+    .orderBy(vocabEntries.createdAt)
+    .limit(dailyNewWords);
+
+  // Fetch due review words (nextReviewAt <= now, status != new)
+  const dueWords = await db
+    .select()
+    .from(vocabEntries)
+    .where(
+      and(
+        eq(vocabEntries.userId, userId),
+        or(
+          isNull(vocabEntries.sm2NextReviewAt),
+          lte(vocabEntries.sm2NextReviewAt, now)
+        ),
+        // Exclude "new" status (handled separately above)
+        sql`${vocabEntries.sm2Status} != 'new'`
+      )
+    )
+    .orderBy(vocabEntries.sm2NextReviewAt)
+    .limit(dailyReviewCap);
+
+  // Interleave: every 3 review cards, insert 1 new card
+  const result: VocabEntry[] = [];
+  let newIdx = 0;
+  let reviewIdx = 0;
+  let position = 0;
+  while (reviewIdx < dueWords.length || newIdx < newWords.length) {
+    if (reviewIdx < dueWords.length) {
+      result.push(dueWords[reviewIdx++]);
+      position++;
+    }
+    if (position % 3 === 0 && newIdx < newWords.length) {
+      result.push(newWords[newIdx++]);
+    }
+  }
+  // Append any remaining new words
+  while (newIdx < newWords.length) {
+    result.push(newWords[newIdx++]);
+  }
+
+  return result;
+}
+
+/**
+ * Submit a SM-2 review grade for a vocab entry.
+ */
+export async function submitSm2Review(
+  userId: number,
+  vocabId: number,
+  grade: 1 | 2 | 3 | 4 | 5
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  const rows = await db
+    .select({
+      easeFactor: vocabEntries.sm2EaseFactor,
+      interval: vocabEntries.sm2Interval,
+      repetitions: vocabEntries.sm2Repetitions,
+    })
+    .from(vocabEntries)
+    .where(and(eq(vocabEntries.id, vocabId), eq(vocabEntries.userId, userId)))
+    .limit(1);
+
+  if (!rows.length) return;
+
+  const next = computeNextReview(rows[0], grade);
+
+  await db
+    .update(vocabEntries)
+    .set({
+      sm2EaseFactor: next.easeFactor,
+      sm2Interval: next.interval,
+      sm2Repetitions: next.repetitions,
+      sm2Status: next.status,
+      sm2NextReviewAt: next.nextReviewAt,
+      sm2LastReviewAt: Date.now(),
+    })
+    .where(and(eq(vocabEntries.id, vocabId), eq(vocabEntries.userId, userId)));
+}
+
+/**
+ * Get SM-2 status counts for a user.
+ */
+export async function getSm2Stats(userId: number): Promise<{
+  new: number;
+  learning: number;
+  review: number;
+  mastered: number;
+  dueToday: number;
+}> {
+  const db = await getDb();
+  if (!db) return { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0 };
+
+  const rows = await db
+    .select({ status: vocabEntries.sm2Status, nextReviewAt: vocabEntries.sm2NextReviewAt })
+    .from(vocabEntries)
+    .where(eq(vocabEntries.userId, userId));
+
+  const now = Date.now();
+  const counts = { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0 };
+  for (const row of rows) {
+    counts[row.status]++;
+    if (row.status === "new" || (row.nextReviewAt != null && row.nextReviewAt <= now)) {
+      counts.dueToday++;
+    }
+  }
+  return counts;
+}
+
+/**
+ * Get or create review settings for a user.
+ */
+export async function getReviewSettings(userId: number): Promise<ReviewSettings> {
+  const db = await getDb();
+  if (!db) return { userId, dailyNewWords: 10, dailyReviewCap: 20, updatedAt: new Date() };
+
+  const rows = await db
+    .select()
+    .from(reviewSettings)
+    .where(eq(reviewSettings.userId, userId))
+    .limit(1);
+
+  if (rows.length) return rows[0];
+
+  // Create defaults
+  await db.insert(reviewSettings).values({ userId, dailyNewWords: 10, dailyReviewCap: 20 });
+  return { userId, dailyNewWords: 10, dailyReviewCap: 20, updatedAt: new Date() };
+}
+
+/**
+ * Update review settings for a user.
+ */
+export async function updateReviewSettings(
+  userId: number,
+  patch: { dailyNewWords?: number; dailyReviewCap?: number }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  await db
+    .insert(reviewSettings)
+    .values({ userId, dailyNewWords: patch.dailyNewWords ?? 10, dailyReviewCap: patch.dailyReviewCap ?? 20 })
+    .onDuplicateKeyUpdate({ set: patch });
+}

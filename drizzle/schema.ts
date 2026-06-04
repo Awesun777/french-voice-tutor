@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  double,
   int,
   mysqlEnum,
   mysqlTable,
@@ -42,10 +43,17 @@ export const vocabEntries = mysqlTable("vocab_entries", {
   entryKind: mysqlEnum("entryKind", ["word", "phrase"]).default("word").notNull(),
   lessonSource: varchar("lessonSource", { length: 256 }),
   starred: boolean("starred").default(false).notNull(),
-  // Spaced repetition fields
+  // Legacy quiz tracking
   quizCount: int("quizCount").default(0).notNull(),
   wrongCount: int("wrongCount").default(0).notNull(),
   lastQuizzed: timestamp("lastQuizzed"),
+  // SM-2 spaced repetition fields
+  sm2EaseFactor: double("sm2EaseFactor").default(2.5).notNull(),
+  sm2Interval: int("sm2Interval").default(0).notNull(),       // days until next review
+  sm2Repetitions: int("sm2Repetitions").default(0).notNull(), // consecutive correct answers
+  sm2NextReviewAt: bigint("sm2NextReviewAt", { mode: "number" }), // UTC ms timestamp
+  sm2LastReviewAt: bigint("sm2LastReviewAt", { mode: "number" }), // UTC ms timestamp
+  sm2Status: mysqlEnum("sm2Status", ["new", "learning", "review", "mastered"]).default("new").notNull(),
   // Date key for grouping (YYYY-MM-DD or custom label up to 100 chars)
   dateKey: varchar("dateKey", { length: 100 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -112,3 +120,14 @@ export const dictCache = mysqlTable("dict_cache", {
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
 });
 export type DictCacheEntry = typeof dictCache.$inferSelect;
+
+/**
+ * Per-user SM-2 review settings.
+ */
+export const reviewSettings = mysqlTable("review_settings", {
+  userId: int("userId").primaryKey(),
+  dailyNewWords: int("dailyNewWords").default(10).notNull(),
+  dailyReviewCap: int("dailyReviewCap").default(20).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ReviewSettings = typeof reviewSettings.$inferSelect;

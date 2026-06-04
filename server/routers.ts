@@ -30,6 +30,11 @@ import {
   updateVocabEntry,
   renameVocabGroup,
   deleteVocabGroup,
+  getDueVocab,
+  submitSm2Review,
+  getSm2Stats,
+  getReviewSettings,
+  updateReviewSettings,
 } from "./db";
 
 // ─── Dictionary search cache (DB-persisted + in-memory L1) ───────────────────
@@ -1132,6 +1137,45 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         recentQuizzes: quizHistory.slice(0, 5),
       };
     }),
+  }),
+
+  // ─── SM-2 Spaced Repetition ───────────────────────────────────────────────
+  review: router({
+    /** Get words due today (new + overdue review, interleaved) */
+    getDueToday: protectedProcedure.query(async ({ ctx }) => {
+      const settings = await getReviewSettings(ctx.user.id);
+      const words = await getDueVocab(ctx.user.id, settings.dailyNewWords, settings.dailyReviewCap);
+      return words;
+    }),
+
+    /** Submit a SM-2 grade (1-5) for a vocab word */
+    submitReview: protectedProcedure
+      .input(z.object({ vocabId: z.number(), grade: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]) }))
+      .mutation(async ({ ctx, input }) => {
+        await submitSm2Review(ctx.user.id, input.vocabId, input.grade);
+        return { ok: true };
+      }),
+
+    /** Get SM-2 status counts (new/learning/review/mastered/dueToday) */
+    getStats: protectedProcedure.query(async ({ ctx }) => {
+      return getSm2Stats(ctx.user.id);
+    }),
+
+    /** Get review settings */
+    getSettings: protectedProcedure.query(async ({ ctx }) => {
+      return getReviewSettings(ctx.user.id);
+    }),
+
+    /** Update review settings */
+    updateSettings: protectedProcedure
+      .input(z.object({
+        dailyNewWords: z.number().min(1).max(50).optional(),
+        dailyReviewCap: z.number().min(1).max(100).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await updateReviewSettings(ctx.user.id, input);
+        return { ok: true };
+      }),
   }),
 });
 

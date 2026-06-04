@@ -1,10 +1,116 @@
 import { trpc } from "@/lib/trpc";
-import { Loader2, Flame, BookOpen, Brain, Star } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Flame, BookOpen, Brain, Star, Settings2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
 
 function fmtDate(dateKey: string) {
   return new Date(dateKey + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// ─── SM-2 Stats Panel ────────────────────────────────────────────────────────
+function SM2StatsPanel() {
+  const { data: sm2Stats } = trpc.review.getStats.useQuery();
+  if (!sm2Stats) return null;
+  const total = (sm2Stats.new + sm2Stats.learning + sm2Stats.review + sm2Stats.mastered) || 1;
+  const bars = [
+    { label: "New", count: sm2Stats.new, color: "bg-muted", text: "text-muted-foreground" },
+    { label: "Learning", count: sm2Stats.learning, color: "bg-yellow-500", text: "text-yellow-400" },
+    { label: "Review", count: sm2Stats.review, color: "bg-blue-500", text: "text-blue-400" },
+    { label: "Mastered", count: sm2Stats.mastered, color: "bg-green-500", text: "text-green-400" },
+  ];
+  return (
+    <div className="bg-card border border-border rounded-2xl p-5">
+      <p className="text-sm font-bold text-foreground mb-4">SM-2 Mastery Breakdown</p>
+      <div className="flex h-3 rounded-full overflow-hidden mb-4 gap-0.5">
+        {bars.map((b) => b.count > 0 && (
+          <div key={b.label} className={cn(b.color, "transition-all")} style={{ width: `${(b.count / total) * 100}%` }} />
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {bars.map((b) => (
+          <div key={b.label} className="text-center">
+            <p className={cn("text-lg font-bold", b.text)}>{b.count}</p>
+            <p className="text-xs text-muted-foreground">{b.label}</p>
+          </div>
+        ))}
+      </div>
+      {sm2Stats.dueToday > 0 && (
+        <p className="text-xs text-accent font-semibold mt-3 text-center">{sm2Stats.dueToday} words due for review today</p>
+      )}
+    </div>
+  );
+}
+
+// ─── Review Settings Panel ────────────────────────────────────────────────────
+function ReviewSettingsPanel() {
+  const { data: settings, refetch } = trpc.review.getSettings.useQuery();
+  const updateMutation = trpc.review.updateSettings.useMutation({ onSuccess: () => refetch() });
+  const [open, setOpen] = useState(false);
+  const [newWordsCap, setNewWordsCap] = useState<number | null>(null);
+  const [reviewCap, setReviewCap] = useState<number | null>(null);
+
+  const currentNew = newWordsCap ?? settings?.dailyNewWords ?? 10;
+  const currentReview = reviewCap ?? settings?.dailyReviewCap ?? 20;
+
+  const handleSave = () => {
+    updateMutation.mutate({ dailyNewWords: currentNew, dailyReviewCap: currentReview });
+    setOpen(false);
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-2xl overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/20 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Settings2 className="w-4 h-4 text-muted-foreground" />
+          <p className="text-sm font-bold text-foreground">Review Settings</p>
+        </div>
+        <p className="text-xs text-muted-foreground">{currentNew} new · {currentReview} review per day</p>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-5 border-t border-border pt-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-foreground">New words per day</p>
+              <span className="text-sm font-bold text-primary">{currentNew}</span>
+            </div>
+            <input
+              type="range" min={1} max={30} step={1} value={currentNew}
+              onChange={(e) => setNewWordsCap(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>1</span><span>10</span><span>20</span><span>30</span>
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-foreground">Review words per day</p>
+              <span className="text-sm font-bold text-primary">{currentReview}</span>
+            </div>
+            <input
+              type="range" min={5} max={100} step={5} value={currentReview}
+              onChange={(e) => setReviewCap(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>5</span><span>25</span><span>50</span><span>100</span>
+            </div>
+          </div>
+          <button
+            onClick={handleSave}
+            disabled={updateMutation.isPending}
+            className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            {updateMutation.isPending ? "Saving…" : "Save Settings"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ProgressTab() {
@@ -198,6 +304,12 @@ export default function ProgressTab() {
             <p className="text-sm text-muted-foreground">Add words and take quizzes to see your progress here.</p>
           </div>
         )}
+
+        {/* SM-2 Mastery Breakdown */}
+        <SM2StatsPanel />
+
+        {/* Review Settings */}
+        <ReviewSettingsPanel />
       </div>
     </div>
   );

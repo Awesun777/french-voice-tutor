@@ -76,7 +76,13 @@ When the student says anything like "on commence une conversation", "let's have 
 # Web search
 - If the student asks about a current event, a fact you are unsure about, or anything that would benefit from up-to-date information, call the web_search function.
 - After getting results, summarise the key point in 1–2 sentences in French (or English if the student asked in English). Keep it conversational — don't read out a list.
-- If the search returns nothing useful, say so naturally: "Je n'ai pas trouvé grand-chose là-dessus."`;
+- If the search returns nothing useful, say so naturally: "Je n'ai pas trouvé grand-chose là-dessus."
+
+# Flagging difficult words
+- When the student clearly struggles with a French word or phrase — mispronounces it repeatedly, asks what it means, hesitates significantly, or gets it wrong multiple times — call the flag_word function with the term and its English translation.
+- Only flag words the student is actively struggling with, not every new word introduced.
+- After flagging, continue the conversation naturally. Don't announce that you flagged it.
+- Example triggers: student says "comment on dit... euh..." for a word they should know, or keeps mispronouncing the same word, or asks "qu'est-ce que ça veut dire ?" for a word from their vocabulary.`;
 
   if (userMemory && userMemory.trim()) {
     return base + `\n\n# What you know about this student (from past conversations)\n${userMemory.trim()}\nUse this naturally — bring it up when relevant, ask follow-up questions about things mentioned before (e.g. "Comment va ton chien ?"), but don't recite it all at once.`;
@@ -123,6 +129,19 @@ const VOICE_TOOLS = [
       type: "object",
       properties: {},
       required: [],
+    },
+  },
+  {
+    type: "function",
+    name: "flag_word",
+    description: "Called when the student clearly struggles with a French word or phrase during conversation — mispronounces it repeatedly, asks what it means, or hesitates significantly. Flag it for extra review in their spaced repetition queue.",
+    parameters: {
+      type: "object",
+      properties: {
+        term: { type: "string", description: "The French word or phrase the student struggled with" },
+        translation: { type: "string", description: "The English translation" },
+      },
+      required: ["term", "translation"],
     },
   },
 ];

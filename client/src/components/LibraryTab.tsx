@@ -479,7 +479,19 @@ export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: Sideb
                               <p className="text-xs text-primary/70 truncate mt-0.5">📌 {w.lessonSource}</p>
                             )}
                           </div>
-                          {isDue(w) && (
+                          {/* SM-2 status badge */}
+                          {w.sm2Status && w.sm2Status !== "new" && (
+                            <span className={cn(
+                              "text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0",
+                              w.sm2Status === "mastered" && "bg-green-500/15 text-green-400",
+                              w.sm2Status === "review" && "bg-blue-500/15 text-blue-400",
+                              w.sm2Status === "learning" && "bg-yellow-500/15 text-yellow-400",
+                            )}>
+                              {w.sm2Status === "mastered" ? "✓ mastered" : w.sm2Status === "review" ? "review" : "learning"}
+                            </span>
+                          )}
+                          {/* Due indicator: show if nextReviewAt is in the past */}
+                          {w.sm2NextReviewAt && w.sm2NextReviewAt <= Date.now() && w.sm2Status !== "mastered" && (
                             <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-semibold flex-shrink-0">
                               due
                             </span>

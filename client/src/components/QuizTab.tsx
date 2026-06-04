@@ -4,6 +4,7 @@ import { VocabEntry } from "@/types";
 import { Loader2, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useMemo } from "react";
 
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
@@ -25,6 +26,7 @@ function prioritySort(words: VocabEntry[]): VocabEntry[] {
   for (const w of words) tiers[priorityTier(w)].push(w);
   return tiers.flatMap((t) => shuffle(t));
 }
+// Legacy heuristic kept for free-practice mode only
 function isDue(w: VocabEntry) {
   if (w.starred) return true;
   const seen = w.quizCount ?? 0;
@@ -108,6 +110,28 @@ let savedQuizState: PersistedQuiz | null = null;
 
 export default function QuizTab() {
   const { data: words = [] } = trpc.vocab.list.useQuery();
+  const { data: dueWords = [] } = trpc.review.getDueToday.useQuery();
+  const { data: reviewSettings } = trpc.review.getSettings.useQuery();
+  const submitReviewMutation = trpc.review.submitReview.useMutation();
+  const dailyNewCap = reviewSettings?.dailyNewWords ?? 10;
+  const dailyReviewCap = reviewSettings?.dailyReviewCap ?? 20;
+
+  // SM-2 due queue: new words first (interleaved), then review words, capped by settings
+  const sm2DueWords = useMemo(() => {
+    const newWords = dueWords.filter((w: VocabEntry) => (w.sm2Repetitions ?? 0) === 0).slice(0, dailyNewCap);
+    const reviewWords = dueWords.filter((w: VocabEntry) => (w.sm2Repetitions ?? 0) > 0).slice(0, dailyReviewCap);
+    // Interleave: every 3 review words, insert 1 new word
+    const result: VocabEntry[] = [];
+    let ni = 0, ri = 0;
+    while (ni < newWords.length || ri < reviewWords.length) {
+      if (ri < reviewWords.length) result.push(reviewWords[ri++]);
+      if (ri < reviewWords.length) result.push(reviewWords[ri++]);
+      if (ri < reviewWords.length) result.push(reviewWords[ri++]);
+      if (ni < newWords.length) result.push(newWords[ni++]);
+    }
+    return result;
+  }, [dueWords, dailyNewCap, dailyReviewCap]);
+
   const [phase, setPhase] = useState<"select" | "quiz" | "done">(
     savedQuizState ? "quiz" : "select"
   );
@@ -200,9 +224,12 @@ export default function QuizTab() {
   });
 
   const buckets = buildBuckets(words.filter((w) => w.translation));
-  const quizableWords = selectedBucket !== null
-    ? (dueOnly ? buckets[selectedBucket]?.words.filter(isDue) : buckets[selectedBucket]?.words) ?? []
-    : (dueOnly ? words.filter((w) => w.translation && isDue(w)) : words.filter((w) => w.translation));
+  // In SM-2 due mode, use the real due queue; in free practice, use legacy bucket/filter
+  const quizableWords = dueOnly
+    ? sm2DueWords
+    : selectedBucket !== null
+      ? (buckets[selectedBucket]?.words ?? [])
+      : words.filter((w) => w.translation);
 
   // Persist quiz state to module-level variable whenever it changes
   const persistState = useCallback(() => {
@@ -228,8 +255,8 @@ export default function QuizTab() {
 
   const startQuiz = () => {
     if (quizableWords.length < 2) { toast.error("Need at least 2 words to start a quiz"); return; }
-    // Priority order: never tested → previously wrong → starred → previously correct
-    const pool = prioritySort(quizableWords).slice(0, 20);
+    // In SM-2 due mode, use the pre-sorted due queue; in free practice, use legacy priority sort
+    const pool = dueOnly ? quizableWords : prioritySort(quizableWords).slice(0, 20);
     const qs: QuizQuestion[] = pool.map((word) => ({
       word,
       isPhrase: word.entryKind === "phrase",
@@ -251,10 +278,15 @@ export default function QuizTab() {
   const handleSelect = (choice: { display: string; isCorrect: boolean }) => {
     if (selected || revealedDontKnow) return;
     setSelected(choice.display);
+    const word = questions[qIndex].word;
     if (choice.isCorrect) {
       setScore((s) => s + 1);
+      // Auto-grade SM-2: correct = grade 4 (Easy)
+      if (dueOnly) submitReviewMutation.mutate({ vocabId: word.id, grade: 4 });
     } else {
-      setWrongAnswers((wa) => [...wa, { word: questions[qIndex].word, chosenDisplay: choice.display }]);
+      setWrongAnswers((wa) => [...wa, { word, chosenDisplay: choice.display }]);
+      // Auto-grade SM-2: wrong = grade 1 (Again)
+      if (dueOnly) submitReviewMutation.mutate({ vocabId: word.id, grade: 1 });
     }
     setTimeout(() => nextQuestion(), 900);
   };
@@ -262,8 +294,10 @@ export default function QuizTab() {
   const handleDontKnow = () => {
     if (selected || revealedDontKnow) return;
     setRevealedDontKnow(true);
-    // Count as wrong
-    setWrongAnswers((wa) => [...wa, { word: questions[qIndex].word, chosenDisplay: "" }]);
+    const word = questions[qIndex].word;
+    setWrongAnswers((wa) => [...wa, { word, chosenDisplay: "" }]);
+    // Auto-grade SM-2: don't know = grade 1 (Again)
+    if (dueOnly) submitReviewMutation.mutate({ vocabId: word.id, grade: 1 });
   };
 
   const handleFillSubmit = async () => {
@@ -278,8 +312,13 @@ export default function QuizTab() {
         term: q.word.term,
       });
       setFillResult(result);
-      if (result.correct) setScore((s) => s + 1);
-      else setWrongAnswers((wa) => [...wa, { word: q.word, chosenDisplay: fillInput.trim() }]);
+      if (result.correct) {
+        setScore((s) => s + 1);
+        if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 4 });
+      } else {
+        setWrongAnswers((wa) => [...wa, { word: q.word, chosenDisplay: fillInput.trim() }]);
+        if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 1 });
+      }
     } catch {
       toast.error("Grading failed");
     }
@@ -291,6 +330,7 @@ export default function QuizTab() {
     const q = questions[qIndex];
     setFillResult({ correct: false, note: "" });
     setWrongAnswers((wa) => [...wa, { word: q.word, chosenDisplay: "" }]);
+    if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 1 });
   };
 
   const nextQuestion = () => {
@@ -626,8 +666,10 @@ export default function QuizTab() {
           {/* Due only toggle */}
           <div className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
             <div>
-              <p className="text-sm font-semibold text-foreground">Due for review only</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Spaced repetition scheduling</p>
+              <p className="text-sm font-semibold text-foreground">SM-2 Due Today</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {sm2DueWords.length} due · up to {dailyNewCap} new + {dailyReviewCap} review per day
+              </p>
             </div>
             <button
               onClick={() => setDueOnly(!dueOnly)}
