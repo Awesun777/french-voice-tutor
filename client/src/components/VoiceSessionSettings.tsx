@@ -12,7 +12,7 @@
  * Anna can have independent preferences.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export type SpeedLevel = "slow" | "normal" | "fast";
@@ -167,11 +167,18 @@ function ThreeStepSlider<T extends string>({
 export function VoiceSessionSettings({ agent, onChange, compact }: Props) {
   const [settings, setSettings] = useState<VoiceSettings>(() => loadSettings(agent));
 
-  // Sync to parent whenever settings change
+  // Keep a stable ref to onChange so the effect never re-fires due to a new
+  // inline arrow function being passed on every render (which would cause an
+  // infinite setState loop).
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
+
+  // Sync to parent whenever settings change — only depend on settings/agent,
+  // never on the onChange prop directly.
   useEffect(() => {
     saveSettings(agent, settings);
-    onChange?.(settings);
-  }, [settings, agent, onChange]);
+    onChangeRef.current?.(settings);
+  }, [settings, agent]);
 
   const update = (patch: Partial<VoiceSettings>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
