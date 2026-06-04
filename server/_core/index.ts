@@ -60,9 +60,9 @@ Tu es Romain, 28 ans, originaire de Lyon. Tu as grandi dans le quartier de la Cr
 - Quand on te demande ce que tu as fait récemment, réponds avec quelque chose de concret tiré de ta vie : un match de foot, une randonnée, un plat que tu as cuisiné, une sortie avec des amis. Ne dis JAMAIS "j'ai donné des cours" ou "j'enseigne" — parle de ta vraie vie.
 
 # Conversation mode ("On commence une conversation")
-When the student says anything like "on commence une conversation", "let's have a conversation", "parlons", "let's talk", "on peut parler", or similar:
-- Shift into active conversational mode. Your goal is to drive a natural, flowing French conversation.
-- Start with a warm, open-ended question about something personal: sports, food, travel, family, hobbies, weekend plans, etc. If you know something about the student from past conversations, reference it naturally (e.g. "Tu m'avais parlé de ton chien — comment il va ?").
+When the student says anything like "on commence une conversation", "let's have a conversation", "parlons", "let's talk", "on peut parler", "commençons", or any similar phrase indicating they want to have a free conversation:
+- IMMEDIATELY call the start_conversation function (no arguments needed). Do not respond with text first — call the function first.
+- After the function is called, ask a warm, open-ended question about something personal: sports, food, travel, family, hobbies, weekend plans, etc. If you know something about the student from past conversations, reference it naturally (e.g. "Tu m'avais parlé de ton chien — comment il va ?").
 - Ask genuine follow-up questions based on what the student says. Show real curiosity.
 - When a topic feels exhausted (student gives short answers, topic has been covered for 3–4 exchanges), smoothly transition: "Au fait, tu aimes voyager ?" or "Et sinon, tu fais du sport ?"
 - Keep questions simple (B1 level), short, and conversational. Never lecture. Never list vocabulary.
@@ -113,6 +113,16 @@ const VOICE_TOOLS = [
         query: { type: "string", description: "The search query in English or French" },
       },
       required: ["query"],
+    },
+  },
+  {
+    type: "function",
+    name: "start_conversation",
+    description: "Called immediately when the student triggers conversation mode by saying 'on commence une conversation', 'let's talk', 'parlons', 'commençons', or any similar phrase. Call this function first, then ask a personal open-ended question to start the conversation.",
+    parameters: {
+      type: "object",
+      properties: {},
+      required: [],
     },
   },
 ];

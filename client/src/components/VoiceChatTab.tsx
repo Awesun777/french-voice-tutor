@@ -601,6 +601,34 @@ export default function VoiceChatTab() {
           // ignore parse errors
         }
       }
+
+      // ── Tool call: start_conversation ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+      if (msg.type === "response.function_call_arguments.done" && msg.name === "start_conversation") {
+        // Acknowledge the tool call so the model can proceed
+        if (dcRef.current?.readyState === "open") {
+          dcRef.current.send(JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "function_call_output",
+              call_id: msg.call_id,
+              output: JSON.stringify({ success: true }),
+            },
+          }));
+          // Inject a system instruction to force immediate Q&A mode
+          dcRef.current.send(JSON.stringify({
+            type: "conversation.item.create",
+            item: {
+              type: "message",
+              role: "system",
+              content: [{
+                type: "input_text",
+                text: "Conversation mode activated. Ask the student one warm, personal, open-ended question right now in French. Do not explain what you are doing — just ask the question directly.",
+              }],
+            },
+          }));
+          dcRef.current.send(JSON.stringify({ type: "response.create" }));
+        }
+      }
     } catch {
       // ignore non-JSON messages
     }
