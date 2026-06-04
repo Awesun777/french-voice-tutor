@@ -456,6 +456,14 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         })
       )
       .mutation(async ({ input }) => {
+        // Normalize both answers for a fast exact-match check before calling the LLM.
+        // This handles the most common case (accent/case differences) without an LLM call.
+        const normalize = (s: string) =>
+          s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (normalize(input.userAnswer) === normalize(input.correctAnswer)) {
+          return { correct: true, note: "", grammarNote: "" };
+        }
+
         const prompt = `You are a French language teacher grading a student's answer.
 
 French term being tested: "${input.term}"
@@ -463,7 +471,8 @@ Expected answer: "${input.correctAnswer}"
 Student's answer: "${input.userAnswer}"
 
 Grading rules:
-- Accents are optional ("etudier" = "étudier" ✓)
+- Accents are ALWAYS optional — "etudier" = "étudier" ✓, "a" = "à" ✓, "ou" = "ù" ✓
+- Case is ALWAYS ignored — "Bonjour" = "bonjour" ✓
 - Minor unambiguous spelling variations are OK
 - Wrong word = incorrect
 - Completely missing answer = incorrect

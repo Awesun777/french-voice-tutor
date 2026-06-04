@@ -300,12 +300,28 @@ export default function QuizTab() {
     if (dueOnly) submitReviewMutation.mutate({ vocabId: word.id, grade: 1 });
   };
 
+  /** Strip accents and lowercase for accent-insensitive comparison */
+  const normalizeAnswer = (s: string) =>
+    s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
   const handleFillSubmit = async () => {
     if (fillResult) { nextQuestion(); return; }
     if (!fillInput.trim() || fillGrading) return;
     setFillGrading(true);
     const q = questions[qIndex];
     try {
+      // Fast-path: if the normalized answers match, mark correct immediately
+      // without an LLM call — this handles accent/case differences instantly.
+      const userNorm = normalizeAnswer(fillInput);
+      const correctNorm = normalizeAnswer(q.word.term);
+      if (userNorm === correctNorm) {
+        const result = { correct: true, note: "", grammarNote: "" };
+        setFillResult(result);
+        setScore((s) => s + 1);
+        if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 4 });
+        setFillGrading(false);
+        return;
+      }
       const result = await gradeMutation.mutateAsync({
         userAnswer: fillInput.trim(),
         correctAnswer: q.word.term,
