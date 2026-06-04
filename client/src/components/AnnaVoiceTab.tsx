@@ -17,6 +17,12 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  VoiceSessionSettings,
+  useVoiceSettings,
+  languageMixInstruction,
+  annaVoiceSpeed,
+} from "@/components/VoiceSessionSettings";
+import {
   Mic,
   MicOff,
   PhoneOff,
@@ -157,6 +163,11 @@ export function AnnaVoiceTab() {
   // doesn't trigger the "ending" state transition and save the session to DB.
   const isPausingRef = useRef(false);
 
+  // Voice settings (speed + language mix) — persisted in localStorage
+  const { settings: voiceSettings, update: updateVoiceSettings } = useVoiceSettings("anna");
+  const voiceSettingsRef = useRef(voiceSettings);
+  useEffect(() => { voiceSettingsRef.current = voiceSettings; }, [voiceSettings]);
+
   const utils = trpc.useUtils();
   const createSessionMutation = trpc.voiceSession.create.useMutation();
   const saveWordMutation = trpc.voiceSession.saveWord.useMutation();
@@ -265,19 +276,33 @@ export function AnnaVoiceTab() {
       // 3. Start ElevenLabs conversation
       const conversation = await Conversation.startSession({
         signedUrl,
+        // Apply speaking speed via ElevenLabs voice_settings
+        overrides: {
+          tts: {
+            voiceId: "nVPCtAFzgyMX3FZKNzH0",
+            voiceSettings: {
+              speed: annaVoiceSpeed(voiceSettingsRef.current.speed),
+            },
+          },
+        },
 
         onConnect: () => {
           setSessionState("active");
+          // Inject language mix instruction
+          const mixInstruction = languageMixInstruction(voiceSettingsRef.current.languageMix);
+          setTimeout(() => {
+            conversationRef.current?.sendContextualUpdate(
+              `[Session settings: ${mixInstruction}]`
+            );
+          }, 800);
           // Inject persistent user memory so Anna remembers past conversations.
-          // Use the ref (not the closure-captured query data) so we always get
-          // the latest value even if the query resolved after the component rendered.
           const memory = userMemoryRef.current;
           if (memory && memory.trim()) {
             setTimeout(() => {
               conversationRef.current?.sendContextualUpdate(
                 `[What you know about this student from past conversations: ${memory.trim()} — Use this naturally, bring it up when relevant, but don't recite it all at once.]`
               );
-            }, 1200);
+            }, 1400);
           }
         },
 
@@ -612,7 +637,7 @@ export function AnnaVoiceTab() {
 
         {/* Idle state */}
         {sessionState === "idle" && (
-          <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center gap-6">
+          <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-6 text-center gap-5">
             <div className="w-20 h-20 rounded-full bg-pink-500/10 border-2 border-pink-500/30 flex items-center justify-center">
               <Mic className="w-8 h-8 text-pink-400" />
             </div>
@@ -620,15 +645,29 @@ export function AnnaVoiceTab() {
               <h2 className="text-xl font-bold text-foreground mb-2">Talk to Anna</h2>
               <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
                 Your French tutor with a natural ElevenLabs voice. Have a conversation in French and say{" "}
-                <span className="text-pink-400 font-medium">"save that"</span> to add words to your library.
+                <span className="text-pink-400 font-medium">&ldquo;save that&rdquo;</span> to add words to your library.
               </p>
             </div>
+
+            {/* Conversation trigger hint */}
+            <div className="bg-pink-500/5 border border-pink-500/20 rounded-xl p-3 max-w-sm w-full text-left">
+              <p className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-1">Start a conversation</p>
+              <p className="text-xs text-muted-foreground">
+                Say <span className="text-pink-400 font-semibold">&ldquo;On commence une conversation&rdquo;</span> and Anna will ask you questions and keep the conversation going naturally.
+              </p>
+            </div>
+
+            {/* Session settings */}
+            <VoiceSessionSettings
+              agent="anna"
+              onChange={(s) => updateVoiceSettings(s)}
+            />
+
             <div className="bg-card border border-border rounded-xl p-4 text-left max-w-sm w-full space-y-2">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tips</p>
               <p className="text-xs text-muted-foreground">• Speak naturally — Anna will match your B1 level</p>
               <p className="text-xs text-muted-foreground">• Take your time — Anna won't interrupt you</p>
-              <p className="text-xs text-muted-foreground">• Say <span className="text-pink-400">"save that"</span> or <span className="text-pink-400">"ajoute ça"</span> to save a word</p>
-              <p className="text-xs text-muted-foreground">• Ask for explanations in English anytime</p>
+              <p className="text-xs text-muted-foreground">• Say <span className="text-pink-400">&ldquo;save that&rdquo;</span> or <span className="text-pink-400">&ldquo;ajoute ça&rdquo;</span> to save a word</p>
               <p className="text-xs text-muted-foreground">• Powered by ElevenLabs — natural, expressive voice</p>
             </div>
             <button

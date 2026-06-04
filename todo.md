@@ -240,3 +240,10 @@
 - [x] Wire memory injection into Romain voice/connect endpoint (authenticated, appended to system prompt)
 - [x] Wire memory injection into Anna session start via sendContextualUpdate after connect
 - [x] Wire memory extraction into voiceSession.end for both Romain and Anna (fire-and-forget LLM call)
+
+## Voice Settings (Round 25)
+- [ ] Shared SessionSettings component: 3-step speed slider (Slow/Normal/Fast) + 3-step language mix (All French / Mix / All English)
+- [ ] Persist settings in localStorage (romain_speed, anna_speed, language_mix)
+- [ ] Romain: apply speed and language mix via session.update instructions at session start and on change mid-session
+- [ ] Anna: apply speed via ElevenLabs voice_settings.speed at session start; apply language mix via sendContextualUpdate
+- [ ] Both: show "Say 'On commence une conversation' to start a natural conversation" hint in the UI

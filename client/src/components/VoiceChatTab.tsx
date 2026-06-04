@@ -21,6 +21,12 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  VoiceSessionSettings,
+  useVoiceSettings,
+  speedInstruction,
+  languageMixInstruction,
+} from "@/components/VoiceSessionSettings";
+import {
   Mic,
   MicOff,
   PhoneOff,
@@ -220,6 +226,13 @@ export default function VoiceChatTab() {
   const [showPastSessions, setShowPastSessions] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const [summarizeCount, setSummarizeCount] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Voice settings (speed + language mix) — persisted in localStorage
+  const { settings: voiceSettings, update: updateVoiceSettings } = useVoiceSettings("romain");
+  // Stable ref so session.update closures always see the latest settings
+  const voiceSettingsRef = useRef(voiceSettings);
+  useEffect(() => { voiceSettingsRef.current = voiceSettings; }, [voiceSettings]);
 
   // Track the in-progress AI streaming line (delta accumulation)
   const streamingLineIdRef = useRef<string | null>(null);
@@ -636,25 +649,26 @@ export default function VoiceChatTab() {
       dcRef.current = dc;
       dc.addEventListener("message", handleDataChannelMessage);
       dc.addEventListener("open", () => {
-        // Configure transcription and VAD via session.update (must be done over data channel,
-        // not at session creation time for the GA API).
+        // Configure transcription, VAD, and per-user settings via session.update.
+        // Must be done over data channel (not at session creation time for the GA API).
+        const s = voiceSettingsRef.current;
+        const settingsInstructions = [
+          speedInstruction(s.speed),
+          languageMixInstruction(s.languageMix),
+        ].join(" ");
         dc.send(JSON.stringify({
           type: "session.update",
           session: {
-            // Set voice (must be done over data channel for unified interface)
             voice: "marin",
-            // Enable Whisper transcription for user speech → gives us transcript events
             input_audio_transcription: { model: "whisper-1" },
-            // Noise-resistant VAD: higher threshold + adequate silence window.
-            // silence_duration_ms reduced from 2000 → 1200ms to cut fixed per-turn
-            // latency while still giving slow French speakers enough time to pause
-            // between words without triggering a premature response.
             turn_detection: {
               type: "server_vad",
               threshold: 0.6,
               prefix_padding_ms: 600,
               silence_duration_ms: 1200,
             },
+            // Append speed + language mix instructions to the session instructions
+            instructions: settingsInstructions,
           },
         }));
 
@@ -814,22 +828,36 @@ export default function VoiceChatTab() {
 
         {/* Idle state */}
         {sessionState === "idle" && (
-          <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center gap-6">
+          <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-6 text-center gap-5">
             <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
               <Mic className="w-8 h-8 text-primary" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-foreground mb-2">Talk to Romain</h2>
               <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
-                Your personal French tutor. Have a natural conversation in French, ask questions, and say <span className="text-primary font-medium">"save that"</span> to add any word or phrase to your library.
+                Your personal French tutor. Have a natural conversation in French, ask questions, and say <span className="text-primary font-medium">&ldquo;save that&rdquo;</span> to add any word or phrase to your library.
               </p>
             </div>
+
+            {/* Conversation trigger hint */}
+            <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 max-w-sm w-full text-left">
+              <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Start a conversation</p>
+              <p className="text-xs text-muted-foreground">
+                Say <span className="text-primary font-semibold">&ldquo;On commence une conversation&rdquo;</span> and Romain will ask you questions and keep the conversation going naturally.
+              </p>
+            </div>
+
+            {/* Session settings */}
+            <VoiceSessionSettings
+              agent="romain"
+              onChange={(s) => updateVoiceSettings(s)}
+            />
+
             <div className="bg-card border border-border rounded-xl p-4 text-left max-w-sm w-full space-y-2">
               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tips</p>
               <p className="text-xs text-muted-foreground">• Speak naturally — Romain will match your B1 level</p>
               <p className="text-xs text-muted-foreground">• Take your time — Romain won't interrupt you</p>
-              <p className="text-xs text-muted-foreground">• Say <span className="text-primary">"save that"</span> or <span className="text-primary">"ajoute ça"</span> to save a word</p>
-              <p className="text-xs text-muted-foreground">• Ask for explanations in English anytime</p>
+              <p className="text-xs text-muted-foreground">• Say <span className="text-primary">&ldquo;save that&rdquo;</span> or <span className="text-primary">&ldquo;ajoute ça&rdquo;</span> to save a word</p>
               <p className="text-xs text-muted-foreground">• End the session to get an AI summary</p>
             </div>
             <button
