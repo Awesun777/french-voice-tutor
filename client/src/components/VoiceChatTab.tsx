@@ -852,14 +852,6 @@ export default function VoiceChatTab() {
               </p>
             </div>
 
-            {/* Conversation trigger hint */}
-            <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 max-w-sm w-full text-left">
-              <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Start a conversation</p>
-              <p className="text-xs text-muted-foreground">
-                Say <span className="text-primary font-semibold">&ldquo;On commence une conversation&rdquo;</span> and Romain will ask you questions and keep the conversation going naturally.
-              </p>
-            </div>
-
             {/* Session settings */}
             <VoiceSessionSettings
               agent="romain"
@@ -980,16 +972,20 @@ export default function VoiceChatTab() {
 
             {/* ── Controls — centered End + Pause, mute + save on sides ── */}
             <div className="flex-shrink-0 border-t border-border px-4 py-4">
-              {/* Save word hint row */}
-              <div className="flex justify-center mb-3">
+              {/* Hint row: save word + conversation trigger */}
+              <div className="flex flex-wrap justify-center gap-2 mb-3">
                 <button
                   onClick={manualSave}
                   className="flex items-center gap-2 px-4 py-2 bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground rounded-xl text-xs font-medium transition-colors"
                   title="Save last word to dictionary"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
-                  Say "save that" to save a word
+                  Say &ldquo;save that&rdquo; to save a word
                 </button>
+                <div className="flex items-center gap-2 px-4 py-2 bg-primary/5 border border-primary/20 rounded-xl text-xs text-muted-foreground">
+                  <MessageSquare className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                  Say &ldquo;On commence une conversation&rdquo; to chat
+                </div>
               </div>
 
               {/* Main controls row — centered */}

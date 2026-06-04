@@ -649,14 +649,6 @@ export function AnnaVoiceTab() {
               </p>
             </div>
 
-            {/* Conversation trigger hint */}
-            <div className="bg-pink-500/5 border border-pink-500/20 rounded-xl p-3 max-w-sm w-full text-left">
-              <p className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-1">Start a conversation</p>
-              <p className="text-xs text-muted-foreground">
-                Say <span className="text-pink-400 font-semibold">&ldquo;On commence une conversation&rdquo;</span> and Anna will ask you questions and keep the conversation going naturally.
-              </p>
-            </div>
-
             {/* Session settings */}
             <VoiceSessionSettings
               agent="anna"
@@ -765,14 +757,19 @@ export function AnnaVoiceTab() {
 
             {/* Controls */}
             <div className="flex-shrink-0 border-t border-border px-4 py-4">
-              <div className="flex justify-center mb-3">
+              {/* Hint row: save word + conversation trigger */}
+              <div className="flex flex-wrap justify-center gap-2 mb-3">
                 <button
                   onClick={manualSave}
                   className="flex items-center gap-2 px-4 py-2 bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground rounded-xl text-xs font-medium transition-colors"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
-                  Say "save that" to save a word
+                  Say &ldquo;save that&rdquo; to save a word
                 </button>
+                <div className="flex items-center gap-2 px-4 py-2 bg-pink-500/5 border border-pink-500/20 rounded-xl text-xs text-muted-foreground">
+                  <MessageSquare className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
+                  Say &ldquo;On commence une conversation&rdquo; to chat
+                </div>
               </div>
               <div className="flex items-center justify-center gap-4">
                 <button
