@@ -249,6 +249,9 @@ export default function VoiceChatTab() {
 
   // Track the in-progress AI streaming line (delta accumulation)
   const streamingLineIdRef = useRef<string | null>(null);
+  // Track item IDs that were already handled by the streaming path so the
+  // response.output_item.done fallback never duplicates them
+  const finalizedItemIdsRef = useRef<Set<string>>(new Set());
 
   // ── Context pruning state ────────────────────────────────────────────────────
   // completedTurns: array of finalized (non-streaming) transcript lines with itemIds
@@ -489,6 +492,8 @@ export default function VoiceChatTab() {
         streamingLineIdRef.current = null;
 
         if (lineId) {
+          // Mark this item as handled by the streaming path so the fallback skips it
+          if (itemId) finalizedItemIdsRef.current.add(itemId);
           // Attach itemId to the finalized line so we can delete it later
           setTranscript((prev) =>
             prev.map((line) =>
@@ -507,13 +512,16 @@ export default function VoiceChatTab() {
       }
 
       // Fallback: if no delta events, capture full text from response.output_item.done
+      // Skip items already handled by the streaming path to prevent duplicates
       if (msg.type === "response.output_item.done") {
         const item = msg.item;
+        const itemId: string | undefined = item?.id;
+        // If this item was already finalized by the streaming transcript path, skip it
+        if (itemId && finalizedItemIdsRef.current.has(itemId)) return;
         if (item?.role === "assistant" && item?.content) {
           for (const c of item.content) {
             const text = c.transcript ?? c.text ?? "";
             if (text && !streamingLineIdRef.current) {
-              const itemId: string | undefined = item.id;
               setTranscript((prev) => {
                 const lastAI = [...prev].reverse().find((l) => l.role === "assistant");
                 if (lastAI && lastAI.text === text) return prev; // already there
@@ -642,7 +650,8 @@ export default function VoiceChatTab() {
       setEndedSummary(null);
       setSummarizeCount(0);
       streamingLineIdRef.current = null;
-       completedTurnsRef.current = [];
+      finalizedItemIdsRef.current.clear();
+      completedTurnsRef.current = [];
       isSummarizingRef.current = false;
       if (summarizeTimerRef.current) { clearTimeout(summarizeTimerRef.current); summarizeTimerRef.current = null; }
       // 1. Create a session record in our DB
@@ -1116,6 +1125,7 @@ export default function VoiceChatTab() {
                 setSessionId(null);
                 setSummarizeCount(0);
                 streamingLineIdRef.current = null;
+                finalizedItemIdsRef.current.clear();
                 completedTurnsRef.current = [];
                 isSummarizingRef.current = false;
               }}
