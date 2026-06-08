@@ -11,13 +11,16 @@ import * as db from "./db";
 import { ENV } from "./_core/env";
 
 /**
- * Call DeepSeek-V3 directly, bypassing the Manus built-in LLM quota.
+ * Call DeepSeek-V4-Flash directly, bypassing the Manus built-in LLM quota.
+ * Note: deepseek-v4-flash is a reasoning model — it writes its thinking to
+ * reasoning_content and the final answer to content. We need enough max_tokens
+ * to cover both the reasoning chain and the JSON output.
  */
 async function callDeepSeek(messages: { role: string; content: string }[], useJson?: boolean): Promise<string> {
   const body: Record<string, unknown> = {
-    model: "deepseek-chat",
+    model: "deepseek-v4-flash",
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
   };
   if (useJson) {
     body.response_format = { type: "json_object" };
