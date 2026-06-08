@@ -269,3 +269,25 @@
 - [x] Nav badge: show due count on Flashcards nav item
 - [x] Voice: add flag_word tool to Romain (server prompt + data channel handler, auto-submit grade-1 on session end)
 - [x] Voice: add flag_word tool to Anna (ElevenLabs API + clientTools handler, auto-submit grade-1 on session end)
+
+## Google Sign-In & Drive Integration (Round 27)
+- [x] Store GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET as project secrets
+- [x] DB: google_accounts table (userId, googleId, accessToken, refreshToken, email, name, picture, expiresAt)
+- [x] DB: google_drive_settings table (userId, sourceDocUrl, lastSyncedAt, exportFolderId)
+- [x] DB: pending_imports table (userId, term, translation, kind, dateKey, sourceDocUrl, status: pending/accepted/skipped)
+- [x] Backend: GET /api/auth/google/login — redirect to Google OAuth consent
+- [x] Backend: GET /api/auth/google/callback — exchange code, upsert user + google_account, issue JWT session cookie
+- [x] Backend: token refresh helper (auto-refresh expired access tokens using refresh token)
+- [x] Backend: tRPC google.status — returns connected google account info (email, picture)
+- [x] Backend: tRPC google.disconnect — removes google_account row, clears drive settings
+- [x] Backend: tRPC google.saveSettings — save source doc URL and export folder ID
+- [x] Backend: tRPC google.syncNow — fetch Google Doc, extract new words via AI, add to pending_imports
+- [x] Backend: tRPC google.getPendingImports — list pending imports for review queue
+- [x] Backend: tRPC google.acceptImport / google.skipImport — move pending items to library or discard
+- [x] Backend: tRPC google.exportLibrary — create/update a Google Doc in Drive with full library
+- [x] Frontend: Replace Manus login page with Google Sign-In button
+- [x] Frontend: Update useAuth hook to work with new Google JWT session (keep ctx.user shape identical)
+- [x] Frontend: Google Drive panel in My Library settings — connect button, source doc URL, Sync Now, export button
+- [x] Frontend: Pending review queue UI — badge count on Library nav, review modal with accept/skip per word
+- [x] Scheduled daily sync (node-cron, 08:00 UTC, per-user, queues pending imports)
+- [x] Data migration: reassign existing Manus user data to new Google account on first Google login

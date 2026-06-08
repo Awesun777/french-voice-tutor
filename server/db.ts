@@ -1,11 +1,17 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  GoogleAccount,
+  GoogleDriveSettings,
   InsertUser,
+  PendingImport,
   QuizSession,
   TutorMessage,
   VocabEntry,
   VoiceSession,
+  googleAccounts,
+  googleDriveSettings,
+  pendingImports,
   quizSessions,
   tutorMessages,
   users,
@@ -551,4 +557,139 @@ export async function updateReviewSettings(
     .insert(reviewSettings)
     .values({ userId, dailyNewWords: patch.dailyNewWords ?? 10, dailyReviewCap: patch.dailyReviewCap ?? 20 })
     .onDuplicateKeyUpdate({ set: patch });
+}
+
+// ─── Google Account helpers ────────────────────────────────────────────────────
+
+export async function upsertGoogleAccount(data: {
+  userId: number;
+  googleId: string;
+  email: string;
+  name?: string | null;
+  picture?: string | null;
+  accessToken: string;
+  refreshToken?: string | null;
+  expiresAt: number;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .insert(googleAccounts)
+    .values({
+      userId: data.userId,
+      googleId: data.googleId,
+      email: data.email,
+      name: data.name ?? null,
+      picture: data.picture ?? null,
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken ?? null,
+      expiresAt: data.expiresAt,
+    })
+    .onDuplicateKeyUpdate({
+      set: {
+        email: data.email,
+        name: data.name ?? null,
+        picture: data.picture ?? null,
+        accessToken: data.accessToken,
+        ...(data.refreshToken ? { refreshToken: data.refreshToken } : {}),
+        expiresAt: data.expiresAt,
+      },
+    });
+}
+
+export async function getGoogleAccountByUserId(userId: number): Promise<GoogleAccount | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(googleAccounts).where(eq(googleAccounts.userId, userId)).limit(1);
+  return rows[0];
+}
+
+export async function getGoogleAccountByGoogleId(googleId: string): Promise<GoogleAccount | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(googleAccounts).where(eq(googleAccounts.googleId, googleId)).limit(1);
+  return rows[0];
+}
+
+export async function deleteGoogleAccount(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(googleAccounts).where(eq(googleAccounts.userId, userId));
+}
+
+export async function updateGoogleTokens(userId: number, accessToken: string, expiresAt: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(googleAccounts)
+    .set({ accessToken, expiresAt })
+    .where(eq(googleAccounts.userId, userId));
+}
+
+// ─── Google Drive Settings helpers ────────────────────────────────────────────
+
+export async function getGoogleDriveSettings(userId: number): Promise<GoogleDriveSettings | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(googleDriveSettings).where(eq(googleDriveSettings.userId, userId)).limit(1);
+  return rows[0];
+}
+
+export async function upsertGoogleDriveSettings(
+  userId: number,
+  patch: { sourceDocUrl?: string | null; exportFolderId?: string | null; lastSyncedAt?: number | null }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .insert(googleDriveSettings)
+    .values({ userId, ...patch })
+    .onDuplicateKeyUpdate({ set: patch });
+}
+
+// ─── Pending Imports helpers ───────────────────────────────────────────────────
+
+export async function getPendingImports(userId: number): Promise<PendingImport[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(pendingImports)
+    .where(and(eq(pendingImports.userId, userId), eq(pendingImports.status, "pending")))
+    .orderBy(desc(pendingImports.createdAt));
+}
+
+export async function insertPendingImports(
+  userId: number,
+  items: Array<{ term: string; translation: string; kind: "word" | "phrase"; dateKey: string }>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  if (items.length === 0) return;
+  await db.insert(pendingImports).values(
+    items.map((item) => ({ userId, ...item, status: "pending" as const }))
+  );
+}
+
+export async function updatePendingImportStatus(
+  id: number,
+  userId: number,
+  status: "accepted" | "skipped"
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(pendingImports)
+    .set({ status })
+    .where(and(eq(pendingImports.id, id), eq(pendingImports.userId, userId)));
+}
+
+export async function countPendingImports(userId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ id: pendingImports.id })
+    .from(pendingImports)
+    .where(and(eq(pendingImports.userId, userId), eq(pendingImports.status, "pending")));
+  return rows.length;
 }

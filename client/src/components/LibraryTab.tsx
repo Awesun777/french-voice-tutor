@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry, SidebarTab, ImportItem } from "@/types";
-import { Star, Trash2, Search, Download, Upload, Loader2, ChevronDown, ChevronRight, Pencil, Check, X, AlertTriangle } from "lucide-react";
+import { Star, Trash2, Search, Download, Upload, Loader2, ChevronDown, ChevronRight, Pencil, Check, X, AlertTriangle, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ImportModal from "./ImportModal";
+import { GoogleDrivePanel } from "./GoogleDrivePanel";
 
 function todayKey() { return new Date().toISOString().split("T")[0]; }
 function yesterdayKey() { return new Date(Date.now() - 86400000).toISOString().split("T")[0]; }
@@ -204,6 +205,7 @@ function GroupHeader({
 export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void }) {
   const [search, setSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [showDrivePanel, setShowDrivePanel] = useState(false);
   const [filterStarred, setFilterStarred] = useState(false);
   // Track which groups are collapsed; default: all open
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -394,9 +396,28 @@ export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: Sideb
             >
               <Upload className="w-3.5 h-3.5" /> Import
             </button>
+            <button
+              onClick={() => setShowDrivePanel(!showDrivePanel)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
+                showDrivePanel
+                  ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                  : "bg-card border border-border text-muted-foreground hover:text-foreground"
+              )}
+              title="Google Drive Sync"
+            >
+              <Cloud className="w-3.5 h-3.5" /> Drive
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Google Drive Panel */}
+      {showDrivePanel && (
+        <div className="flex-shrink-0 border-b border-border px-4 py-4 bg-background/50">
+          <GoogleDrivePanel />
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4">

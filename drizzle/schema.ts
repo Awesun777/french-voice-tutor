@@ -131,3 +131,52 @@ export const reviewSettings = mysqlTable("review_settings", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type ReviewSettings = typeof reviewSettings.$inferSelect;
+
+/**
+ * Google OAuth tokens per user — one row per connected Google account.
+ * accessToken is short-lived; refreshToken is used to obtain new access tokens.
+ */
+export const googleAccounts = mysqlTable("google_accounts", {
+  userId: int("userId").primaryKey(),
+  googleId: varchar("googleId", { length: 128 }).notNull().unique(),
+  email: varchar("email", { length: 320 }).notNull(),
+  name: text("name"),
+  picture: text("picture"),
+  accessToken: text("accessToken").notNull(),
+  refreshToken: text("refreshToken"),
+  expiresAt: bigint("expiresAt", { mode: "number" }).notNull(), // UTC ms
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type GoogleAccount = typeof googleAccounts.$inferSelect;
+
+/**
+ * Per-user Google Drive sync settings.
+ * sourceDocUrl: the Google Doc URL to sync from.
+ * exportFolderId: the Drive folder ID to export library into.
+ * lastSyncedAt: UTC ms timestamp of last successful sync.
+ */
+export const googleDriveSettings = mysqlTable("google_drive_settings", {
+  userId: int("userId").primaryKey(),
+  sourceDocUrl: text("sourceDocUrl"),
+  exportFolderId: varchar("exportFolderId", { length: 256 }),
+  lastSyncedAt: bigint("lastSyncedAt", { mode: "number" }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type GoogleDriveSettings = typeof googleDriveSettings.$inferSelect;
+
+/**
+ * Words extracted from a user's Google Doc sync that are pending review.
+ * status: 'pending' | 'accepted' | 'skipped'
+ */
+export const pendingImports = mysqlTable("pending_imports", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  term: varchar("term", { length: 512 }).notNull(),
+  translation: varchar("translation", { length: 512 }).notNull(),
+  kind: mysqlEnum("kind", ["word", "phrase"]).default("word").notNull(),
+  dateKey: varchar("dateKey", { length: 100 }).notNull(),
+  status: mysqlEnum("status", ["pending", "accepted", "skipped"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type PendingImport = typeof pendingImports.$inferSelect;

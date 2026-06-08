@@ -14,15 +14,21 @@ import {
   addVocabEntries,
   addVocabEntry,
   clearTutorHistory,
+  countPendingImports,
   createVoiceSession,
+  deleteGoogleAccount,
   deleteVocabEntry,
   endVoiceSession,
+  getGoogleAccountByUserId,
+  getGoogleDriveSettings,
+  getPendingImports,
   getQuizSessions,
   getTutorHistory,
   getVocabByUser,
   getVoiceSessions,
   getVocabStats,
   getUserMemory,
+  insertPendingImports,
   updateUserMemory,
   saveQuizSession,
   saveTutorMessage,
@@ -35,7 +41,16 @@ import {
   getSm2Stats,
   getReviewSettings,
   updateReviewSettings,
+  updatePendingImportStatus,
+  upsertGoogleDriveSettings,
 } from "./db";
+import {
+  extractDocId,
+  extractVocabFromText,
+  exportLibraryToGoogleDoc,
+  fetchGoogleDocText,
+  getValidAccessToken,
+} from "./googleDrive";
 
 // ─── Dictionary search cache (DB-persisted + in-memory L1) ───────────────────
 // L1: in-memory Map for ultra-fast repeated lookups within the same process.
@@ -1185,6 +1200,165 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         await updateReviewSettings(ctx.user.id, input);
         return { ok: true };
       }),
+  }),
+
+  // ─── Google Drive ────────────────────────────────────────────────────────────
+  google: router({
+    /** Returns the connected Google account info (or null if not connected) */
+    status: protectedProcedure.query(async ({ ctx }) => {
+      const account = await getGoogleAccountByUserId(ctx.user.id);
+      const settings = await getGoogleDriveSettings(ctx.user.id);
+      const pendingCount = await countPendingImports(ctx.user.id);
+      if (!account) return { connected: false, pendingCount };
+      return {
+        connected: true,
+        email: account.email,
+        name: account.name,
+        picture: account.picture,
+        sourceDocUrl: settings?.sourceDocUrl ?? null,
+        exportDocId: settings?.exportFolderId ?? null,
+        lastSyncedAt: settings?.lastSyncedAt ?? null,
+        pendingCount,
+      };
+    }),
+
+    /** Disconnect Google account */
+    disconnect: protectedProcedure.mutation(async ({ ctx }) => {
+      await deleteGoogleAccount(ctx.user.id);
+      return { ok: true };
+    }),
+
+    /** Save Drive sync settings (source doc URL) */
+    saveSettings: protectedProcedure
+      .input(z.object({
+        sourceDocUrl: z.string().url().nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await upsertGoogleDriveSettings(ctx.user.id, {
+          sourceDocUrl: input.sourceDocUrl ?? null,
+        });
+        return { ok: true };
+      }),
+
+    /** Fetch the linked Google Doc and queue new words for review */
+    syncNow: protectedProcedure.mutation(async ({ ctx }) => {
+      const settings = await getGoogleDriveSettings(ctx.user.id);
+      if (!settings?.sourceDocUrl) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No source document URL configured" });
+      }
+
+      const docId = extractDocId(settings.sourceDocUrl);
+      if (!docId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid Google Doc URL" });
+      }
+
+      let accessToken: string;
+      try {
+        accessToken = await getValidAccessToken(ctx.user.id);
+      } catch (e: any) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: e.message ?? "Google account not connected" });
+      }
+
+      const docText = await fetchGoogleDocText(docId, accessToken);
+
+      // Get existing terms for deduplication
+      const existingVocab = await getVocabByUser(ctx.user.id);
+      const normalize = (s: string) =>
+        s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const existingTerms = new Set(existingVocab.map((v) => normalize(v.term)));
+
+      // Also exclude already-pending imports
+      const pending = await getPendingImports(ctx.user.id);
+      for (const p of pending) existingTerms.add(normalize(p.term));
+
+      const extracted = await extractVocabFromText(docText, existingTerms);
+
+      if (extracted.length > 0) {
+        const dateKey = new Date().toISOString().split("T")[0];
+        await insertPendingImports(
+          ctx.user.id,
+          extracted.map((e) => ({ ...e, dateKey }))
+        );
+      }
+
+      await upsertGoogleDriveSettings(ctx.user.id, { lastSyncedAt: Date.now() });
+
+      return { found: extracted.length };
+    }),
+
+    /** Get pending imports for review */
+    getPendingImports: protectedProcedure.query(async ({ ctx }) => {
+      return getPendingImports(ctx.user.id);
+    }),
+
+    /** Accept a pending import — moves it to the vocab library */
+    acceptImport: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const pending = await getPendingImports(ctx.user.id);
+        const item = pending.find((p) => p.id === input.id);
+        if (!item) throw new TRPCError({ code: "NOT_FOUND" });
+        await addVocabEntry(ctx.user.id, {
+          term: item.term,
+          translation: item.translation,
+          entryKind: item.kind,
+          dateKey: item.dateKey,
+        });
+        await updatePendingImportStatus(input.id, ctx.user.id, "accepted");
+        return { ok: true };
+      }),
+
+    /** Accept all pending imports at once */
+    acceptAllImports: protectedProcedure.mutation(async ({ ctx }) => {
+      const pending = await getPendingImports(ctx.user.id);
+      if (pending.length === 0) return { added: 0 };
+      const dateKey = new Date().toISOString().split("T")[0];
+      await addVocabEntries(
+        ctx.user.id,
+        pending.map((p) => ({
+          term: p.term,
+          translation: p.translation,
+          entryKind: p.kind,
+          dateKey: p.dateKey || dateKey,
+        }))
+      );
+      for (const p of pending) {
+        await updatePendingImportStatus(p.id, ctx.user.id, "accepted");
+      }
+      return { added: pending.length };
+    }),
+
+    /** Skip a pending import */
+    skipImport: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await updatePendingImportStatus(input.id, ctx.user.id, "skipped");
+        return { ok: true };
+      }),
+
+    /** Export the user's full vocab library to a Google Doc */
+    exportLibrary: protectedProcedure.mutation(async ({ ctx }) => {
+      let accessToken: string;
+      try {
+        accessToken = await getValidAccessToken(ctx.user.id);
+      } catch (e: any) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: e.message ?? "Google account not connected" });
+      }
+
+      const vocab = await getVocabByUser(ctx.user.id);
+      const settings = await getGoogleDriveSettings(ctx.user.id);
+
+      const docId = await exportLibraryToGoogleDoc(
+        accessToken,
+        vocab,
+        settings?.exportFolderId ?? null
+      );
+
+      // Save the doc ID so future exports update the same doc
+      await upsertGoogleDriveSettings(ctx.user.id, { exportFolderId: docId });
+
+      return { docId, url: `https://docs.google.com/document/d/${docId}/edit` };
+    }),
   }),
 });
 
