@@ -421,21 +421,17 @@ export function GoogleDrivePanel() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (!driveSettings) return;
-                      // Gemini requires GOOGLE_AI_API_KEY — show info toast if not available
-                      toast.info("Gemini 2.5 Flash will be available once you add your Google AI API key in settings.");
+                      setSelectedModel("gemini-2.5-flash");
+                      saveSettingsMutation.mutate({ extractionModel: "gemini-2.5-flash" });
                     }}
-                    disabled
-                    title="Add GOOGLE_AI_API_KEY to enable"
                     className={cn(
-                      "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all opacity-50 cursor-not-allowed",
+                      "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all",
                       selectedModel === "gemini-2.5-flash"
                         ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-transparent text-muted-foreground border-border"
+                        : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
                     )}
                   >
                     Gemini 2.5 Flash
-                    <span className="ml-1 text-[10px] opacity-70">(API key needed)</span>
                   </button>
                 </div>
               </div>
