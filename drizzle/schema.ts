@@ -170,6 +170,11 @@ export const googleDriveSettings = mysqlTable("google_drive_settings", {
   extractionModel: mysqlEnum("extractionModel", ["deepseek-v4-flash", "gemini-2.5-flash"])
     .default("deepseek-v4-flash")
     .notNull(),
+  /**
+   * Google Docs revision ID from the last successful sync.
+   * Used for incremental sync: if the revision hasn't changed, skip LLM extraction entirely.
+   */
+  lastRevisionId: varchar("lastRevisionId", { length: 256 }),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type GoogleDriveSettings = typeof googleDriveSettings.$inferSelect;

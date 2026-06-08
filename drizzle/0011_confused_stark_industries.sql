@@ -1,0 +1,1 @@
+ALTER TABLE `google_drive_settings` ADD `lastRevisionId` varchar(256);

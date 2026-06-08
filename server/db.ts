@@ -641,7 +641,13 @@ export async function getGoogleDriveSettings(userId: number): Promise<GoogleDriv
 
 export async function upsertGoogleDriveSettings(
   userId: number,
-  patch: { sourceDocUrl?: string | null; exportFolderId?: string | null; lastSyncedAt?: number | null }
+  patch: {
+    sourceDocUrl?: string | null;
+    exportFolderId?: string | null;
+    lastSyncedAt?: number | null;
+    extractionModel?: "deepseek-v4-flash" | "gemini-2.5-flash";
+    lastRevisionId?: string | null;
+  }
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;

@@ -39,7 +39,13 @@ async function syncUserDrive(userId: number): Promise<{ found: number }> {
       return { found: 0 };
     }
 
-    const docText = await fetchGoogleDocText(docId, accessToken);
+    const { text: docText, revisionId } = await fetchGoogleDocText(docId, accessToken);
+
+    // Incremental sync: skip LLM if the document hasn't changed since last sync
+    if (revisionId && settings.lastRevisionId && revisionId === settings.lastRevisionId) {
+      console.log(`[DailySync] User ${userId}: doc unchanged (rev ${revisionId}), skipping`);
+      return { found: 0 };
+    }
 
     const existingVocab = await getVocabByUser(userId);
     const normalize = (s: string) =>
@@ -59,7 +65,10 @@ async function syncUserDrive(userId: number): Promise<{ found: number }> {
       );
     }
 
-    await upsertGoogleDriveSettings(userId, { lastSyncedAt: Date.now() });
+    await upsertGoogleDriveSettings(userId, {
+      lastSyncedAt: Date.now(),
+      ...(revisionId ? { lastRevisionId: revisionId } : {}),
+    });
 
     return { found: extracted.length };
   } catch (err) {

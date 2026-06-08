@@ -3,16 +3,25 @@
  *
  * - refreshGoogleAccessToken   : use refresh token to get a new access token
  * - getValidAccessToken        : returns a valid access token (refreshes if needed)
- * - fetchGoogleDocText         : export a Google Doc as plain text
- * - extractVocabGroups         : use LLM to extract French words grouped by date/topic
+ * - fetchGoogleDocText         : export a Google Doc as plain text + revisionId
+ * - extractVocabGroups         : extract French words grouped by date/topic using line-batched LLM calls
  * - exportLibraryToGoogleDoc   : create or update a Google Doc with the user's vocab library
+ *
+ * Extraction strategy (Round 32 rebuild):
+ *   1. Split document text into individual lines (split on \n)
+ *   2. Regex-detect date headers and topic headers as lines are processed
+ *   3. Batch 100–150 lines per LLM call, never breaking mid-line
+ *   4. Compact translation-only prompt: LLM returns [{term, translation, kind}] per batch
+ *   5. fetchGoogleDocText now returns { text, revisionId } for incremental sync
  */
 import * as db from "./db";
 import { ENV } from "./_core/env";
 
+// ── LLM callers ───────────────────────────────────────────────────────────────
+
 /**
  * Call DeepSeek-V4-Flash directly, bypassing the Manus built-in LLM quota.
- * Note: deepseek-v4-flash is a reasoning model — it writes its thinking to
+ * deepseek-v4-flash is a reasoning model — it writes its thinking to
  * reasoning_content and the final answer to content. We need enough max_tokens
  * to cover both the reasoning chain and the JSON output.
  */
@@ -38,7 +47,7 @@ async function callDeepSeek(messages: { role: string; content: string }[], useJs
     throw new Error(`DeepSeek API error ${res.status}: ${err}`);
   }
   const data = await res.json() as { choices: { message: { content: string } }[] };
-  return data.choices[0]?.message?.content ?? "{}";
+  return data.choices[0]?.message?.content ?? "[]";
 }
 
 /**
@@ -49,7 +58,6 @@ async function callGemini(messages: { role: string; content: string }[]): Promis
   if (!ENV.googleAiApiKey) {
     throw new Error("GOOGLE_AI_API_KEY is not configured. Please add your Google AI API key in settings.");
   }
-  // Separate system message from user/assistant messages
   const systemMsg = messages.find((m) => m.role === "system");
   const chatMessages = messages.filter((m) => m.role !== "system");
 
@@ -78,16 +86,14 @@ async function callGemini(messages: { role: string; content: string }[]): Promis
     throw new Error(`Gemini API error ${res.status}: ${err}`);
   }
   const data = await res.json() as { candidates: { content: { parts: { text: string }[] } }[] };
-  return data.candidates[0]?.content?.parts[0]?.text ?? "{}";
+  return data.candidates[0]?.content?.parts[0]?.text ?? "[]";
 }
 
-const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-const DOCS_EXPORT_URL = (docId: string) =>
-  `https://docs.googleapis.com/v1/documents/${docId}`;
-const DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
-const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
-
 // ── Token management ──────────────────────────────────────────────────────────
+
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const DOCS_API_URL = (docId: string) => `https://docs.googleapis.com/v1/documents/${docId}`;
+const DRIVE_UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
 
 export async function refreshGoogleAccessToken(refreshToken: string): Promise<{
   access_token: string;
@@ -147,10 +153,14 @@ export function extractDocId(url: string): string | null {
 }
 
 /**
- * Fetch a Google Doc and return its plain-text content.
+ * Fetch a Google Doc and return its plain-text content plus the document's
+ * revisionId (used for incremental sync — skip LLM if doc hasn't changed).
  */
-export async function fetchGoogleDocText(docId: string, accessToken: string): Promise<string> {
-  const res = await fetch(`${DOCS_EXPORT_URL(docId)}`, {
+export async function fetchGoogleDocText(
+  docId: string,
+  accessToken: string
+): Promise<{ text: string; revisionId: string | null }> {
+  const res = await fetch(DOCS_API_URL(docId), {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
@@ -160,6 +170,7 @@ export async function fetchGoogleDocText(docId: string, accessToken: string): Pr
   }
 
   const doc = await res.json() as {
+    revisionId?: string;
     body?: {
       content?: Array<{
         paragraph?: {
@@ -180,10 +191,90 @@ export async function fetchGoogleDocText(docId: string, accessToken: string): Pr
     if (text.trim()) lines.push(text.trim());
   }
 
-  return lines.join("\n");
+  return {
+    text: lines.join("\n"),
+    revisionId: doc.revisionId ?? null,
+  };
 }
 
-// ── AI extraction with smart grouping ────────────────────────────────────────
+// ── Line-aligned batching ─────────────────────────────────────────────────────
+
+const BATCH_MIN_LINES = 100;
+const BATCH_MAX_LINES = 150;
+
+/**
+ * Split an array of lines into batches of 100–150 lines each.
+ * Never breaks mid-line (each line is kept intact).
+ */
+function batchLines(lines: string[]): string[][] {
+  const batches: string[][] = [];
+  let i = 0;
+  while (i < lines.length) {
+    // Take up to BATCH_MAX_LINES, but try to end at a natural boundary
+    // (blank line or date header) if we're past BATCH_MIN_LINES
+    let end = Math.min(i + BATCH_MAX_LINES, lines.length);
+    if (end < lines.length && end - i > BATCH_MIN_LINES) {
+      // Look backwards for a blank line or date-like header to break on
+      for (let j = end - 1; j >= i + BATCH_MIN_LINES; j--) {
+        if (!lines[j].trim() || isDateHeader(lines[j])) {
+          end = j + 1;
+          break;
+        }
+      }
+    }
+    batches.push(lines.slice(i, end));
+    i = end;
+  }
+  return batches;
+}
+
+// ── Regex date/group detection ────────────────────────────────────────────────
+
+/**
+ * Patterns that identify a date header line.
+ * Matches: "June 5", "5 juin", "2025-06-05", "Monday June 3", "June 3rd, 2025", etc.
+ */
+const DATE_PATTERNS = [
+  // ISO date: 2025-06-05
+  /^\d{4}-\d{2}-\d{2}$/,
+  // English: June 5 / June 5, 2025 / Monday June 3 / June 3rd
+  /^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday,?\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?$/i,
+  // French: 5 juin / 5 juin 2025 / lundi 5 juin
+  /^(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche,?\s+)?\d{1,2}\s+(?:janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)(?:\s+\d{4})?$/i,
+  // Numeric: 05/06/2025 or 05.06.2025
+  /^\d{1,2}[./]\d{1,2}[./]\d{2,4}$/,
+];
+
+function isDateHeader(line: string): boolean {
+  const trimmed = line.trim();
+  return DATE_PATTERNS.some((re) => re.test(trimmed));
+}
+
+/**
+ * Patterns that identify a topic/theme sub-header line.
+ * Matches: "At the restaurant:", "TRAVEL VOCABULARY", "[Chapter 3]", "Verbs:"
+ */
+const TOPIC_PATTERNS = [
+  /^.{2,60}:$/, // ends with colon
+  /^\[.{1,60}\]$/, // bracketed
+  /^[A-Z][A-Z\s]{3,60}$/, // ALL CAPS (at least 4 chars)
+  /^──.+──$/, // our own export format separator
+];
+
+function isTopicHeader(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length < 2 || trimmed.length > 80) return false;
+  return TOPIC_PATTERNS.some((re) => re.test(trimmed));
+}
+
+/**
+ * Check if a date string is missing a year component.
+ */
+function isYearMissing(rawDate: string): boolean {
+  return !/\d{4}/.test(rawDate);
+}
+
+// ── AI extraction ─────────────────────────────────────────────────────────────
 
 export interface ExtractedWord {
   term: string;
@@ -201,70 +292,58 @@ export interface ExtractedGroup {
   words: ExtractedWord[];
 }
 
-const CHUNK_SIZE = 6000;   // characters per LLM call
-const CHUNK_OVERLAP = 300; // overlap to avoid cutting mid-group header
-
-/**
- * Split text into overlapping chunks so no vocabulary is missed due to token limits.
- * Tries to split on newlines to avoid cutting mid-line.
- */
-function chunkText(text: string): string[] {
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < text.length) {
-    let end = Math.min(start + CHUNK_SIZE, text.length);
-    // Try to break on a newline boundary
-    if (end < text.length) {
-      const lastNewline = text.lastIndexOf("\n", end);
-      if (lastNewline > start + CHUNK_SIZE / 2) end = lastNewline + 1;
-    }
-    chunks.push(text.slice(start, end));
-    if (end === text.length) break;
-    start = end - CHUNK_OVERLAP;
-  }
-  return chunks;
-}
-
 export type ExtractionModel = "deepseek-v4-flash" | "gemini-2.5-flash";
 
 /**
- * Run the LLM on a single chunk and return structured groups.
- * model: which AI to use for extraction (defaults to deepseek-v4-flash)
+ * Compact translation-only prompt.
+ * The LLM receives a batch of lines and returns a flat JSON array of
+ * {term, translation, kind} objects. No date/group detection needed here —
+ * that is handled by the regex pre-pass above.
+ * This keeps the output small and predictable, avoiding the 8192-token truncation
+ * that plagued the old full-document prompt.
  */
-async function extractGroupsFromChunk(chunk: string, model: ExtractionModel = "deepseek-v4-flash"): Promise<ExtractedGroup[]> {
-  const currentYear = new Date().getFullYear();
-  const systemPrompt = `You are a French vocabulary extractor that understands document structure.
+async function translateBatch(
+  lines: string[],
+  model: ExtractionModel
+): Promise<ExtractedWord[]> {
+  const batchText = lines.join("\n");
 
-Analyse the text and extract French vocabulary, preserving the document's own grouping structure:
-1. Look for date headers (e.g. "June 5", "2025-06-05", "5 juin 2024", "Monday June 3rd")
-2. Look for topic/theme headers (e.g. "At the restaurant", "Chapter 3", "Travel vocabulary")
-3. Group words under the section they belong to
+  const systemPrompt = `You are a French-to-English vocabulary translator.
+Given a list of lines from a French class notebook, identify every French word or phrase that a language learner would want to save, and translate each one to English.
 
-Return a JSON object with a "groups" array. Each group has:
-- rawDate: the date string exactly as written in the doc (null if no date found for this group)
-- yearMissing: true if a date is present but the year is not explicitly stated
-- topicLabel: the topic/theme label if present (null if none)
-- words: array of { term, translation, kind } for French vocabulary in this group
+Return a JSON array (no wrapper object) where each element is:
+{ "term": "<French word/phrase>", "translation": "<English meaning>", "kind": "word" | "phrase" }
 
 Rules:
-- kind is "word" for single words or short expressions, "phrase" for full sentences
-- Only extract items that are clearly French vocabulary a learner would save
-- If the text has no grouping at all, return a single group with rawDate=null, topicLabel=null
-- Do not invent dates or topics that are not in the text
-- Current year is ${currentYear} — use this only as context, do not auto-fill missing years
-- Always return valid JSON matching the schema exactly`;
+- "kind" is "word" for single words or short expressions (≤4 words), "phrase" for longer sentences
+- Skip lines that are clearly date headers, topic headers, page numbers, or non-French content
+- Skip English words or already-translated pairs
+- Do NOT invent words — only extract what is explicitly present in the text
+- Return an empty array [] if no French vocabulary is found
+- Return ONLY the JSON array, no markdown, no explanation`;
 
   const msgs = [
     { role: "system", content: systemPrompt },
-    { role: "user", content: `Extract French vocabulary groups from this text:\n\n${chunk}` },
+    { role: "user", content: batchText },
   ];
+
   const raw = model === "gemini-2.5-flash"
     ? await callGemini(msgs)
     : await callDeepSeek(msgs, true);
 
+  // The DeepSeek json_object mode wraps arrays in an object sometimes.
+  // Handle both {"items":[...]} and [...] responses.
   try {
-    const parsed = JSON.parse(raw);
-    return (parsed.groups ?? []) as ExtractedGroup[];
+    const trimmed = raw.trim();
+    // Try direct array parse
+    if (trimmed.startsWith("[")) {
+      return JSON.parse(trimmed) as ExtractedWord[];
+    }
+    // Try unwrapping common wrapper keys
+    const obj = JSON.parse(trimmed) as Record<string, unknown>;
+    const arr = obj.items ?? obj.words ?? obj.vocabulary ?? obj.results ?? Object.values(obj)[0];
+    if (Array.isArray(arr)) return arr as ExtractedWord[];
+    return [];
   } catch {
     return [];
   }
@@ -308,69 +387,167 @@ export function parseDateKey(rawDate: string, yearOverride?: number): string | n
 }
 
 /**
- * Extract French vocabulary from the full document text using smart grouping.
- * Chunks the document to handle arbitrarily large files.
- * Calls onProgress(chunk, total) after each chunk.
+ * Extract French vocabulary from the full document text using line-aligned batching.
+ *
+ * Algorithm:
+ *   1. Split text into lines
+ *   2. Scan lines with regex to detect date headers and topic headers
+ *   3. Assign each line a (currentDate, currentTopic) context
+ *   4. Batch 100–150 lines per LLM call (never mid-line)
+ *   5. Merge LLM results back with the date/topic context for each batch
+ *
+ * Calls onProgress(batch, total) after each batch.
  * Returns groups with parsed dateKeys and deduplication applied.
  */
 export async function extractVocabGroups(
   text: string,
   existingTerms: Set<string>,
-  onProgress?: (chunk: number, total: number) => void,
+  onProgress?: (batch: number, total: number) => void,
   model: ExtractionModel = "deepseek-v4-flash"
 ): Promise<{
   groups: Array<ExtractedGroup & { dateKey: string | null }>;
-  ambiguousDates: string[];  // rawDate strings where yearMissing=true
+  ambiguousDates: string[];
 }> {
   if (!text.trim()) return { groups: [], ambiguousDates: [] };
 
   const normalize = (s: string) =>
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
-  const chunks = chunkText(text);
-  const rawGroups: ExtractedGroup[] = [];
+  // ── Step 1: Split into lines ──────────────────────────────────────────────
+  const allLines = text.split("\n");
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunkGroups = await extractGroupsFromChunk(chunks[i], model);
-    rawGroups.push(...chunkGroups);
-    onProgress?.(i + 1, chunks.length);
+  // ── Step 2: Pre-pass — assign date/topic context per line ─────────────────
+  // We track which date and topic are "active" as we walk through lines.
+  // This lets us correctly attribute each word to its section even after batching.
+  interface LineContext {
+    line: string;
+    dateKey: string | null;   // raw date string (not yet parsed to YYYY-MM-DD)
+    topicLabel: string | null;
   }
 
-  // Collect ambiguous dates (year missing)
+  let currentRawDate: string | null = null;
+  let currentTopic: string | null = null;
+  const lineContexts: LineContext[] = [];
+
+  for (const rawLine of allLines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (isDateHeader(line)) {
+      currentRawDate = line;
+      currentTopic = null; // reset topic on new date
+      continue; // don't include the header line itself in LLM batches
+    }
+
+    if (isTopicHeader(line)) {
+      // Strip trailing colon and brackets
+      currentTopic = line.replace(/^[\[\s]+|[\]\s:]+$/g, "").trim() || null;
+      continue; // don't include the header line itself in LLM batches
+    }
+
+    lineContexts.push({ line, dateKey: currentRawDate, topicLabel: currentTopic });
+  }
+
+  if (lineContexts.length === 0) return { groups: [], ambiguousDates: [] };
+
+  // ── Step 3: Batch lines for LLM ──────────────────────────────────────────
+  // We batch the actual content lines (not headers) into groups of 100–150.
+  const contentLines = lineContexts.map((lc) => lc.line);
+  const batches = batchLines(contentLines);
+  const totalBatches = batches.length;
+
+  // ── Step 4: LLM translation per batch ────────────────────────────────────
+  // Build a map from line text → {dateKey, topicLabel} for result attribution.
+  // (If the same line appears multiple times, last context wins — acceptable.)
+  const lineToContext = new Map<string, { dateKey: string | null; topicLabel: string | null }>();
+  for (const lc of lineContexts) {
+    lineToContext.set(lc.line, { dateKey: lc.dateKey, topicLabel: lc.topicLabel });
+  }
+
+  // Group key for accumulating words
+  const groupMap = new Map<string, ExtractedGroup>();
+  const groupOrder: string[] = []; // preserve insertion order
+
+  const seen = new Set<string>(existingTerms);
+
+  let lineOffset = 0;
+  for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+    const batch = batches[batchIdx];
+    const words = await translateBatch(batch, model);
+
+    // Attribute each extracted word to the context of the batch's first line
+    // that matches the word's term (best-effort). If not found, use the context
+    // of the first line in the batch.
+    const firstLineCtx = lineToContext.get(batch[0]) ?? { dateKey: null, topicLabel: null };
+
+    for (const word of words) {
+      if (!word.term || !word.translation) continue;
+      const normTerm = normalize(word.term);
+      if (seen.has(normTerm)) continue;
+      seen.add(normTerm);
+
+      // Try to find the source line to get its context
+      let ctx = firstLineCtx;
+      for (const batchLine of batch) {
+        if (normalize(batchLine).includes(normTerm)) {
+          ctx = lineToContext.get(batchLine) ?? firstLineCtx;
+          break;
+        }
+      }
+
+      const rawDate = ctx.dateKey;
+      const topicLabel = ctx.topicLabel;
+      const groupKey = `${rawDate ?? "__none__"}::${topicLabel ?? "__none__"}`;
+
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          rawDate,
+          yearMissing: rawDate ? isYearMissing(rawDate) : false,
+          topicLabel,
+          words: [],
+        });
+        groupOrder.push(groupKey);
+      }
+
+      groupMap.get(groupKey)!.words.push({
+        term: word.term,
+        translation: word.translation,
+        kind: word.kind === "phrase" ? "phrase" : "word",
+      });
+    }
+
+    lineOffset += batch.length;
+    onProgress?.(batchIdx + 1, totalBatches);
+  }
+
+  // ── Step 5: Build output ──────────────────────────────────────────────────
   const ambiguousDates = Array.from(
     new Set(
-      rawGroups
-        .filter((g) => g.yearMissing && g.rawDate)
-        .map((g) => g.rawDate as string)
+      groupOrder
+        .map((k) => groupMap.get(k)!.rawDate)
+        .filter((d): d is string => d !== null && isYearMissing(d))
     )
   );
 
-  // Deduplicate words across all groups
-  const seen = new Set<string>(existingTerms);
   const processedGroups: Array<ExtractedGroup & { dateKey: string | null }> = [];
-
-  for (const group of rawGroups) {
-    const uniqueWords = group.words.filter((w) => {
-      if (!w.term) return false;
-      const key = normalize(w.term);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    if (uniqueWords.length === 0) continue;
-
+  for (const key of groupOrder) {
+    const group = groupMap.get(key)!;
+    if (group.words.length === 0) continue;
     const dateKey = group.rawDate ? parseDateKey(group.rawDate) : null;
-    processedGroups.push({ ...group, words: uniqueWords, dateKey });
+    processedGroups.push({ ...group, dateKey });
   }
 
   return { groups: processedGroups, ambiguousDates };
 }
 
-// Keep the old extractVocabFromText as a thin wrapper for backward compat (cron job)
+/**
+ * Backward-compat wrapper used by the cron job.
+ * Returns a flat list of words (no grouping).
+ */
 export async function extractVocabFromText(
   text: string,
   existingTerms: Set<string>,
-  onProgress?: (chunk: number, total: number) => void
+  onProgress?: (batch: number, total: number) => void
 ): Promise<ExtractedWord[]> {
   const { groups } = await extractVocabGroups(text, existingTerms, onProgress);
   return groups.flatMap((g) => g.words);
@@ -412,7 +589,6 @@ export async function exportLibraryToGoogleDoc(
 
   for (const [dateKey, words] of Object.entries(grouped).sort().reverse()) {
     lines.push(`── ${dateKey} ──`);
-    // Sub-group by groupLabel within the date
     const byLabel: Record<string, VocabRow[]> = {};
     for (const w of words) {
       const label = w.groupLabel ?? "";
@@ -431,7 +607,7 @@ export async function exportLibraryToGoogleDoc(
   const docContent = lines.join("\n");
 
   if (existingDocId) {
-    const getRes = await fetch(`${DOCS_EXPORT_URL(existingDocId)}`, {
+    const getRes = await fetch(DOCS_API_URL(existingDocId), {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (getRes.ok) {

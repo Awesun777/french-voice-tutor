@@ -1272,7 +1272,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         throw new TRPCError({ code: "UNAUTHORIZED", message: e.message ?? "Google account not connected" });
       }
 
-      const docText = await fetchGoogleDocText(docId, accessToken);
+      const { text: docText, revisionId } = await fetchGoogleDocText(docId, accessToken);
 
       // Get existing terms for deduplication
       const existingVocab = await getVocabByUser(ctx.user.id);
@@ -1294,7 +1294,10 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         );
       }
 
-      await upsertGoogleDriveSettings(ctx.user.id, { lastSyncedAt: Date.now() });
+      await upsertGoogleDriveSettings(ctx.user.id, {
+        lastSyncedAt: Date.now(),
+        ...(revisionId ? { lastRevisionId: revisionId } : {}),
+      });
 
       return { found: extracted.length };
     }),

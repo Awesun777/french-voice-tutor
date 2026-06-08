@@ -6,13 +6,14 @@
  *
  * Flow:
  *   1. connecting        — auth + load settings
- *   2. reading_doc       — fetch Google Doc text
- *   3. analysing N/M     — LLM extraction per chunk
- *   4. needs_year        — (optional) emitted when dates lack a year; client must
+ *   2. reading_doc       — fetch Google Doc text + revisionId
+ *   3. up_to_date        — (optional) emitted when revisionId matches lastRevisionId; sync skipped
+ *   4. analysing N/M     — LLM extraction per batch
+ *   5. needs_year        — (optional) emitted when dates lack a year; client must
  *                          re-request with ?year=YYYY to resume
- *   5. saving            — insert pending imports into DB
- *   6. done              — finished, includes found count
- *   7. error             — something went wrong
+ *   6. saving            — insert pending imports into DB
+ *   7. done              — finished, includes found count
+ *   8. error             — something went wrong
  *
  * POST /api/google/sync-confirm-year
  *   Body: { year: number }
@@ -65,9 +66,15 @@ async function runSync(
   }
 
   onEvent({ step: "reading_doc" });
-  const docText = await fetchGoogleDocText(docId, accessToken);
+  const { text: docText, revisionId } = await fetchGoogleDocText(docId, accessToken);
 
   if (!docText.trim()) {
+    return { found: 0 };
+  }
+
+  // ── Incremental sync: skip LLM entirely if the document hasn't changed ────
+  if (revisionId && settings.lastRevisionId && revisionId === settings.lastRevisionId) {
+    onEvent({ step: "up_to_date", revisionId });
     return { found: 0 };
   }
 
@@ -79,7 +86,6 @@ async function runSync(
   const pending = await db.getPendingImports(userId);
   for (const p of pending) existingTerms.add(normalize(p.term));
 
-  // Extract with smart grouping
   // Load user's preferred extraction model
   const model: ExtractionModel = (settings.extractionModel as ExtractionModel) ?? "deepseek-v4-flash";
 
@@ -87,7 +93,7 @@ async function runSync(
   const { groups, ambiguousDates } = await extractVocabGroups(
     docText,
     existingTerms,
-    (chunk, total) => onEvent({ step: "analysing", chunk, total }),
+    (batch, total) => onEvent({ step: "analysing", chunk: batch, total }),
     model
   );
 
@@ -136,7 +142,11 @@ async function runSync(
     await db.insertPendingImports(userId, importItems);
   }
 
-  await db.upsertGoogleDriveSettings(userId, { lastSyncedAt: Date.now() });
+  // Save lastSyncedAt and, if available, the new revisionId for incremental sync
+  await db.upsertGoogleDriveSettings(userId, {
+    lastSyncedAt: Date.now(),
+    ...(revisionId ? { lastRevisionId: revisionId } : {}),
+  });
 
   return { found: importItems.length };
 }
@@ -184,9 +194,8 @@ export function registerGoogleSyncStreamRoute(app: Express) {
     }
   });
 
-  // ── Year-confirmation sync (non-streaming, for simplicity) ────────────────
+  // ── Year-confirmation sync (SSE, so the UI gets progress) ────────────────
   // Called after user confirms the year for ambiguous dates.
-  // Re-runs the full sync with the year override and returns { found }.
   app.post("/api/google/sync-confirm-year", async (req: Request, res: Response) => {
     let user: { id: number; name: string | null; openId: string } | null = null;
     try {
@@ -206,7 +215,6 @@ export function registerGoogleSyncStreamRoute(app: Express) {
       return;
     }
 
-    // For the confirm-year path, we re-run via SSE too so the UI gets progress
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");

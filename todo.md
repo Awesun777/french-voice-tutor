@@ -325,3 +325,12 @@
 - [x] Backend: SSE keepalive ping every 15s in googleSyncStream.ts
 - [x] Frontend: pill model selector in GoogleDrivePanel (DeepSeek V4 Flash | Gemini 2.5 Flash)
 - [x] Frontend: Gemini option shows disabled state + "API key required" note when key not configured
+
+## Line-batched Extraction & Incremental Sync (Round 32)
+- [x] DB: add lastRevisionId column to google_drive_settings
+- [x] Run migration and apply SQL
+- [x] googleDrive.ts: replace character-chunking with line-split → regex date/group detection → 100-150 line batches (never mid-line)
+- [x] googleDrive.ts: compact translation-only LLM prompt (input: French lines, output: JSON array {term, translation, kind})
+- [x] fetchGoogleDocText: also return revisionId from Google Docs API response
+- [x] Sync stream: if revisionId matches lastRevisionId, emit done with found=0 and skip LLM entirely
+- [x] Sync stream: after successful sync, save new revisionId to google_drive_settings
