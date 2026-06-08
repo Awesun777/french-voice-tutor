@@ -309,3 +309,10 @@
 - [x] GoogleDrivePanel: year-picker dialog when needs_year fires, sends year back to resume sync
 - [x] GoogleDrivePanel: show groupLabel as sub-label in pending review queue
 - [x] My Library: show groupLabel as sub-label under date group headers
+
+## Group-level Import Review (Round 30)
+- [x] Backend: tRPC google.acceptGroup(dateKey) — bulk-accept all pending imports for a dateKey
+- [x] Backend: tRPC google.skipGroup(dateKey) — bulk-skip all pending imports for a dateKey
+- [x] Frontend: Review queue two-level UI — group overview (date + topic label + word count) sorted newest-first
+- [x] Frontend: Per-group controls: Accept All in Group / Skip Group / Review Words (expand)
+- [x] Frontend: Expanded per-word view within a group (existing accept/skip per word)

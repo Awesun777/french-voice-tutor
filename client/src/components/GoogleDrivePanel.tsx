@@ -6,7 +6,10 @@
  * - Source doc URL input + Sync Now button (with SSE streaming progress)
  * - Year-picker dialog when dates lack a year
  * - Export library to Google Drive button
- * - Pending imports review queue with groupLabel sub-labels
+ * - Pending imports two-level review queue:
+ *     Level 1 — group overview sorted newest-first (date + topic + word count)
+ *               with Accept Group / Skip Group / Review Words controls
+ *     Level 2 — per-word accept/skip within an expanded group
  */
 import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
@@ -36,7 +39,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, RefreshCw, Upload, Unlink, Check, X, CheckCheck } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  Upload,
+  Unlink,
+  Check,
+  X,
+  CheckCheck,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // ── SSE step types ────────────────────────────────────────────────────────────
 type SyncStep =
@@ -61,10 +75,25 @@ function stepToMessage(event: SyncStep): string {
   }
 }
 
+/** Parse a dateKey string to a sortable number (ms since epoch, or 0 if unparseable) */
+function dateKeyToMs(dateKey: string): number {
+  const d = new Date(dateKey);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+/** Format a dateKey for display */
+function formatDateKey(dateKey: string): string {
+  const d = new Date(dateKey);
+  if (isNaN(d.getTime())) return dateKey;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
 export function GoogleDrivePanel() {
   const utils = trpc.useUtils();
   const [docUrl, setDocUrl] = useState("");
   const [showQueue, setShowQueue] = useState(false);
+  // Track which groups are expanded for per-word review
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // SSE sync state
   const [syncing, setSyncing] = useState(false);
@@ -143,6 +172,36 @@ export function GoogleDrivePanel() {
     onError: () => toast.error("Failed to skip"),
   });
 
+  const acceptGroupMutation = trpc.google.acceptGroup.useMutation({
+    onSuccess: (data, variables) => {
+      toast.success(`Added ${data.added} word${data.added === 1 ? "" : "s"} from group`);
+      utils.google.getPendingImports.invalidate();
+      utils.google.status.invalidate();
+      utils.vocab.list.invalidate();
+      // Collapse the group after accepting
+      setExpandedGroups((prev) => {
+        const next = new Set(prev);
+        next.delete(variables.dateKey);
+        return next;
+      });
+    },
+    onError: () => toast.error("Failed to add group"),
+  });
+
+  const skipGroupMutation = trpc.google.skipGroup.useMutation({
+    onSuccess: (_, variables) => {
+      toast.success("Group skipped");
+      utils.google.getPendingImports.invalidate();
+      utils.google.status.invalidate();
+      setExpandedGroups((prev) => {
+        const next = new Set(prev);
+        next.delete(variables.dateKey);
+        return next;
+      });
+    },
+    onError: () => toast.error("Failed to skip group"),
+  });
+
   // ── SSE sync ────────────────────────────────────────────────────────────────
   const startSyncStream = useCallback((url: string) => {
     if (esRef.current) {
@@ -206,9 +265,20 @@ export function GoogleDrivePanel() {
 
   const handleYearSkip = useCallback(() => {
     setShowYearPicker(false);
-    // Re-run with current year as default
     startSyncStream(`/api/google/sync-stream?year=${new Date().getFullYear()}`);
   }, [startSyncStream]);
+
+  const toggleGroupExpand = useCallback((dateKey: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateKey)) {
+        next.delete(dateKey);
+      } else {
+        next.add(dateKey);
+      }
+      return next;
+    });
+  }, []);
 
   if (statusLoading) {
     return (
@@ -223,22 +293,24 @@ export function GoogleDrivePanel() {
   const currentYear = new Date().getFullYear();
   const yearOptions = Array.from({ length: 6 }, (_, i) => String(currentYear - i));
 
-  // Group pending imports by dateKey + groupLabel for display
-  const groupedImports: Array<{
+  // Build groups: one entry per unique dateKey, collecting all sub-labels and items
+  // Sort newest-first by dateKey
+  const groupMap = new Map<string, {
     dateKey: string;
-    groupLabel: string | null;
+    labels: Set<string>;
     items: typeof pendingImports;
-  }> = [];
-  const seen = new Map<string, typeof groupedImports[0]>();
+  }>();
   for (const item of pendingImports) {
-    const key = `${item.dateKey}||${item.groupLabel ?? ""}`;
-    if (!seen.has(key)) {
-      const group = { dateKey: item.dateKey, groupLabel: item.groupLabel ?? null, items: [] as typeof pendingImports };
-      seen.set(key, group);
-      groupedImports.push(group);
+    if (!groupMap.has(item.dateKey)) {
+      groupMap.set(item.dateKey, { dateKey: item.dateKey, labels: new Set(), items: [] });
     }
-    seen.get(key)!.items.push(item);
+    const g = groupMap.get(item.dateKey)!;
+    if (item.groupLabel) g.labels.add(item.groupLabel);
+    g.items.push(item);
   }
+  const sortedGroups = Array.from(groupMap.values()).sort(
+    (a, b) => dateKeyToMs(b.dateKey) - dateKeyToMs(a.dateKey)
+  );
 
   return (
     <div className="space-y-4">
@@ -249,7 +321,8 @@ export function GoogleDrivePanel() {
               {/* Google Drive icon */}
               <svg width="20" height="20" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
                 <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9
+-3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
                 <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
                 <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
                 <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
@@ -283,7 +356,7 @@ export function GoogleDrivePanel() {
               <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
               Connect Google Account
@@ -292,94 +365,66 @@ export function GoogleDrivePanel() {
             <>
               {/* Source doc URL */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
-                  Source Google Doc URL
-                </label>
+                <label className="text-xs font-medium text-muted-foreground">Source Google Doc URL</label>
                 <div className="flex gap-2">
                   <Input
-                    placeholder="https://docs.google.com/document/d/..."
                     value={docUrl || status.sourceDocUrl || ""}
                     onChange={(e) => setDocUrl(e.target.value)}
+                    placeholder="https://docs.google.com/document/d/..."
                     className="text-xs h-8"
                   />
                   <Button
                     size="sm"
                     variant="outline"
-                    className="h-8 px-3 shrink-0"
-                    onClick={() => {
-                      const url = docUrl || status.sourceDocUrl || "";
-                      if (url) saveSettingsMutation.mutate({ sourceDocUrl: url });
-                    }}
+                    className="h-8 shrink-0"
+                    onClick={() => saveSettingsMutation.mutate({ sourceDocUrl: docUrl || status.sourceDocUrl || "" })}
                     disabled={saveSettingsMutation.isPending}
                   >
-                    {saveSettingsMutation.isPending ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      "Save"
-                    )}
+                    Save
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Paste the URL of a Google Doc containing French vocabulary notes
-                </p>
               </div>
 
-              {/* Live sync status */}
-              {(syncing || syncStatus) && (
-                <div className={`flex items-center gap-2 text-xs rounded-md px-3 py-2 ${
-                  syncError
-                    ? "bg-destructive/10 text-destructive"
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  {syncing && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
-                  <span>{syncError || syncStatus}</span>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="flex flex-wrap gap-2">
+              {/* Sync Now */}
+              <div className="space-y-1">
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="h-8 text-xs gap-1.5"
+                  className="gap-2 w-full"
                   onClick={handleSyncNow}
-                  disabled={syncing || !status.sourceDocUrl}
+                  disabled={syncing || (!docUrl && !status.sourceDocUrl)}
                 >
                   {syncing ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <RefreshCw className="w-3 h-3" />
+                    <RefreshCw className="w-3.5 h-3.5" />
                   )}
-                  Sync Now
+                  {syncing ? "Syncing…" : "Sync Now"}
                 </Button>
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 text-xs gap-1.5"
-                  onClick={() => exportMutation.mutate()}
-                  disabled={exportMutation.isPending}
-                >
-                  {exportMutation.isPending ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Upload className="w-3 h-3" />
-                  )}
-                  Export Library
-                </Button>
-
-                {pendingCount > 0 && (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="h-8 text-xs gap-1.5"
-                    onClick={() => setShowQueue(true)}
-                  >
-                    <CheckCheck className="w-3 h-3" />
-                    Review {pendingCount} new word{pendingCount === 1 ? "" : "s"}
-                  </Button>
+                {syncStatus && (
+                  <p className={cn(
+                    "text-xs text-center",
+                    syncError ? "text-destructive" : "text-muted-foreground"
+                  )}>
+                    {syncError || syncStatus}
+                  </p>
                 )}
               </div>
+
+              {/* Export to Drive */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2 w-full"
+                onClick={() => exportMutation.mutate()}
+                disabled={exportMutation.isPending}
+              >
+                {exportMutation.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                Export Library to Drive
+              </Button>
 
               {/* Last synced */}
               {status.lastSyncedAt && (
@@ -439,72 +484,138 @@ export function GoogleDrivePanel() {
         </DialogContent>
       </Dialog>
 
-      {/* Pending imports review modal */}
+      {/* Pending imports review modal — two-level group UI */}
       <Dialog open={showQueue} onOpenChange={setShowQueue}>
-        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Review New Words from Google Doc</DialogTitle>
             <DialogDescription>
-              These words were found in your Google Doc, grouped by date and topic. Accept the ones you want to add to your library.
+              Words grouped by date, newest first. Accept or skip entire groups, or expand a group to review individual words.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto space-y-4 py-2">
+          <div className="flex-1 overflow-y-auto space-y-2 py-2 pr-1">
             {pendingLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-            ) : groupedImports.length === 0 ? (
+            ) : sortedGroups.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No pending words to review.
               </p>
             ) : (
-              groupedImports.map((group) => (
-                <div key={`${group.dateKey}||${group.groupLabel}`}>
-                  {/* Date header */}
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-xs font-semibold text-foreground">{group.dateKey}</span>
-                    {group.groupLabel && (
-                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                        {group.groupLabel}
-                      </span>
+              sortedGroups.map((group) => {
+                const isExpanded = expandedGroups.has(group.dateKey);
+                const labelList = Array.from(group.labels);
+                return (
+                  <div
+                    key={group.dateKey}
+                    className="rounded-lg border border-border bg-card overflow-hidden"
+                  >
+                    {/* Group header row */}
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/30">
+                      {/* Expand toggle */}
+                      <button
+                        className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => toggleGroupExpand(group.dateKey)}
+                        aria-label={isExpanded ? "Collapse group" : "Expand group"}
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      {/* Date + labels + count */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-foreground">
+                            {formatDateKey(group.dateKey)}
+                          </span>
+                          {labelList.map((label) => (
+                            <span
+                              key={label}
+                              className="text-xs text-blue-400/80 bg-blue-500/10 px-2 py-0.5 rounded-full"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {group.items.length} word{group.items.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+
+                      {/* Group-level action buttons */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Button
+                          size="sm"
+                          className="h-7 px-2.5 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                          onClick={() => acceptGroupMutation.mutate({ dateKey: group.dateKey })}
+                          disabled={acceptGroupMutation.isPending || skipGroupMutation.isPending}
+                          title="Accept all words in this group"
+                        >
+                          <CheckCheck className="w-3 h-3" />
+                          Add all
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => skipGroupMutation.mutate({ dateKey: group.dateKey })}
+                          disabled={acceptGroupMutation.isPending || skipGroupMutation.isPending}
+                          title="Skip all words in this group"
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Per-word list (expanded) */}
+                    {isExpanded && (
+                      <div className="divide-y divide-border/50">
+                        {group.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{item.term}</p>
+                              <p className="text-xs text-muted-foreground truncate">{item.translation}</p>
+                              {item.groupLabel && (
+                                <p className="text-xs text-blue-400/70 truncate mt-0.5">🏷 {item.groupLabel}</p>
+                              )}
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-green-500 hover:text-green-600 hover:bg-green-500/10"
+                                onClick={() => acceptMutation.mutate({ id: item.id })}
+                                disabled={acceptMutation.isPending}
+                                title="Add this word"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => skipMutation.mutate({ id: item.id })}
+                                disabled={skipMutation.isPending}
+                                title="Skip this word"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <div className="space-y-1.5 pl-2 border-l-2 border-border">
-                    {group.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-card"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">{item.term}</p>
-                          <p className="text-xs text-muted-foreground truncate">{item.translation}</p>
-                        </div>
-                        <div className="flex gap-1.5 shrink-0">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-green-500 hover:text-green-600 hover:bg-green-500/10"
-                            onClick={() => acceptMutation.mutate({ id: item.id })}
-                            disabled={acceptMutation.isPending}
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => skipMutation.mutate({ id: item.id })}
-                            disabled={skipMutation.isPending}
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 

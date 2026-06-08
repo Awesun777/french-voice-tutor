@@ -688,6 +688,26 @@ export async function updatePendingImportStatus(
     .where(and(eq(pendingImports.id, id), eq(pendingImports.userId, userId)));
 }
 
+export async function bulkUpdatePendingImportsByDateKey(
+  userId: number,
+  dateKey: string,
+  status: "accepted" | "skipped"
+): Promise<PendingImport[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const items = await db
+    .select()
+    .from(pendingImports)
+    .where(and(eq(pendingImports.userId, userId), eq(pendingImports.dateKey, dateKey), eq(pendingImports.status, "pending")));
+  if (items.length > 0) {
+    await db
+      .update(pendingImports)
+      .set({ status })
+      .where(and(eq(pendingImports.userId, userId), eq(pendingImports.dateKey, dateKey), eq(pendingImports.status, "pending")));
+  }
+  return items;
+}
+
 export async function countPendingImports(userId: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;

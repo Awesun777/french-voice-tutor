@@ -42,6 +42,7 @@ import {
   getReviewSettings,
   updateReviewSettings,
   updatePendingImportStatus,
+  bulkUpdatePendingImportsByDateKey,
   upsertGoogleDriveSettings,
 } from "./db";
 import {
@@ -1334,6 +1335,33 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       .mutation(async ({ ctx, input }) => {
         await updatePendingImportStatus(input.id, ctx.user.id, "skipped");
         return { ok: true };
+      }),
+
+    /** Accept all pending imports in a date group */
+    acceptGroup: protectedProcedure
+      .input(z.object({ dateKey: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const items = await bulkUpdatePendingImportsByDateKey(ctx.user.id, input.dateKey, "accepted");
+        if (items.length === 0) return { added: 0 };
+        await addVocabEntries(
+          ctx.user.id,
+          items.map((p) => ({
+            term: p.term,
+            translation: p.translation,
+            entryKind: p.kind,
+            dateKey: p.dateKey || new Date().toISOString().split("T")[0],
+            groupLabel: p.groupLabel ?? null,
+          }))
+        );
+        return { added: items.length };
+      }),
+
+    /** Skip all pending imports in a date group */
+    skipGroup: protectedProcedure
+      .input(z.object({ dateKey: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const items = await bulkUpdatePendingImportsByDateKey(ctx.user.id, input.dateKey, "skipped");
+        return { skipped: items.length };
       }),
 
     /** Export the user's full vocab library to a Google Doc */
