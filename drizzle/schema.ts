@@ -163,6 +163,13 @@ export const googleDriveSettings = mysqlTable("google_drive_settings", {
   sourceDocUrl: text("sourceDocUrl"),
   exportFolderId: varchar("exportFolderId", { length: 256 }),
   lastSyncedAt: bigint("lastSyncedAt", { mode: "number" }),
+  /**
+   * Which AI model to use for vocab extraction from Google Docs.
+   * 'deepseek-v4-flash' (default) or 'gemini-2.5-flash' (requires GOOGLE_AI_API_KEY).
+   */
+  extractionModel: mysqlEnum("extractionModel", ["deepseek-v4-flash", "gemini-2.5-flash"])
+    .default("deepseek-v4-flash")
+    .notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type GoogleDriveSettings = typeof googleDriveSettings.$inferSelect;

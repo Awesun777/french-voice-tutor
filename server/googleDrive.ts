@@ -41,6 +41,46 @@ async function callDeepSeek(messages: { role: string; content: string }[], useJs
   return data.choices[0]?.message?.content ?? "{}";
 }
 
+/**
+ * Call Gemini 2.5 Flash via Google AI Studio API.
+ * Requires GOOGLE_AI_API_KEY to be set.
+ */
+async function callGemini(messages: { role: string; content: string }[]): Promise<string> {
+  if (!ENV.googleAiApiKey) {
+    throw new Error("GOOGLE_AI_API_KEY is not configured. Please add your Google AI API key in settings.");
+  }
+  // Separate system message from user/assistant messages
+  const systemMsg = messages.find((m) => m.role === "system");
+  const chatMessages = messages.filter((m) => m.role !== "system");
+
+  const body = {
+    system_instruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined,
+    contents: chatMessages.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: {
+      responseMimeType: "application/json",
+      maxOutputTokens: 8192,
+    },
+  };
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${ENV.googleAiApiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Gemini API error ${res.status}: ${err}`);
+  }
+  const data = await res.json() as { candidates: { content: { parts: { text: string }[] } }[] };
+  return data.candidates[0]?.content?.parts[0]?.text ?? "{}";
+}
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DOCS_EXPORT_URL = (docId: string) =>
   `https://docs.googleapis.com/v1/documents/${docId}`;
@@ -185,10 +225,13 @@ function chunkText(text: string): string[] {
   return chunks;
 }
 
+export type ExtractionModel = "deepseek-v4-flash" | "gemini-2.5-flash";
+
 /**
  * Run the LLM on a single chunk and return structured groups.
+ * model: which AI to use for extraction (defaults to deepseek-v4-flash)
  */
-async function extractGroupsFromChunk(chunk: string): Promise<ExtractedGroup[]> {
+async function extractGroupsFromChunk(chunk: string, model: ExtractionModel = "deepseek-v4-flash"): Promise<ExtractedGroup[]> {
   const currentYear = new Date().getFullYear();
   const systemPrompt = `You are a French vocabulary extractor that understands document structure.
 
@@ -211,13 +254,13 @@ Rules:
 - Current year is ${currentYear} — use this only as context, do not auto-fill missing years
 - Always return valid JSON matching the schema exactly`;
 
-  const raw = await callDeepSeek(
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: `Extract French vocabulary groups from this text:\n\n${chunk}` },
-    ],
-    true
-  );
+  const msgs = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: `Extract French vocabulary groups from this text:\n\n${chunk}` },
+  ];
+  const raw = model === "gemini-2.5-flash"
+    ? await callGemini(msgs)
+    : await callDeepSeek(msgs, true);
 
   try {
     const parsed = JSON.parse(raw);
@@ -273,7 +316,8 @@ export function parseDateKey(rawDate: string, yearOverride?: number): string | n
 export async function extractVocabGroups(
   text: string,
   existingTerms: Set<string>,
-  onProgress?: (chunk: number, total: number) => void
+  onProgress?: (chunk: number, total: number) => void,
+  model: ExtractionModel = "deepseek-v4-flash"
 ): Promise<{
   groups: Array<ExtractedGroup & { dateKey: string | null }>;
   ambiguousDates: string[];  // rawDate strings where yearMissing=true
@@ -287,7 +331,7 @@ export async function extractVocabGroups(
   const rawGroups: ExtractedGroup[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
-    const chunkGroups = await extractGroupsFromChunk(chunks[i]);
+    const chunkGroups = await extractGroupsFromChunk(chunks[i], model);
     rawGroups.push(...chunkGroups);
     onProgress?.(i + 1, chunks.length);
   }

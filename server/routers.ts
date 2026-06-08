@@ -1229,17 +1229,29 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       return { ok: true };
     }),
 
-    /** Save Drive sync settings (source doc URL) */
+    /** Save Drive sync settings (source doc URL, extraction model) */
     saveSettings: protectedProcedure
       .input(z.object({
         sourceDocUrl: z.string().url().nullable().optional(),
+        extractionModel: z.enum(["deepseek-v4-flash", "gemini-2.5-flash"]).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        await upsertGoogleDriveSettings(ctx.user.id, {
-          sourceDocUrl: input.sourceDocUrl ?? null,
-        });
+        const update: Record<string, unknown> = {};
+        if (input.sourceDocUrl !== undefined) update.sourceDocUrl = input.sourceDocUrl ?? null;
+        if (input.extractionModel !== undefined) update.extractionModel = input.extractionModel;
+        await upsertGoogleDriveSettings(ctx.user.id, update);
         return { ok: true };
       }),
+
+    /** Get current Drive settings including extractionModel */
+    getSettings: protectedProcedure.query(async ({ ctx }) => {
+      const settings = await getGoogleDriveSettings(ctx.user.id);
+      return {
+        sourceDocUrl: settings?.sourceDocUrl ?? null,
+        extractionModel: (settings?.extractionModel ?? "deepseek-v4-flash") as "deepseek-v4-flash" | "gemini-2.5-flash",
+        lastSyncedAt: settings?.lastSyncedAt ?? null,
+      };
+    }),
 
     /** Fetch the linked Google Doc and queue new words for review */
     syncNow: protectedProcedure.mutation(async ({ ctx }) => {

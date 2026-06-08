@@ -28,10 +28,18 @@ import {
   fetchGoogleDocText,
   getValidAccessToken,
   parseDateKey,
+  type ExtractionModel,
 } from "./googleDrive";
 
 function send(res: Response, data: Record<string, unknown>) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+/** Send SSE keepalive comment every intervalMs to prevent connection timeout. */
+function startKeepalive(res: Response, intervalMs = 15_000): ReturnType<typeof setInterval> {
+  return setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { /* ignore if already closed */ }
+  }, intervalMs);
 }
 
 async function runSync(
@@ -72,10 +80,15 @@ async function runSync(
   for (const p of pending) existingTerms.add(normalize(p.term));
 
   // Extract with smart grouping
+  // Load user's preferred extraction model
+  const model: ExtractionModel = (settings.extractionModel as ExtractionModel) ?? "deepseek-v4-flash";
+
+  // Extract with smart grouping using the user's chosen model
   const { groups, ambiguousDates } = await extractVocabGroups(
     docText,
     existingTerms,
-    (chunk, total) => onEvent({ step: "analysing", chunk, total })
+    (chunk, total) => onEvent({ step: "analysing", chunk, total }),
+    model
   );
 
   // If there are ambiguous dates and no year override provided, pause and ask
@@ -152,6 +165,7 @@ export function registerGoogleSyncStreamRoute(app: Express) {
 
     const yearParam = req.query.year ? parseInt(req.query.year as string, 10) : undefined;
 
+    const keepalive = startKeepalive(res);
     try {
       send(res, { step: "connecting" });
 
@@ -165,6 +179,7 @@ export function registerGoogleSyncStreamRoute(app: Express) {
     } catch (err: any) {
       send(res, { step: "error", message: err?.message ?? "An unexpected error occurred." });
     } finally {
+      clearInterval(keepalive);
       res.end();
     }
   });
@@ -198,6 +213,7 @@ export function registerGoogleSyncStreamRoute(app: Express) {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
+    const keepalive = startKeepalive(res);
     try {
       send(res, { step: "connecting" });
 
@@ -206,6 +222,7 @@ export function registerGoogleSyncStreamRoute(app: Express) {
     } catch (err: any) {
       send(res, { step: "error", message: err?.message ?? "An unexpected error occurred." });
     } finally {
+      clearInterval(keepalive);
       res.end();
     }
   });

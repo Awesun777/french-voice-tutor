@@ -1,0 +1,1 @@
+ALTER TABLE `google_drive_settings` ADD `extractionModel` enum('deepseek-v4-flash','gemini-2.5-flash') DEFAULT 'deepseek-v4-flash' NOT NULL;

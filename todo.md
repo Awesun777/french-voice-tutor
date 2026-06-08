@@ -316,3 +316,12 @@
 - [x] Frontend: Review queue two-level UI — group overview (date + topic label + word count) sorted newest-first
 - [x] Frontend: Per-group controls: Accept All in Group / Skip Group / Review Words (expand)
 - [x] Frontend: Expanded per-word view within a group (existing accept/skip per word)
+
+## Per-user Extraction Model Selector (Round 31)
+- [x] DB: add extractionModel column to google_drive_settings (enum: 'deepseek-v4-flash' | 'gemini-2.5-flash', default 'deepseek-v4-flash')
+- [x] Backend: tRPC google.getSettings + extended saveSettings procedures (includes extractionModel)
+- [x] Backend: callGemini helper in googleDrive.ts (disabled/error when GOOGLE_AI_API_KEY not set)
+- [x] Backend: route extractGroupsFromChunk to DeepSeek or Gemini based on user setting
+- [x] Backend: SSE keepalive ping every 15s in googleSyncStream.ts
+- [x] Frontend: pill model selector in GoogleDrivePanel (DeepSeek V4 Flash | Gemini 2.5 Flash)
+- [x] Frontend: Gemini option shows disabled state + "API key required" note when key not configured

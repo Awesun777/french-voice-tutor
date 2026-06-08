@@ -11,4 +11,5 @@ export const ENV = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
+  googleAiApiKey: process.env.GOOGLE_AI_API_KEY ?? "",
 };

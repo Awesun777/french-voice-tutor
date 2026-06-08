@@ -92,6 +92,7 @@ export function GoogleDrivePanel() {
   const utils = trpc.useUtils();
   const [docUrl, setDocUrl] = useState("");
   const [showQueue, setShowQueue] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<"deepseek-v4-flash" | "gemini-2.5-flash">("deepseek-v4-flash");
   // Track which groups are expanded for per-word review
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -109,6 +110,19 @@ export function GoogleDrivePanel() {
   const { data: status, isLoading: statusLoading } = trpc.google.status.useQuery(undefined, {
     refetchOnWindowFocus: false,
   });
+
+  // Load per-user extraction model preference
+  const { data: driveSettings } = trpc.google.getSettings.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+  });
+
+  // Sync model selector with loaded settings
+  const loadedModel = driveSettings?.extractionModel;
+  const [modelInitialized, setModelInitialized] = useState(false);
+  if (!modelInitialized && loadedModel) {
+    setSelectedModel(loadedModel);
+    setModelInitialized(true);
+  }
 
   const { data: pendingImports = [], isLoading: pendingLoading } = trpc.google.getPendingImports.useQuery(
     undefined,
@@ -382,6 +396,47 @@ export function GoogleDrivePanel() {
                   >
                     Save
                   </Button>
+                </div>
+              </div>
+
+              {/* Extraction model selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Extraction Model</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedModel("deepseek-v4-flash");
+                      saveSettingsMutation.mutate({ extractionModel: "deepseek-v4-flash" });
+                    }}
+                    className={cn(
+                      "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all",
+                      selectedModel === "deepseek-v4-flash"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+                    )}
+                  >
+                    DeepSeek V4 Flash
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!driveSettings) return;
+                      // Gemini requires GOOGLE_AI_API_KEY — show info toast if not available
+                      toast.info("Gemini 2.5 Flash will be available once you add your Google AI API key in settings.");
+                    }}
+                    disabled
+                    title="Add GOOGLE_AI_API_KEY to enable"
+                    className={cn(
+                      "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all opacity-50 cursor-not-allowed",
+                      selectedModel === "gemini-2.5-flash"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-transparent text-muted-foreground border-border"
+                    )}
+                  >
+                    Gemini 2.5 Flash
+                    <span className="ml-1 text-[10px] opacity-70">(API key needed)</span>
+                  </button>
                 </div>
               </div>
 
