@@ -496,6 +496,9 @@ export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: Sideb
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-foreground truncate">{w.term}</p>
                             <p className="text-xs text-muted-foreground truncate">{w.translation}</p>
+                            {w.groupLabel && (
+                              <p className="text-xs text-blue-400/80 truncate mt-0.5">🏷 {w.groupLabel}</p>
+                            )}
                             {w.lessonSource && (
                               <p className="text-xs text-primary/70 truncate mt-0.5">📌 {w.lessonSource}</p>
                             )}

@@ -5,6 +5,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerGoogleOAuthRoutes } from "./googleOAuth";
+import { registerGoogleSyncStreamRoute } from "../googleSyncStream";
 import { startCronJobs } from "../cronJobs";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
@@ -160,6 +161,8 @@ async function startServer() {
   registerOAuthRoutes(app);
   // Google OAuth login + callback
   registerGoogleOAuthRoutes(app);
+  // Google Drive sync SSE stream
+  registerGoogleSyncStreamRoute(app);
 
   // ── OpenAI Realtime unified interface — POST /api/voice/connect ──────────────
   // Unified interface: browser sends its SDP offer to our server, which relays it

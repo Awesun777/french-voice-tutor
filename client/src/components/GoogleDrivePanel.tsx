@@ -3,14 +3,15 @@
  *
  * Shows in the My Library tab:
  * - Connect / disconnect Google account
- * - Source doc URL input + Sync Now button
+ * - Source doc URL input + Sync Now button (with SSE streaming progress)
+ * - Year-picker dialog when dates lack a year
  * - Export library to Google Drive button
- * - Pending imports review queue (badge + modal)
+ * - Pending imports review queue with groupLabel sub-labels
  */
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { getLoginUrl } from "@/const";
+import { getGoogleLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +29,53 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Loader2, RefreshCw, Upload, Unlink, ExternalLink, Check, X, CheckCheck } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, RefreshCw, Upload, Unlink, Check, X, CheckCheck } from "lucide-react";
+
+// ── SSE step types ────────────────────────────────────────────────────────────
+type SyncStep =
+  | { step: "connecting" }
+  | { step: "reading_doc" }
+  | { step: "analysing"; chunk: number; total: number }
+  | { step: "needs_year"; dates: string[] }
+  | { step: "saving"; count: number }
+  | { step: "done"; found: number }
+  | { step: "error"; message: string };
+
+function stepToMessage(event: SyncStep): string {
+  switch (event.step) {
+    case "connecting":   return "Connecting to Google Drive…";
+    case "reading_doc":  return "Reading your document…";
+    case "analysing":    return `Analysing section ${event.chunk} of ${event.total}…`;
+    case "saving":       return event.count > 0 ? `Saving ${event.count} new word${event.count === 1 ? "" : "s"}…` : "No new words found.";
+    case "done":         return event.found > 0 ? `Done — found ${event.found} new word${event.found === 1 ? "" : "s"}` : "Done — no new words found";
+    case "error":        return `Error: ${event.message}`;
+    case "needs_year":   return "Some dates are missing a year — please confirm below.";
+    default:             return "";
+  }
+}
 
 export function GoogleDrivePanel() {
   const utils = trpc.useUtils();
   const [docUrl, setDocUrl] = useState("");
   const [showQueue, setShowQueue] = useState(false);
+
+  // SSE sync state
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string>("");
+  const [syncError, setSyncError] = useState<string>("");
+  const esRef = useRef<EventSource | null>(null);
+
+  // Year picker state
+  const [showYearPicker, setShowYearPicker] = useState(false);
+  const [ambiguousDates, setAmbiguousDates] = useState<string[]>([]);
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
 
   const { data: status, isLoading: statusLoading } = trpc.google.status.useQuery(undefined, {
     refetchOnWindowFocus: false,
@@ -58,20 +100,6 @@ export function GoogleDrivePanel() {
       utils.google.status.invalidate();
     },
     onError: () => toast.error("Failed to save settings"),
-  });
-
-  const syncMutation = trpc.google.syncNow.useMutation({
-    onSuccess: (data) => {
-      if (data.found === 0) {
-        toast.success("Sync complete — no new words found");
-      } else {
-        toast.success(`Found ${data.found} new word${data.found === 1 ? "" : "s"} — review them below`);
-        setShowQueue(true);
-      }
-      utils.google.status.invalidate();
-      utils.google.getPendingImports.invalidate();
-    },
-    onError: (e) => toast.error(e.message ?? "Sync failed"),
   });
 
   const exportMutation = trpc.google.exportLibrary.useMutation({
@@ -115,6 +143,73 @@ export function GoogleDrivePanel() {
     onError: () => toast.error("Failed to skip"),
   });
 
+  // ── SSE sync ────────────────────────────────────────────────────────────────
+  const startSyncStream = useCallback((url: string) => {
+    if (esRef.current) {
+      esRef.current.close();
+    }
+    setSyncing(true);
+    setSyncError("");
+    setSyncStatus("Connecting…");
+
+    const es = new EventSource(url, { withCredentials: true });
+    esRef.current = es;
+
+    es.onmessage = (e) => {
+      try {
+        const event: SyncStep = JSON.parse(e.data);
+        setSyncStatus(stepToMessage(event));
+
+        if (event.step === "needs_year") {
+          setAmbiguousDates(event.dates);
+          setShowYearPicker(true);
+          es.close();
+          setSyncing(false);
+          return;
+        }
+
+        if (event.step === "done") {
+          setSyncing(false);
+          es.close();
+          utils.google.status.invalidate();
+          utils.google.getPendingImports.invalidate();
+          if (event.found > 0) {
+            setShowQueue(true);
+          }
+        }
+
+        if (event.step === "error") {
+          setSyncError(event.message);
+          setSyncing(false);
+          es.close();
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.onerror = () => {
+      setSyncError("Connection lost. Please try again.");
+      setSyncing(false);
+      es.close();
+    };
+  }, [utils]);
+
+  const handleSyncNow = useCallback(() => {
+    startSyncStream("/api/google/sync-stream");
+  }, [startSyncStream]);
+
+  const handleYearConfirm = useCallback(() => {
+    setShowYearPicker(false);
+    startSyncStream(`/api/google/sync-stream?year=${selectedYear}`);
+  }, [selectedYear, startSyncStream]);
+
+  const handleYearSkip = useCallback(() => {
+    setShowYearPicker(false);
+    // Re-run with current year as default
+    startSyncStream(`/api/google/sync-stream?year=${new Date().getFullYear()}`);
+  }, [startSyncStream]);
+
   if (statusLoading) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground py-4">
@@ -125,6 +220,25 @@ export function GoogleDrivePanel() {
   }
 
   const pendingCount = status?.pendingCount ?? 0;
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 6 }, (_, i) => String(currentYear - i));
+
+  // Group pending imports by dateKey + groupLabel for display
+  const groupedImports: Array<{
+    dateKey: string;
+    groupLabel: string | null;
+    items: typeof pendingImports;
+  }> = [];
+  const seen = new Map<string, typeof groupedImports[0]>();
+  for (const item of pendingImports) {
+    const key = `${item.dateKey}||${item.groupLabel ?? ""}`;
+    if (!seen.has(key)) {
+      const group = { dateKey: item.dateKey, groupLabel: item.groupLabel ?? null, items: [] as typeof pendingImports };
+      seen.set(key, group);
+      groupedImports.push(group);
+    }
+    seen.get(key)!.items.push(item);
+  }
 
   return (
     <div className="space-y-4">
@@ -163,7 +277,7 @@ export function GoogleDrivePanel() {
         <CardContent className="space-y-3">
           {!status?.connected ? (
             <a
-              href={getLoginUrl()}
+              href={getGoogleLoginUrl()}
               className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-white hover:bg-gray-50 text-gray-800 font-medium rounded-lg transition-all duration-200 shadow-sm border border-gray-200 text-sm"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -210,16 +324,28 @@ export function GoogleDrivePanel() {
                 </p>
               </div>
 
+              {/* Live sync status */}
+              {(syncing || syncStatus) && (
+                <div className={`flex items-center gap-2 text-xs rounded-md px-3 py-2 ${
+                  syncError
+                    ? "bg-destructive/10 text-destructive"
+                    : "bg-muted text-muted-foreground"
+                }`}>
+                  {syncing && <Loader2 className="w-3 h-3 animate-spin shrink-0" />}
+                  <span>{syncError || syncStatus}</span>
+                </div>
+              )}
+
               {/* Action buttons */}
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   variant="outline"
                   className="h-8 text-xs gap-1.5"
-                  onClick={() => syncMutation.mutate()}
-                  disabled={syncMutation.isPending || !status.sourceDocUrl}
+                  onClick={handleSyncNow}
+                  disabled={syncing || !status.sourceDocUrl}
                 >
-                  {syncMutation.isPending ? (
+                  {syncing ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
                     <RefreshCw className="w-3 h-3" />
@@ -278,54 +404,104 @@ export function GoogleDrivePanel() {
         </CardContent>
       </Card>
 
+      {/* Year picker dialog */}
+      <Dialog open={showYearPicker} onOpenChange={(open) => { if (!open) setShowYearPicker(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Which year are these dates from?</DialogTitle>
+            <DialogDescription>
+              Some dates in your document don't include a year:
+              <span className="block mt-1 font-medium text-foreground">
+                {ambiguousDates.slice(0, 5).join(", ")}{ambiguousDates.length > 5 ? ` +${ambiguousDates.length - 5} more` : ""}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <Select value={selectedYear} onValueChange={setSelectedYear}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select year" />
+              </SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((y) => (
+                  <SelectItem key={y} value={y}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2">
+              <Button className="flex-1" onClick={handleYearConfirm}>
+                Use {selectedYear}
+              </Button>
+              <Button variant="outline" onClick={handleYearSkip}>
+                Use today's year
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Pending imports review modal */}
       <Dialog open={showQueue} onOpenChange={setShowQueue}>
         <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Review New Words from Google Doc</DialogTitle>
             <DialogDescription>
-              These words were found in your Google Doc. Accept the ones you want to add to your library.
+              These words were found in your Google Doc, grouped by date and topic. Accept the ones you want to add to your library.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto space-y-2 py-2">
+          <div className="flex-1 overflow-y-auto space-y-4 py-2">
             {pendingLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
-            ) : pendingImports.length === 0 ? (
+            ) : groupedImports.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No pending words to review.
               </p>
             ) : (
-              pendingImports.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-card"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{item.term}</p>
-                    <p className="text-xs text-muted-foreground truncate">{item.translation}</p>
+              groupedImports.map((group) => (
+                <div key={`${group.dateKey}||${group.groupLabel}`}>
+                  {/* Date header */}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-xs font-semibold text-foreground">{group.dateKey}</span>
+                    {group.groupLabel && (
+                      <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                        {group.groupLabel}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-green-500 hover:text-green-600 hover:bg-green-500/10"
-                      onClick={() => acceptMutation.mutate({ id: item.id })}
-                      disabled={acceptMutation.isPending}
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => skipMutation.mutate({ id: item.id })}
-                      disabled={skipMutation.isPending}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
+                  <div className="space-y-1.5 pl-2 border-l-2 border-border">
+                    {group.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-card"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{item.term}</p>
+                          <p className="text-xs text-muted-foreground truncate">{item.translation}</p>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-green-500 hover:text-green-600 hover:bg-green-500/10"
+                            onClick={() => acceptMutation.mutate({ id: item.id })}
+                            disabled={acceptMutation.isPending}
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => skipMutation.mutate({ id: item.id })}
+                            disabled={skipMutation.isPending}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))

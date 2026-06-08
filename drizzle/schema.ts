@@ -56,6 +56,8 @@ export const vocabEntries = mysqlTable("vocab_entries", {
   sm2Status: mysqlEnum("sm2Status", ["new", "learning", "review", "mastered"]).default("new").notNull(),
   // Date key for grouping (YYYY-MM-DD or custom label up to 100 chars)
   dateKey: varchar("dateKey", { length: 100 }).notNull(),
+  // Optional sub-group label within a date (e.g. "At the restaurant", "Chapter 3")
+  groupLabel: varchar("groupLabel", { length: 256 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -176,6 +178,8 @@ export const pendingImports = mysqlTable("pending_imports", {
   translation: varchar("translation", { length: 512 }).notNull(),
   kind: mysqlEnum("kind", ["word", "phrase"]).default("word").notNull(),
   dateKey: varchar("dateKey", { length: 100 }).notNull(),
+  // Optional sub-group label within a date (e.g. "At the restaurant", "Chapter 3")
+  groupLabel: varchar("groupLabel", { length: 256 }),
   status: mysqlEnum("status", ["pending", "accepted", "skipped"]).default("pending").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

@@ -21,6 +21,7 @@ export interface VocabEntry {
   sm2NextReviewAt?: number | null;
   sm2LastReviewAt?: number | null;
   sm2Status?: "new" | "learning" | "review" | "mastered" | null;
+  groupLabel?: string | null;
 }
 
 export interface DictWordResult {

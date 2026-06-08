@@ -291,3 +291,21 @@
 - [x] Frontend: Pending review queue UI — badge count on Library nav, review modal with accept/skip per word
 - [x] Scheduled daily sync (node-cron, 08:00 UTC, per-user, queues pending imports)
 - [x] Data migration: reassign existing Manus user data to new Google account on first Google login
+
+## Drive Sync Improvements (Round 28)
+- [x] Fix token limit: chunk large Google Docs into ~6000-char segments and run AI extraction on each chunk, then deduplicate results
+- [x] Add SSE endpoint GET /api/google/sync-stream with step-level progress (connecting, reading doc, analysing chunk N/M, saving, done)
+- [x] Update GoogleDrivePanel to consume SSE stream and display live status line during sync
+
+## Smart Grouping & SSE Sync (Round 29)
+- [x] DB: add groupLabel column to vocab table (nullable text, sub-label under date)
+- [x] DB: add groupLabel column to pending_imports table
+- [x] Run migration and apply SQL
+- [x] AI extraction: return structured groups (rawDate, topicLabel, words[]) per section detected in doc
+- [x] Fix 8000-char token limit: chunk large docs and process each chunk sequentially
+- [x] SSE endpoint /api/google/sync-stream: step-level progress (connecting, reading_doc, analysing N/M, needs_year, saving, done, error)
+- [x] needs_year event: when dates lack year, emit ambiguous dates list and pause; resume endpoint accepts year override
+- [x] GoogleDrivePanel: consume SSE stream, show live status line
+- [x] GoogleDrivePanel: year-picker dialog when needs_year fires, sends year back to resume sync
+- [x] GoogleDrivePanel: show groupLabel as sub-label in pending review queue
+- [x] My Library: show groupLabel as sub-label under date group headers

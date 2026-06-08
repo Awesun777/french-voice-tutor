@@ -97,6 +97,7 @@ export async function addVocabEntry(
     entryKind: "word" | "phrase";
     lessonSource?: string;
     dateKey: string;
+    groupLabel?: string | null;
   }
 ): Promise<number> {
   const db = await getDb();
@@ -108,6 +109,7 @@ export async function addVocabEntry(
     entryKind: entry.entryKind,
     lessonSource: entry.lessonSource ?? null,
     dateKey: entry.dateKey,
+    groupLabel: entry.groupLabel ?? null,
   });
   return (result as any)[0]?.insertId ?? 0;
 }
@@ -120,6 +122,7 @@ export async function addVocabEntries(
     entryKind: "word" | "phrase";
     lessonSource?: string;
     dateKey: string;
+    groupLabel?: string | null;
   }[]
 ): Promise<void> {
   const db = await getDb();
@@ -133,6 +136,7 @@ export async function addVocabEntries(
       entryKind: e.entryKind,
       lessonSource: e.lessonSource ?? null,
       dateKey: e.dateKey,
+      groupLabel: e.groupLabel ?? null,
     }))
   );
 }
@@ -661,13 +665,13 @@ export async function getPendingImports(userId: number): Promise<PendingImport[]
 
 export async function insertPendingImports(
   userId: number,
-  items: Array<{ term: string; translation: string; kind: "word" | "phrase"; dateKey: string }>
+  items: Array<{ term: string; translation: string; kind: "word" | "phrase"; dateKey: string; groupLabel?: string | null }>
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
   if (items.length === 0) return;
   await db.insert(pendingImports).values(
-    items.map((item) => ({ userId, ...item, status: "pending" as const }))
+    items.map((item) => ({ userId, ...item, groupLabel: item.groupLabel ?? null, status: "pending" as const }))
   );
 }
 

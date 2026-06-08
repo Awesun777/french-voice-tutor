@@ -4,7 +4,7 @@
  * - refreshGoogleAccessToken   : use refresh token to get a new access token
  * - getValidAccessToken        : returns a valid access token (refreshes if needed)
  * - fetchGoogleDocText         : export a Google Doc as plain text
- * - extractVocabFromText       : use LLM to extract French words/phrases from doc text
+ * - extractVocabGroups         : use LLM to extract French words grouped by date/topic
  * - exportLibraryToGoogleDoc   : create or update a Google Doc with the user's vocab library
  */
 import * as db from "./db";
@@ -80,7 +80,6 @@ export function extractDocId(url: string): string | null {
  * Fetch a Google Doc and return its plain-text content.
  */
 export async function fetchGoogleDocText(docId: string, accessToken: string): Promise<string> {
-  // Use the Docs API to get the document structure
   const res = await fetch(`${DOCS_EXPORT_URL(docId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -102,7 +101,6 @@ export async function fetchGoogleDocText(docId: string, accessToken: string): Pr
     };
   };
 
-  // Extract all text from the document
   const lines: string[] = [];
   for (const block of doc.body?.content ?? []) {
     if (!block.paragraph) continue;
@@ -115,7 +113,7 @@ export async function fetchGoogleDocText(docId: string, accessToken: string): Pr
   return lines.join("\n");
 }
 
-// ── AI extraction ─────────────────────────────────────────────────────────────
+// ── AI extraction with smart grouping ────────────────────────────────────────
 
 export interface ExtractedWord {
   term: string;
@@ -123,81 +121,228 @@ export interface ExtractedWord {
   kind: "word" | "phrase";
 }
 
-/**
- * Use the LLM to extract French vocabulary from raw document text.
- * Returns only items not already in the user's library (deduplication by term).
- */
-export async function extractVocabFromText(
-  text: string,
-  existingTerms: Set<string>
-): Promise<ExtractedWord[]> {
-  if (!text.trim()) return [];
+export interface ExtractedGroup {
+  /** Raw date string as found in the document, e.g. "June 5", "2025-06-05", "5 juin" */
+  rawDate: string | null;
+  /** Whether the year component is missing and needs user clarification */
+  yearMissing: boolean;
+  /** Optional topic/theme sub-label, e.g. "At the restaurant", "Chapter 3" */
+  topicLabel: string | null;
+  words: ExtractedWord[];
+}
 
+const CHUNK_SIZE = 6000;   // characters per LLM call
+const CHUNK_OVERLAP = 300; // overlap to avoid cutting mid-group header
+
+/**
+ * Split text into overlapping chunks so no vocabulary is missed due to token limits.
+ * Tries to split on newlines to avoid cutting mid-line.
+ */
+function chunkText(text: string): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + CHUNK_SIZE, text.length);
+    // Try to break on a newline boundary
+    if (end < text.length) {
+      const lastNewline = text.lastIndexOf("\n", end);
+      if (lastNewline > start + CHUNK_SIZE / 2) end = lastNewline + 1;
+    }
+    chunks.push(text.slice(start, end));
+    if (end === text.length) break;
+    start = end - CHUNK_OVERLAP;
+  }
+  return chunks;
+}
+
+/**
+ * Run the LLM on a single chunk and return structured groups.
+ */
+async function extractGroupsFromChunk(chunk: string): Promise<ExtractedGroup[]> {
+  const currentYear = new Date().getFullYear();
   const response = await invokeLLM({
     messages: [
       {
         role: "system",
-        content: `You are a French vocabulary extractor. Given text that may contain French words, phrases, or vocabulary notes, extract all French vocabulary items.
-Return a JSON array of objects with:
-- term: the French word or phrase (with proper accents)
-- translation: the English translation
-- kind: "word" for single words/short expressions, "phrase" for full sentences or longer expressions
+        content: `You are a French vocabulary extractor that understands document structure.
 
-Only extract items that are clearly French vocabulary (not random French text). Focus on vocabulary that a learner would want to save.
-If the text contains explicit vocabulary lists (e.g. "bonjour - hello"), extract those directly.
-If the text is a conversation or story in French, extract notable vocabulary words.
-Return an empty array if no clear vocabulary is found.`,
+Analyse the text and extract French vocabulary, preserving the document's own grouping structure:
+1. Look for date headers (e.g. "June 5", "2025-06-05", "5 juin 2024", "Monday June 3rd")
+2. Look for topic/theme headers (e.g. "At the restaurant", "Chapter 3", "Travel vocabulary")
+3. Group words under the section they belong to
+
+For each group return:
+- rawDate: the date string exactly as written in the doc (null if no date found for this group)
+- yearMissing: true if a date is present but the year is not explicitly stated
+- topicLabel: the topic/theme label if present (null if none)
+- words: array of { term, translation, kind } for French vocabulary in this group
+
+Rules:
+- kind is "word" for single words or short expressions, "phrase" for full sentences
+- Only extract items that are clearly French vocabulary a learner would save
+- If the text has no grouping at all, return a single group with rawDate=null, topicLabel=null
+- Do not invent dates or topics that are not in the text
+- Current year is ${currentYear} — use this only as context, do not auto-fill missing years`,
       },
       {
         role: "user",
-        content: `Extract French vocabulary from this text:\n\n${text.slice(0, 8000)}`,
+        content: `Extract French vocabulary groups from this text:\n\n${chunk}`,
       },
     ],
     response_format: {
       type: "json_schema",
       json_schema: {
-        name: "vocab_extraction",
+        name: "vocab_groups",
         strict: true,
         schema: {
           type: "object",
           properties: {
-            items: {
+            groups: {
               type: "array",
               items: {
                 type: "object",
                 properties: {
-                  term: { type: "string" },
-                  translation: { type: "string" },
-                  kind: { type: "string", enum: ["word", "phrase"] },
+                  rawDate: { type: ["string", "null"] },
+                  yearMissing: { type: "boolean" },
+                  topicLabel: { type: ["string", "null"] },
+                  words: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        term: { type: "string" },
+                        translation: { type: "string" },
+                        kind: { type: "string", enum: ["word", "phrase"] },
+                      },
+                      required: ["term", "translation", "kind"],
+                      additionalProperties: false,
+                    },
+                  },
                 },
-                required: ["term", "translation", "kind"],
+                required: ["rawDate", "yearMissing", "topicLabel", "words"],
                 additionalProperties: false,
               },
             },
           },
-          required: ["items"],
+          required: ["groups"],
           additionalProperties: false,
         },
       },
     },
   });
 
-  let items: ExtractedWord[] = [];
   try {
     const content = response.choices[0]?.message?.content;
     const parsed = JSON.parse(typeof content === "string" ? content : JSON.stringify(content));
-    items = parsed.items ?? [];
+    return (parsed.groups ?? []) as ExtractedGroup[];
   } catch {
     return [];
   }
+}
 
-  // Deduplicate against existing library (case-insensitive, accent-insensitive)
+/**
+ * Parse a raw date string + optional year override into a YYYY-MM-DD dateKey.
+ * Returns null if the date cannot be parsed.
+ */
+export function parseDateKey(rawDate: string, yearOverride?: number): string | null {
+  if (!rawDate) return null;
+  const currentYear = yearOverride ?? new Date().getFullYear();
+
+  // Already in YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return rawDate;
+
+  // Try native Date parsing with year injected if needed
+  const withYear = /\d{4}/.test(rawDate) ? rawDate : `${rawDate} ${currentYear}`;
+  const d = new Date(withYear);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString().split("T")[0];
+  }
+
+  // French month names
+  const frMonths: Record<string, number> = {
+    janvier: 1, février: 2, mars: 3, avril: 4, mai: 5, juin: 6,
+    juillet: 7, août: 8, septembre: 9, octobre: 10, novembre: 11, décembre: 12,
+  };
+  const frMatch = rawDate.toLowerCase().match(/(\d{1,2})\s+(\w+)(?:\s+(\d{4}))?/);
+  if (frMatch) {
+    const day = parseInt(frMatch[1]);
+    const monthName = frMatch[2];
+    const year = frMatch[3] ? parseInt(frMatch[3]) : currentYear;
+    const month = frMonths[monthName];
+    if (month) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract French vocabulary from the full document text using smart grouping.
+ * Chunks the document to handle arbitrarily large files.
+ * Calls onProgress(chunk, total) after each chunk.
+ * Returns groups with parsed dateKeys and deduplication applied.
+ */
+export async function extractVocabGroups(
+  text: string,
+  existingTerms: Set<string>,
+  onProgress?: (chunk: number, total: number) => void
+): Promise<{
+  groups: Array<ExtractedGroup & { dateKey: string | null }>;
+  ambiguousDates: string[];  // rawDate strings where yearMissing=true
+}> {
+  if (!text.trim()) return { groups: [], ambiguousDates: [] };
+
   const normalize = (s: string) =>
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
-  return items.filter(
-    (item) => item.term && !existingTerms.has(normalize(item.term))
+  const chunks = chunkText(text);
+  const rawGroups: ExtractedGroup[] = [];
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunkGroups = await extractGroupsFromChunk(chunks[i]);
+    rawGroups.push(...chunkGroups);
+    onProgress?.(i + 1, chunks.length);
+  }
+
+  // Collect ambiguous dates (year missing)
+  const ambiguousDates = Array.from(
+    new Set(
+      rawGroups
+        .filter((g) => g.yearMissing && g.rawDate)
+        .map((g) => g.rawDate as string)
+    )
   );
+
+  // Deduplicate words across all groups
+  const seen = new Set<string>(existingTerms);
+  const processedGroups: Array<ExtractedGroup & { dateKey: string | null }> = [];
+
+  for (const group of rawGroups) {
+    const uniqueWords = group.words.filter((w) => {
+      if (!w.term) return false;
+      const key = normalize(w.term);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (uniqueWords.length === 0) continue;
+
+    const dateKey = group.rawDate ? parseDateKey(group.rawDate) : null;
+    processedGroups.push({ ...group, words: uniqueWords, dateKey });
+  }
+
+  return { groups: processedGroups, ambiguousDates };
+}
+
+// Keep the old extractVocabFromText as a thin wrapper for backward compat (cron job)
+export async function extractVocabFromText(
+  text: string,
+  existingTerms: Set<string>,
+  onProgress?: (chunk: number, total: number) => void
+): Promise<ExtractedWord[]> {
+  const { groups } = await extractVocabGroups(text, existingTerms, onProgress);
+  return groups.flatMap((g) => g.words);
 }
 
 // ── Google Doc export ─────────────────────────────────────────────────────────
@@ -208,6 +353,7 @@ interface VocabRow {
   entryKind: string;
   dateKey: string;
   sm2Status: string;
+  groupLabel?: string | null;
 }
 
 /**
@@ -220,7 +366,6 @@ export async function exportLibraryToGoogleDoc(
   vocab: VocabRow[],
   existingDocId?: string | null
 ): Promise<string> {
-  // Build the document content as plain text
   const now = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   const grouped: Record<string, VocabRow[]> = {};
   for (const v of vocab) {
@@ -236,9 +381,18 @@ export async function exportLibraryToGoogleDoc(
 
   for (const [dateKey, words] of Object.entries(grouped).sort().reverse()) {
     lines.push(`── ${dateKey} ──`);
+    // Sub-group by groupLabel within the date
+    const byLabel: Record<string, VocabRow[]> = {};
     for (const w of words) {
-      const status = w.sm2Status !== "new" ? ` [${w.sm2Status}]` : "";
-      lines.push(`  ${w.term}  →  ${w.translation}${status}`);
+      const label = w.groupLabel ?? "";
+      (byLabel[label] ??= []).push(w);
+    }
+    for (const [label, labelWords] of Object.entries(byLabel)) {
+      if (label) lines.push(`  [${label}]`);
+      for (const w of labelWords) {
+        const status = w.sm2Status !== "new" ? ` [${w.sm2Status}]` : "";
+        lines.push(`  ${w.term}  →  ${w.translation}${status}`);
+      }
     }
     lines.push("");
   }
@@ -246,8 +400,6 @@ export async function exportLibraryToGoogleDoc(
   const docContent = lines.join("\n");
 
   if (existingDocId) {
-    // Update existing doc: clear it and write new content
-    // First, get the document to find its end index
     const getRes = await fetch(`${DOCS_EXPORT_URL(existingDocId)}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -257,7 +409,6 @@ export async function exportLibraryToGoogleDoc(
       const endIndex = (lastBlock?.endIndex ?? 2) - 1;
 
       if (endIndex > 1) {
-        // Delete all existing content
         await fetch(`https://docs.googleapis.com/v1/documents/${existingDocId}:batchUpdate`, {
           method: "POST",
           headers: {
@@ -265,18 +416,11 @@ export async function exportLibraryToGoogleDoc(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            requests: [
-              {
-                deleteContentRange: {
-                  range: { startIndex: 1, endIndex },
-                },
-              },
-            ],
+            requests: [{ deleteContentRange: { range: { startIndex: 1, endIndex } } }],
           }),
         });
       }
 
-      // Insert new content
       await fetch(`https://docs.googleapis.com/v1/documents/${existingDocId}:batchUpdate`, {
         method: "POST",
         headers: {
