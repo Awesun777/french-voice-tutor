@@ -14,6 +14,7 @@
  *   4. Compact translation-only prompt: LLM returns [{term, translation, kind}] per batch
  *   5. fetchGoogleDocText now returns { text, revisionId } for incremental sync
  */
+import { createHash } from "node:crypto";
 import * as db from "./db";
 import { ENV } from "./_core/env";
 
@@ -571,18 +572,63 @@ export function preparseLines(allLines: DocLine[]): {
   return { lineContexts, numericDateFormat };
 }
 
+/** A contiguous run of content lines under one date header. */
+export interface DocSection {
+  rawDate: string | null;
+  hash: string;
+  lines: LineContext[];
+}
+
+/**
+ * Split pre-parsed lines into date sections and fingerprint each one.
+ * The hash covers the date header and every content line (including
+ * English-only lines the LLM will skip), so any edit inside a section —
+ * even to a translation line — changes the hash and re-processes the whole
+ * section, keeping French/English line pairs together.
+ */
+export function splitIntoSections(lineContexts: LineContext[]): DocSection[] {
+  const sections: DocSection[] = [];
+  let current: { rawDate: string | null; lines: LineContext[] } | null = null;
+
+  for (const lc of lineContexts) {
+    if (!current || current.rawDate !== lc.dateKey) {
+      if (current) sections.push(finishSection(current));
+      current = { rawDate: lc.dateKey, lines: [] };
+    }
+    current.lines.push(lc);
+  }
+  if (current) sections.push(finishSection(current));
+  return sections;
+
+  function finishSection(sec: { rawDate: string | null; lines: LineContext[] }): DocSection {
+    const hash = createHash("sha256")
+      .update(sec.rawDate ?? "")
+      .update("\n")
+      .update(sec.lines.map((l) => `${l.topicLabel ?? ""}\t${l.line}`).join("\n"))
+      .digest("hex");
+    return { rawDate: sec.rawDate, hash, lines: sec.lines };
+  }
+}
+
 export async function extractVocabGroups(
   text: string,
   existingTerms: Set<string>,
   onProgress?: (batch: number, total: number) => void,
   model: ExtractionModel = "deepseek-v4-flash",
-  docLines?: DocLine[]
+  docLines?: DocLine[],
+  knownSectionHashes?: Set<string>
 ): Promise<{
   groups: Array<ExtractedGroup & { dateKey: string | null }>;
   ambiguousDates: string[];
   numericDateFormat: NumericDateFormat;
+  /** Hashes of ALL sections currently in the doc — persist after a successful sync. */
+  sectionHashes: string[];
+  /** How many sections actually went to the LLM this run. */
+  processedSections: number;
 }> {
-  if (!text.trim()) return { groups: [], ambiguousDates: [], numericDateFormat: "MD" };
+  if (!text.trim()) {
+    return { groups: [], ambiguousDates: [], numericDateFormat: "MD", sectionHashes: [], processedSections: 0 };
+  }
 
   const normalize = (s: string) =>
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -594,11 +640,22 @@ export async function extractVocabGroups(
     docLines ?? text.split("\n").map((t) => ({ text: t, styled: false }));
   const { lineContexts, numericDateFormat } = preparseLines(allLines);
 
-  if (lineContexts.length === 0) return { groups: [], ambiguousDates: [], numericDateFormat };
+  // ── Step 2.5: Skip sections already processed in a previous sync ──────────
+  // LLM cost scales with new/edited sections instead of full document size.
+  const sections = splitIntoSections(lineContexts);
+  const sectionHashes = sections.map((sec) => sec.hash);
+  const sectionsToProcess = knownSectionHashes
+    ? sections.filter((sec) => !knownSectionHashes.has(sec.hash))
+    : sections;
+  const processLines = sectionsToProcess.flatMap((sec) => sec.lines);
+
+  if (processLines.length === 0) {
+    return { groups: [], ambiguousDates: [], numericDateFormat, sectionHashes, processedSections: 0 };
+  }
 
   // ── Step 3: Batch lines for LLM ──────────────────────────────────────────
   // We batch the actual content lines (not headers) into groups of 100–150.
-  const contentLines = lineContexts.map((lc) => lc.line);
+  const contentLines = processLines.map((lc) => lc.line);
   const batches = batchLines(contentLines);
   const totalBatches = batches.length;
 
@@ -606,7 +663,7 @@ export async function extractVocabGroups(
   // Build a map from line text → {dateKey, topicLabel} for result attribution.
   // (If the same line appears multiple times, last context wins — acceptable.)
   const lineToContext = new Map<string, { dateKey: string | null; topicLabel: string | null }>();
-  for (const lc of lineContexts) {
+  for (const lc of processLines) {
     lineToContext.set(lc.line, { dateKey: lc.dateKey, topicLabel: lc.topicLabel });
   }
 
@@ -616,10 +673,28 @@ export async function extractVocabGroups(
 
   const seen = new Set<string>(existingTerms);
 
-  let lineOffset = 0;
+  // Run LLM calls a few at a time — they are independent, and sequential
+  // execution made syncs take minutes. Results are merged in batch order
+  // below so grouping and dedup stay deterministic.
+  const BATCH_CONCURRENCY = 3;
+  const batchResults: ExtractedWord[][] = new Array(batches.length);
+  let nextBatch = 0;
+  let completedBatches = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(BATCH_CONCURRENCY, batches.length) }, async () => {
+      while (true) {
+        const i = nextBatch++;
+        if (i >= batches.length) break;
+        batchResults[i] = await translateBatch(batches[i], model);
+        completedBatches++;
+        onProgress?.(completedBatches, totalBatches);
+      }
+    })
+  );
+
   for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
     const batch = batches[batchIdx];
-    const words = await translateBatch(batch, model);
+    const words = batchResults[batchIdx];
 
     // Attribute each extracted word to the context of the batch's first line
     // that matches the word's term (best-effort). If not found, use the context
@@ -662,8 +737,6 @@ export async function extractVocabGroups(
       });
     }
 
-    lineOffset += batch.length;
-    onProgress?.(batchIdx + 1, totalBatches);
   }
 
   // ── Step 5: Build output ──────────────────────────────────────────────────
@@ -683,7 +756,7 @@ export async function extractVocabGroups(
     processedGroups.push({ ...group, dateKey });
   }
 
-  return { groups: processedGroups, ambiguousDates, numericDateFormat };
+  return { groups: processedGroups, ambiguousDates, numericDateFormat, sectionHashes, processedSections: sectionsToProcess.length };
 }
 
 /**

@@ -1235,11 +1235,13 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       .input(z.object({
         sourceDocUrl: z.string().url().nullable().optional(),
         extractionModel: z.enum(["deepseek-v4-flash", "gemini-2.5-flash"]).optional(),
+        autoSyncFrequency: z.enum(["off", "daily", "weekly"]).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const update: Record<string, unknown> = {};
         if (input.sourceDocUrl !== undefined) update.sourceDocUrl = input.sourceDocUrl ?? null;
         if (input.extractionModel !== undefined) update.extractionModel = input.extractionModel;
+        if (input.autoSyncFrequency !== undefined) update.autoSyncFrequency = input.autoSyncFrequency;
         await upsertGoogleDriveSettings(ctx.user.id, update);
         return { ok: true };
       }),
@@ -1250,6 +1252,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       return {
         sourceDocUrl: settings?.sourceDocUrl ?? null,
         extractionModel: (settings?.extractionModel ?? "deepseek-v4-flash") as "deepseek-v4-flash" | "gemini-2.5-flash",
+        autoSyncFrequency: (settings?.autoSyncFrequency ?? "off") as "off" | "daily" | "weekly",
         lastSyncedAt: settings?.lastSyncedAt ?? null,
       };
     }),

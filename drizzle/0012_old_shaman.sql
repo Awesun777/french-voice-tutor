@@ -1,0 +1,2 @@
+ALTER TABLE `google_drive_settings` ADD `processedSectionHashes` text;--> statement-breakpoint
+ALTER TABLE `google_drive_settings` ADD `autoSyncFrequency` enum('off','daily','weekly') DEFAULT 'off' NOT NULL;

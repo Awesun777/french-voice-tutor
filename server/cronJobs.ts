@@ -2,120 +2,72 @@
  * Scheduled background jobs
  *
  * dailyGoogleDriveSync — runs at 8:00 AM UTC every day.
- * For every user who has a Google account connected AND a source doc URL configured,
- * fetch the doc, extract new vocabulary, and queue it as pending imports.
+ * Syncs users who opted in via autoSyncFrequency ('daily' or 'weekly') in the
+ * Drive panel. Uses the exact same pipeline as the manual Sync Now button
+ * (style-aware date headers, section-hash skipping, dedup); since nobody is
+ * present to answer the year prompt, year-less date headers are assumed to be
+ * the current year — words still land in the pending review queue where the
+ * user can fix dates before accepting.
  */
 import cron from "node-cron";
 import { getDb } from "./db";
-import {
-  getGoogleDriveSettings,
-  getGoogleAccountByUserId,
-  getVocabByUser,
-  getPendingImports,
-  insertPendingImports,
-  upsertGoogleDriveSettings,
-} from "./db";
-import {
-  extractDocId,
-  extractVocabFromText,
-  fetchGoogleDocText,
-  getValidAccessToken,
-} from "./googleDrive";
+import { runSync } from "./googleSyncStream";
 import { googleAccounts, googleDriveSettings } from "../drizzle/schema";
 
-async function syncUserDrive(userId: number): Promise<{ found: number }> {
-  try {
-    const settings = await getGoogleDriveSettings(userId);
-    if (!settings?.sourceDocUrl) return { found: 0 };
-
-    const docId = extractDocId(settings.sourceDocUrl);
-    if (!docId) return { found: 0 };
-
-    let accessToken: string;
-    try {
-      accessToken = await getValidAccessToken(userId);
-    } catch {
-      console.warn(`[DailySync] User ${userId}: Google token unavailable, skipping`);
-      return { found: 0 };
-    }
-
-    const { text: docText, revisionId, lines: docLines } = await fetchGoogleDocText(docId, accessToken);
-
-    // Incremental sync: skip LLM if the document hasn't changed since last sync
-    if (revisionId && settings.lastRevisionId && revisionId === settings.lastRevisionId) {
-      console.log(`[DailySync] User ${userId}: doc unchanged (rev ${revisionId}), skipping`);
-      return { found: 0 };
-    }
-
-    const existingVocab = await getVocabByUser(userId);
-    const normalize = (s: string) =>
-      s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    const existingTerms = new Set(existingVocab.map((v) => normalize(v.term)));
-
-    const pending = await getPendingImports(userId);
-    for (const p of pending) existingTerms.add(normalize(p.term));
-
-    const extracted = await extractVocabFromText(docText, existingTerms, undefined, docLines);
-
-    if (extracted.length > 0) {
-      const dateKey = new Date().toISOString().split("T")[0];
-      await insertPendingImports(
-        userId,
-        extracted.map((e) => ({ ...e, dateKey }))
-      );
-    }
-
-    await upsertGoogleDriveSettings(userId, {
-      lastSyncedAt: Date.now(),
-      ...(revisionId ? { lastRevisionId: revisionId } : {}),
-    });
-
-    return { found: extracted.length };
-  } catch (err) {
-    console.error(`[DailySync] User ${userId} sync failed:`, err);
-    return { found: 0 };
-  }
-}
+const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
 
 export function startCronJobs() {
   // Run daily at 8:00 AM UTC
   cron.schedule("0 8 * * *", async () => {
-    console.log("[DailySync] Starting daily Google Drive sync…");
+    console.log("[AutoSync] Starting scheduled Google Drive sync…");
 
     const db = await getDb();
     if (!db) {
-      console.warn("[DailySync] DB unavailable, skipping");
+      console.warn("[AutoSync] DB unavailable, skipping");
       return;
     }
 
-    // Find all users who have both a Google account and a source doc URL
     const settingsRows = await db
-      .select({ userId: googleDriveSettings.userId, sourceDocUrl: googleDriveSettings.sourceDocUrl })
+      .select({
+        userId: googleDriveSettings.userId,
+        sourceDocUrl: googleDriveSettings.sourceDocUrl,
+        autoSyncFrequency: googleDriveSettings.autoSyncFrequency,
+        lastSyncedAt: googleDriveSettings.lastSyncedAt,
+      })
       .from(googleDriveSettings);
 
     const accountRows = await db
       .select({ userId: googleAccounts.userId })
       .from(googleAccounts);
-
     const connectedUserIds = new Set(accountRows.map((r) => r.userId));
 
-    const usersToSync = settingsRows.filter(
-      (s) => s.sourceDocUrl && connectedUserIds.has(s.userId)
-    );
+    const now = Date.now();
+    const usersToSync = settingsRows.filter((s) => {
+      if (!s.sourceDocUrl || !connectedUserIds.has(s.userId)) return false;
+      if (s.autoSyncFrequency === "daily") return true;
+      if (s.autoSyncFrequency === "weekly") {
+        return !s.lastSyncedAt || now - s.lastSyncedAt >= SIX_DAYS_MS;
+      }
+      return false; // 'off'
+    });
 
-    console.log(`[DailySync] Syncing ${usersToSync.length} user(s)…`);
+    console.log(`[AutoSync] Syncing ${usersToSync.length} user(s)…`);
 
     let totalFound = 0;
     for (const { userId } of usersToSync) {
-      const result = await syncUserDrive(userId);
-      totalFound += result.found;
-      if (result.found > 0) {
-        console.log(`[DailySync] User ${userId}: found ${result.found} new word(s)`);
+      try {
+        const result = await runSync(userId, new Date().getFullYear(), () => {});
+        totalFound += result.found;
+        if (result.found > 0) {
+          console.log(`[AutoSync] User ${userId}: found ${result.found} new word(s)`);
+        }
+      } catch (err) {
+        console.error(`[AutoSync] User ${userId} sync failed:`, err);
       }
     }
 
-    console.log(`[DailySync] Done. Total new words queued: ${totalFound}`);
+    console.log(`[AutoSync] Done. Total new words queued: ${totalFound}`);
   });
 
-  console.log("[CronJobs] Daily Google Drive sync scheduled at 08:00 UTC");
+  console.log("[CronJobs] Scheduled Google Drive auto-sync tick at 08:00 UTC");
 }

@@ -47,7 +47,12 @@ function startKeepalive(res: Response, intervalMs = 15_000): ReturnType<typeof s
   }, intervalMs);
 }
 
-async function runSync(
+/**
+ * Run a full Drive sync for one user. Exported so the scheduled background
+ * sync (cronJobs.ts) shares the exact same pipeline as the manual button:
+ * style-aware date headers, section-hash skipping, year handling, dedup.
+ */
+export async function runSync(
   userId: number,
   yearOverride: number | undefined,
   onEvent: (data: Record<string, unknown>) => void
@@ -115,14 +120,25 @@ async function runSync(
   // Load user's preferred extraction model
   const model: ExtractionModel = (settings.extractionModel as ExtractionModel) ?? "deepseek-v4-flash";
 
+  // Sections already processed in a previous successful sync are skipped —
+  // only new/edited sections reach the LLM.
+  let knownSectionHashes: Set<string> | undefined;
+  try {
+    const parsed = settings.processedSectionHashes ? JSON.parse(settings.processedSectionHashes) : null;
+    if (Array.isArray(parsed)) knownSectionHashes = new Set(parsed as string[]);
+  } catch {
+    // malformed stored hashes — treat as no history, full reprocess
+  }
+
   // Extract with smart grouping using the user's chosen model.
   // (Year-less dates were already resolved by the pre-pass check above.)
-  const { groups, numericDateFormat } = await extractVocabGroups(
+  const { groups, numericDateFormat, sectionHashes, processedSections } = await extractVocabGroups(
     docText,
     existingTerms,
     (batch, total) => onEvent({ step: "analysing", chunk: batch, total }),
     model,
-    docLines
+    docLines,
+    knownSectionHashes
   );
 
   // Resolve dateKeys — apply yearOverride for ambiguous dates
@@ -164,13 +180,17 @@ async function runSync(
     await db.insertPendingImports(userId, importItems);
   }
 
-  // Save lastSyncedAt, and the new revisionId for incremental sync — but only
-  // when something was actually imported. Recording the revisionId on a
-  // zero-import sync would make every retry short-circuit as "up to date",
-  // hiding extraction failures permanently (the model picker would appear broken).
+  // Save lastSyncedAt and the current section hashes (extraction errors throw,
+  // so reaching this point means every batch completed). Save the revisionId
+  // only when something was imported OR nothing needed processing — recording
+  // it after an unexpected zero-yield analysis would make every retry
+  // short-circuit as "up to date" and hide extraction problems.
   await db.upsertGoogleDriveSettings(userId, {
     lastSyncedAt: Date.now(),
-    ...(revisionId && importItems.length > 0 ? { lastRevisionId: revisionId } : {}),
+    processedSectionHashes: JSON.stringify(sectionHashes),
+    ...(revisionId && (importItems.length > 0 || processedSections === 0)
+      ? { lastRevisionId: revisionId }
+      : {}),
   });
 
   return { found: importItems.length };

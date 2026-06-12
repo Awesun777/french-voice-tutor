@@ -175,6 +175,19 @@ export const googleDriveSettings = mysqlTable("google_drive_settings", {
    * Used for incremental sync: if the revision hasn't changed, skip LLM extraction entirely.
    */
   lastRevisionId: varchar("lastRevisionId", { length: 256 }),
+  /**
+   * JSON array of SHA-256 hashes, one per date section, from the last
+   * successful sync. Sections whose hash is unchanged are skipped during
+   * extraction, so LLM cost scales with new/edited content, not doc size.
+   */
+  processedSectionHashes: text("processedSectionHashes"),
+  /**
+   * Background auto-sync schedule. The daily cron tick at 08:00 UTC syncs
+   * 'daily' users; 'weekly' users sync when their last sync is ≥6 days old.
+   */
+  autoSyncFrequency: mysqlEnum("autoSyncFrequency", ["off", "daily", "weekly"])
+    .default("off")
+    .notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type GoogleDriveSettings = typeof googleDriveSettings.$inferSelect;

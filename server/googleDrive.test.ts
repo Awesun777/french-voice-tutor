@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectNumericDateFormat, extractDocId, parseDateKey, preparseLines } from "./googleDrive";
+import { detectNumericDateFormat, extractDocId, extractVocabGroups, parseDateKey, preparseLines, splitIntoSections } from "./googleDrive";
 
 // ── extractDocId ──────────────────────────────────────────────────────────────
 
@@ -238,4 +238,63 @@ describe("topic header detection", () => {
       { line: "la carte", dateKey: null, topicLabel: "Au restaurant" },
     ]);
   });
+});
+
+// ── section hashing / incremental skip ────────────────────────────────────────
+
+describe("splitIntoSections", () => {
+  const ctx = (line: string, dateKey: string | null, topicLabel: string | null = null) =>
+    ({ line, dateKey, topicLabel });
+
+  it("groups contiguous lines by date and fingerprints each section", () => {
+    const sections = splitIntoSections([
+      ctx("intro line", null),
+      ctx("la santé", "15/05"),
+      ctx("health", "15/05"),
+      ctx("sur la main", "02/06"),
+    ]);
+    expect(sections.map((s) => s.rawDate)).toEqual([null, "15/05", "02/06"]);
+    expect(sections.map((s) => s.lines.length)).toEqual([1, 2, 1]);
+    expect(new Set(sections.map((s) => s.hash)).size).toBe(3);
+  });
+
+  it("changes the hash when ANY line in the section changes — including English ones", () => {
+    const before = splitIntoSections([ctx("la santé", "15/05"), ctx("health", "15/05")]);
+    const after = splitIntoSections([ctx("la santé", "15/05"), ctx("the health", "15/05")]);
+    expect(before[0].hash).not.toBe(after[0].hash);
+  });
+
+  it("produces stable hashes for identical content", () => {
+    const a = splitIntoSections([ctx("la carte", "01/06")]);
+    const b = splitIntoSections([ctx("la carte", "01/06")]);
+    expect(a[0].hash).toBe(b[0].hash);
+  });
+});
+
+describe("extractVocabGroups section skipping", () => {
+  it("skips all LLM work when every section hash is known", async () => {
+    const docLines = [
+      { text: "15/05", styled: true },
+      { text: "la santé", styled: false },
+    ];
+    const { sectionHashes } = splitIntoSectionsFromDoc(docLines);
+    // No API key configured in this test env — if a batch were sent, the call would fail.
+    const result = await extractVocabGroups(
+      "15/05\nla santé",
+      new Set(),
+      undefined,
+      undefined,
+      docLines,
+      new Set(sectionHashes)
+    );
+    expect(result.processedSections).toBe(0);
+    expect(result.groups).toEqual([]);
+    expect(result.sectionHashes).toEqual(sectionHashes);
+  });
+
+  function splitIntoSectionsFromDoc(docLines: { text: string; styled: boolean }[]) {
+    const { lineContexts } = preparseLines(docLines);
+    const sections = splitIntoSections(lineContexts);
+    return { sectionHashes: sections.map((s) => s.hash) };
+  }
 });

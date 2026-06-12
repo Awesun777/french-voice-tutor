@@ -124,6 +124,15 @@ export function GoogleDrivePanel() {
     setModelInitialized(true);
   }
 
+  // Auto-sync schedule selector, synced with loaded settings
+  const [autoSync, setAutoSync] = useState<"off" | "daily" | "weekly">("off");
+  const loadedAutoSync = driveSettings?.autoSyncFrequency;
+  const [autoSyncInitialized, setAutoSyncInitialized] = useState(false);
+  if (!autoSyncInitialized && loadedAutoSync) {
+    setAutoSync(loadedAutoSync);
+    setAutoSyncInitialized(true);
+  }
+
   const { data: pendingImports = [], isLoading: pendingLoading } = trpc.google.getPendingImports.useQuery(
     undefined,
     { enabled: showQueue }
@@ -434,6 +443,38 @@ export function GoogleDrivePanel() {
                     Gemini 2.5 Flash
                   </button>
                 </div>
+              </div>
+
+              {/* Auto-sync schedule */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Auto-Sync Schedule</label>
+                <div className="flex gap-2">
+                  {(["off", "daily", "weekly"] as const).map((freq) => (
+                    <button
+                      key={freq}
+                      type="button"
+                      onClick={() => {
+                        setAutoSync(freq);
+                        saveSettingsMutation.mutate({ autoSyncFrequency: freq });
+                      }}
+                      className={cn(
+                        "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all capitalize",
+                        autoSync === freq
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
+                      )}
+                    >
+                      {freq}
+                    </button>
+                  ))}
+                </div>
+                {autoSync !== "off" && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Syncs {autoSync} in the background (08:00 UTC). New words wait in the review
+                    queue; dates without a year are assumed to be the current year — adjust them
+                    there if needed.
+                  </p>
+                )}
               </div>
 
               {/* Sync Now */}

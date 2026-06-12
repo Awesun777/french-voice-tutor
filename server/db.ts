@@ -647,6 +647,8 @@ export async function upsertGoogleDriveSettings(
     lastSyncedAt?: number | null;
     extractionModel?: "deepseek-v4-flash" | "gemini-2.5-flash";
     lastRevisionId?: string | null;
+    processedSectionHashes?: string | null;
+    autoSyncFrequency?: "off" | "daily" | "weekly";
   }
 ): Promise<void> {
   const db = await getDb();
