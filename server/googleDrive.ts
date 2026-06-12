@@ -29,7 +29,9 @@ async function callDeepSeek(messages: { role: string; content: string }[], useJs
   const body: Record<string, unknown> = {
     model: "deepseek-v4-flash",
     messages,
-    max_tokens: 8192,
+    // The reasoning chain alone can exceed 8k tokens on a 100+ line batch,
+    // which truncated the JSON answer and made every batch parse to [].
+    max_tokens: 32768,
   };
   if (useJson) {
     body.response_format = { type: "json_object" };
@@ -46,8 +48,12 @@ async function callDeepSeek(messages: { role: string; content: string }[], useJs
     const err = await res.text();
     throw new Error(`DeepSeek API error ${res.status}: ${err}`);
   }
-  const data = await res.json() as { choices: { message: { content: string } }[] };
-  return data.choices[0]?.message?.content ?? "[]";
+  const data = await res.json() as { choices: { finish_reason?: string; message: { content: string } }[] };
+  const choice = data.choices[0];
+  if (choice?.finish_reason === "length") {
+    throw new Error("DeepSeek response was truncated (hit max_tokens) — extraction batch too large");
+  }
+  return choice?.message?.content ?? "[]";
 }
 
 /**
@@ -69,7 +75,11 @@ async function callGemini(messages: { role: string; content: string }[]): Promis
     })),
     generationConfig: {
       responseMimeType: "application/json",
-      maxOutputTokens: 8192,
+      maxOutputTokens: 32768,
+      // Gemini 2.5 Flash thinks by default and the thinking tokens count
+      // against maxOutputTokens, truncating the JSON answer. Extraction is
+      // mechanical translation — no thinking needed.
+      thinkingConfig: { thinkingBudget: 0 },
     },
   };
 
@@ -85,8 +95,12 @@ async function callGemini(messages: { role: string; content: string }[]): Promis
     const err = await res.text();
     throw new Error(`Gemini API error ${res.status}: ${err}`);
   }
-  const data = await res.json() as { candidates: { content: { parts: { text: string }[] } }[] };
-  return data.candidates[0]?.content?.parts[0]?.text ?? "[]";
+  const data = await res.json() as { candidates: { finishReason?: string; content: { parts: { text: string }[] } }[] };
+  const candidate = data.candidates[0];
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    throw new Error("Gemini response was truncated (hit maxOutputTokens) — extraction batch too large");
+  }
+  return candidate?.content?.parts?.[0]?.text ?? "[]";
 }
 
 // ── Token management ──────────────────────────────────────────────────────────
@@ -344,9 +358,12 @@ Rules:
     const obj = JSON.parse(trimmed) as Record<string, unknown>;
     const arr = obj.items ?? obj.words ?? obj.vocabulary ?? obj.results ?? Object.values(obj)[0];
     if (Array.isArray(arr)) return arr as ExtractedWord[];
+    console.error(`[DriveSync] ${model} returned JSON without a word array:`, raw.slice(0, 200));
     return [];
-  } catch {
-    return [];
+  } catch (err) {
+    // Don't swallow this silently — an unparseable response means the sync is
+    // missing words, and "0 found" must not look like a successful sync.
+    throw new Error(`${model} returned unparseable JSON (${(err as Error).message}): ${raw.slice(0, 200)}`);
   }
 }
 

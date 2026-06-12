@@ -145,10 +145,13 @@ async function runSync(
     await db.insertPendingImports(userId, importItems);
   }
 
-  // Save lastSyncedAt and, if available, the new revisionId for incremental sync
+  // Save lastSyncedAt, and the new revisionId for incremental sync — but only
+  // when something was actually imported. Recording the revisionId on a
+  // zero-import sync would make every retry short-circuit as "up to date",
+  // hiding extraction failures permanently (the model picker would appear broken).
   await db.upsertGoogleDriveSettings(userId, {
     lastSyncedAt: Date.now(),
-    ...(revisionId ? { lastRevisionId: revisionId } : {}),
+    ...(revisionId && importItems.length > 0 ? { lastRevisionId: revisionId } : {}),
   });
 
   return { found: importItems.length };
