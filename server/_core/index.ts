@@ -260,6 +260,11 @@ async function startServer() {
     });
   });
 
+  // Health check (used by Railway and other hosting platforms)
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", ts: Date.now() });
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",
