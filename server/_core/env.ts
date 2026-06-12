@@ -12,4 +12,6 @@ export const ENV = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? "",
   googleAiApiKey: process.env.GOOGLE_AI_API_KEY ?? "",
+  /** Set to your public domain on Railway/self-hosted (e.g. https://your-app.up.railway.app) */
+  appUrl: process.env.APP_URL ?? "",
 };

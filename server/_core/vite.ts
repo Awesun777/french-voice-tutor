@@ -3,8 +3,13 @@ import fs from "fs";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
 import path from "path";
+import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
+
+// import.meta.dirname is undefined in esbuild ESM bundles — derive it from import.meta.url instead.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname_safe = path.dirname(__filename);
 
 export async function setupVite(app: Express, server: Server) {
   const serverOptions = {
@@ -48,10 +53,13 @@ export async function setupVite(app: Express, server: Server) {
 }
 
 export function serveStatic(app: Express) {
+  // In production the bundle lives at dist/index.js and the client assets at dist/public/.
+  // Use __dirname_safe (derived from import.meta.url) because import.meta.dirname is
+  // undefined in esbuild ESM output.
   const distPath =
     process.env.NODE_ENV === "development"
-      ? path.resolve(import.meta.dirname, "../..", "dist", "public")
-      : path.resolve(import.meta.dirname, "public");
+      ? path.resolve(__dirname_safe, "../..", "dist", "public")
+      : path.resolve(__dirname_safe, "public");
   if (!fs.existsSync(distPath)) {
     console.error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
