@@ -44,6 +44,7 @@ import {
   updatePendingImportStatus,
   bulkUpdatePendingImportsByDateKey,
   upsertGoogleDriveSettings,
+  getPendingImportById,
 } from "./db";
 import {
   extractDocId,
@@ -1311,16 +1312,21 @@ The user is asking about this specific word/phrase. Answer in the context of thi
     acceptImport: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
-        const pending = await getPendingImports(ctx.user.id);
-        const item = pending.find((p) => p.id === input.id);
+        // Look up by ID directly (not through the pending-only list) so that
+        // items already marked 'accepted' by a group-accept can still be
+        // individually accepted without throwing NOT_FOUND.
+        const item = await getPendingImportById(input.id, ctx.user.id);
         if (!item) throw new TRPCError({ code: "NOT_FOUND" });
-        await addVocabEntry(ctx.user.id, {
-          term: item.term,
-          translation: item.translation,
-          entryKind: item.kind,
-          dateKey: item.dateKey,
-        });
-        await updatePendingImportStatus(input.id, ctx.user.id, "accepted");
+        // Only add to vocab library if not already accepted
+        if (item.status !== "accepted") {
+          await addVocabEntry(ctx.user.id, {
+            term: item.term,
+            translation: item.translation,
+            entryKind: item.kind,
+            dateKey: item.dateKey,
+          });
+          await updatePendingImportStatus(input.id, ctx.user.id, "accepted");
+        }
         return { ok: true };
       }),
 

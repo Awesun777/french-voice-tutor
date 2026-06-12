@@ -1,0 +1,170 @@
+{
+  "query": "DESCRIBE vocab_entries;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2tViCNPNqR8WkNK.5a13a40b8b26 --database 8baQdh3xy5GA4FRvuUk9AV --execute DESCRIBE vocab_entries;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "userId",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "term",
+      "Type": "varchar(512)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "translation",
+      "Type": "varchar(512)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "entryKind",
+      "Type": "enum('word','phrase')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "word",
+      "Extra": ""
+    },
+    {
+      "Field": "lessonSource",
+      "Type": "varchar(256)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "starred",
+      "Type": "tinyint(1)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "quizCount",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "lastQuizzed",
+      "Type": "timestamp",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "dateKey",
+      "Type": "varchar(100)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updatedAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    },
+    {
+      "Field": "wrongCount",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "sm2EaseFactor",
+      "Type": "double",
+      "Null": "NO",
+      "Key": "",
+      "Default": "2.5",
+      "Extra": ""
+    },
+    {
+      "Field": "sm2Interval",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "sm2Repetitions",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "sm2NextReviewAt",
+      "Type": "bigint",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sm2LastReviewAt",
+      "Type": "bigint",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "sm2Status",
+      "Type": "enum('new','learning','review','mastered')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "new",
+      "Extra": ""
+    },
+    {
+      "Field": "groupLabel",
+      "Type": "varchar(256)",
+      "Null": "YES",
+      "Key": "",
+      "Default": "NULL",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nuserId\tint\tNO\t\tNULL\t\nterm\tvarchar(512)\tNO\t\tNULL\t\ntranslation\tvarchar(512)\tNO\t\tNULL\t\nentryKind\tenum('word','phrase')\tNO\t\tword\t\nlessonSource\tvarchar(256)\tYES\t\tNULL\t\nstarred\ttinyint(1)\tNO\t\t0\t\nquizCount\tint\tNO\t\t0\t\nlastQuizzed\ttimestamp\tYES\t\tNULL\t\ndateKey\tvarchar(100)\tNO\t\tNULL\t\ncreatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\t\nupdatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\nwrongCount\tint\tNO\t\t0\t\nsm2EaseFactor\tdouble\tNO\t\t2.5\t\nsm2Interval\tint\tNO\t\t0\t\nsm2Repetitions\tint\tNO\t\t0\t\nsm2NextReviewAt\tbigint\tYES\t\tNULL\t\nsm2LastReviewAt\tbigint\tYES\t\tNULL\t\nsm2Status\tenum('new','learning','review','mastered')\tNO\t\tnew\t\ngroupLabel\tvarchar(256)\tYES\t\tNULL\t\n",
+  "stderr": "",
+  "execution_time_ms": 271
+}

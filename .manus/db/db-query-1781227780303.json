@@ -1,0 +1,18 @@
+{
+  "query": "\nSELECT status, COUNT(*) as cnt FROM pending_imports GROUP BY status;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2tViCNPNqR8WkNK.5a13a40b8b26 --database 8baQdh3xy5GA4FRvuUk9AV --execute \nSELECT status, COUNT(*) as cnt FROM pending_imports GROUP BY status;\n",
+  "rows": [
+    {
+      "status": "accepted",
+      "cnt": "418"
+    },
+    {
+      "status": "skipped",
+      "cnt": "3"
+    }
+  ],
+  "messages": [],
+  "stdout": "status\tcnt\naccepted\t418\nskipped\t3\n",
+  "stderr": "",
+  "execution_time_ms": 268
+}

@@ -1,0 +1,17 @@
+{
+  "query": "\nSELECT \n  (SELECT COUNT(*) FROM vocab_entries) AS total_vocab,\n  (SELECT COUNT(*) FROM pending_imports) AS total_pending,\n  (SELECT COUNT(*) FROM pending_imports WHERE status = 'pending') AS pending_count,\n  (SELECT COUNT(*) FROM pending_imports WHERE status = 'accepted') AS accepted_count,\n  (SELECT COUNT(*) FROM pending_imports WHERE status = 'skipped') AS skipped_count;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2tViCNPNqR8WkNK.5a13a40b8b26 --database 8baQdh3xy5GA4FRvuUk9AV --execute \nSELECT \n  (SELECT COUNT(*) FROM vocab_entries) AS total_vocab,\n  (SELECT COUNT(*) FROM pending_imports) AS total_pending,\n  (SELECT COUNT(*) FROM pending_imports WHERE status = 'pending') AS pending_count,\n  (SELECT COUNT(*) FROM pending_imports WHERE status = 'accepted') AS accepted_count,\n  (SELECT COUNT(*) FROM pending_imports WHERE status = 'skipped') AS skipped_count;\n",
+  "rows": [
+    {
+      "total_vocab": "1787",
+      "total_pending": "421",
+      "pending_count": "0",
+      "accepted_count": "418",
+      "skipped_count": "3"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_vocab\ttotal_pending\tpending_count\taccepted_count\tskipped_count\n1787\t421\t0\t418\t3\n",
+  "stderr": "",
+  "execution_time_ms": 282
+}

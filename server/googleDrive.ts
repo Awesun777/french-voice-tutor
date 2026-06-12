@@ -308,16 +308,17 @@ async function translateBatch(
 ): Promise<ExtractedWord[]> {
   const batchText = lines.join("\n");
 
-  const systemPrompt = `You are a French-to-English vocabulary translator.
-Given a list of lines from a French class notebook, identify every French word or phrase that a language learner would want to save, and translate each one to English.
+  const systemPrompt = `You are a French vocabulary extractor for a language learner's notebook.
+Given a list of lines, extract every French word or phrase worth saving to a vocabulary list.
 
 Return a JSON array (no wrapper object) where each element is:
 { "term": "<French word/phrase>", "translation": "<English meaning>", "kind": "word" | "phrase" }
 
 Rules:
-- "kind" is "word" for single words or short expressions (≤4 words), "phrase" for longer sentences
-- Skip lines that are clearly date headers, topic headers, page numbers, or non-French content
-- Skip English words or already-translated pairs
+- "kind" is "word" for single words or short expressions (≤4 words), "phrase" for longer sentences or full sentences
+- IMPORTANT: Many lines already contain both a French term and its English meaning, separated by characters like —, →, -, :, =, or a tab. For these lines, extract the French part as "term" and the English part as "translation" directly. Do NOT skip these lines.
+- For lines that contain only French (no English translation present), translate the French to English yourself.
+- Skip lines that are clearly date headers (e.g. "June 5", "5 juin 2025"), page numbers, section titles with no vocabulary, or lines that contain only English with no French.
 - Do NOT invent words — only extract what is explicitly present in the text
 - Return an empty array [] if no French vocabulary is found
 - Return ONLY the JSON array, no markdown, no explanation`;

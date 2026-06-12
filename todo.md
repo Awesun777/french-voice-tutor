@@ -334,3 +334,8 @@
 - [x] fetchGoogleDocText: also return revisionId from Google Docs API response
 - [x] Sync stream: if revisionId matches lastRevisionId, emit done with found=0 and skip LLM entirely
 - [x] Sync stream: after successful sync, save new revisionId to google_drive_settings
+
+## Google Doc Sync Bug Fixes (Round 33)
+- [x] Fix LLM prompt in translateBatch: handle French+English pair lines (extract term/translation directly); translate bare French lines; never skip a line because it has an English side
+- [x] Fix dedup query: include all non-skipped pending imports (status != 'skipped') in the dedup set, not just status='pending'
+- [x] Fix acceptImport single-word lookup: look up item by ID directly instead of filtering through pending-only list

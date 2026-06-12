@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   GoogleAccount,
@@ -659,6 +659,7 @@ export async function upsertGoogleDriveSettings(
 
 // ─── Pending Imports helpers ───────────────────────────────────────────────────
 
+/** Returns only status='pending' imports — used for the review queue UI. */
 export async function getPendingImports(userId: number): Promise<PendingImport[]> {
   const db = await getDb();
   if (!db) return [];
@@ -667,6 +668,32 @@ export async function getPendingImports(userId: number): Promise<PendingImport[]
     .from(pendingImports)
     .where(and(eq(pendingImports.userId, userId), eq(pendingImports.status, "pending")))
     .orderBy(desc(pendingImports.createdAt));
+}
+
+/**
+ * Returns all non-skipped pending imports (status = 'pending' OR 'accepted').
+ * Used exclusively for building the deduplication set during sync — so that
+ * words already in the review queue or already accepted are not re-imported.
+ */
+export async function getAllNonSkippedPendingImports(userId: number): Promise<PendingImport[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(pendingImports)
+    .where(and(eq(pendingImports.userId, userId), ne(pendingImports.status, "skipped")));
+}
+
+/** Look up a single pending import by ID, regardless of status. */
+export async function getPendingImportById(id: number, userId: number): Promise<PendingImport | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(pendingImports)
+    .where(and(eq(pendingImports.id, id), eq(pendingImports.userId, userId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function insertPendingImports(

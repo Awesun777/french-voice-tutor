@@ -1,0 +1,260 @@
+{
+  "query": "\nSELECT term, translation, dateKey FROM vocab_entries ORDER BY id DESC LIMIT 50;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2tViCNPNqR8WkNK.5a13a40b8b26 --database 8baQdh3xy5GA4FRvuUk9AV --execute \nSELECT term, translation, dateKey FROM vocab_entries ORDER BY id DESC LIMIT 50;\n",
+  "rows": [
+    {
+      "term": "La propreté",
+      "translation": "cleanness",
+      "dateKey": "2026-06-12"
+    },
+    {
+      "term": "Bordélique",
+      "translation": "messy",
+      "dateKey": "2026-06-12"
+    },
+    {
+      "term": "Un bordel",
+      "translation": "A mess",
+      "dateKey": "2026-06-12"
+    },
+    {
+      "term": "bordel",
+      "translation": "brothel",
+      "dateKey": "2026-06-12"
+    },
+    {
+      "term": "publicité",
+      "translation": "Advertising",
+      "dateKey": "2026-06-12"
+    },
+    {
+      "term": "Tes goûts",
+      "translation": "Your tastes",
+      "dateKey": "2026-06-12"
+    },
+    {
+      "term": "Ce que tu en penses",
+      "translation": "What you think of it",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Tu veux savoir",
+      "translation": "You want to know",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Du vocabulaire",
+      "translation": "Some vocabulary",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Quand tu ajoutes",
+      "translation": "When you add",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "construit",
+      "translation": "built",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "sauvegarder",
+      "translation": "to save",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Tu ne connais pas",
+      "translation": "You don't know",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Un agent vocal",
+      "translation": "A voice agent",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "J’ai créé",
+      "translation": "I created",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Plus puissante",
+      "translation": "More powerful",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Est devenu",
+      "translation": "Has become",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Tu te souviens",
+      "translation": "You remember",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "J’ai construit",
+      "translation": "I built",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Deux chambres",
+      "translation": "Two rooms",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Qui sont bordéliques",
+      "translation": "Who are messy",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Tu as des amis",
+      "translation": "You have friends",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "l’organisation",
+      "translation": "the organization",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "La propreté",
+      "translation": "cleanness",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Nous sommes aussi organisés l’un que l’autre",
+      "translation": "We are as organized as each other",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "ranger",
+      "translation": "to tidy",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Nous sommes aussi organisés",
+      "translation": "We are as organized",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Bordélique",
+      "translation": "messy",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Un bordel",
+      "translation": "A mess",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Ce n’est pas bien rangé",
+      "translation": "It is not well tidied",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Lieu de prostitution",
+      "translation": "Place of prostitution",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "bordel",
+      "translation": "brothel",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Toi ou ta copine ?",
+      "translation": "You or your girlfriend?",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Qui est le plus bordélique",
+      "translation": "Who is the most messy",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "publicité",
+      "translation": "Advertising",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Pour faire de la publicité ciblée",
+      "translation": "To do targeted advertising",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Ce que",
+      "translation": "What / That which",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Pour connaître tes goûts",
+      "translation": "To know your tastes",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Un autre objectif",
+      "translation": "Another objective",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Tes goûts",
+      "translation": "Your tastes",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "tes comportements",
+      "translation": "your behaviors",
+      "dateKey": "2026-06-08"
+    },
+    {
+      "term": "Je veux te montrer quelque chose que j'ai construit",
+      "translation": "I want to show you something I built",
+      "dateKey": "2026-06-05"
+    },
+    {
+      "term": "l’ambiance",
+      "translation": "atmosphere; vibe",
+      "dateKey": "2026-06-05"
+    },
+    {
+      "term": "une colline",
+      "translation": "a hill",
+      "dateKey": "2026-06-04"
+    },
+    {
+      "term": "Peut-être que je vais sortir",
+      "translation": "Maybe I will go out",
+      "dateKey": "2026-06-04"
+    },
+    {
+      "term": "fêter",
+      "translation": "to celebrate",
+      "dateKey": "2026-06-04"
+    },
+    {
+      "term": "je n’ai rien dit",
+      "translation": "I didn’t say anything",
+      "dateKey": "2026-06-04"
+    },
+    {
+      "term": "marcher",
+      "translation": "to walk, to march, to work (machine)",
+      "dateKey": "2026-06-04"
+    },
+    {
+      "term": "en marchant",
+      "translation": "while walking, by walking, on foot",
+      "dateKey": "2026-06-04"
+    },
+    {
+      "term": "C’est très sympa de parler avec toi.",
+      "translation": "It’s very nice speaking with you.",
+      "dateKey": "2026-06-04"
+    }
+  ],
+  "messages": [],
+  "stdout": "term\ttranslation\tdateKey\nLa propreté\tcleanness\t2026-06-12\nBordélique\tmessy\t2026-06-12\nUn bordel\tA mess\t2026-06-12\nbordel\tbrothel\t2026-06-12\npublicité\tAdvertising\t2026-06-12\nTes goûts\tYour tastes\t2026-06-12\nCe que tu en penses\tWhat you think of it\t2026-06-08\nTu veux savoir\tYou want to know\t2026-06-08\nDu vocabulaire\tSome vocabulary\t2026-06-08\nQuand tu ajoutes\tWhen you add\t2026-06-08\nconstruit\tbuilt\t2026-06-08\nsauvegarder\tto save\t2026-06-08\nTu ne connais pas\tYou don't know\t2026-06-08\nUn agent vocal\tA voice agent\t2026-06-08\nJ’ai créé\tI created\t2026-06-08\nPlus puissante\tMore powerful\t2026-06-08\nEst devenu\tHas become\t2026-06-08\nTu te souviens\tYou remember\t2026-06-08\nJ’ai construit\tI built\t2026-06-08\nDeux chambres\tTwo rooms\t2026-06-08\nQui sont bordéliques\tWho are messy\t2026-06-08\nTu as des amis\tYou have friends\t2026-06-08\nl’organisation\tthe organization\t2026-06-08\nLa propreté\tcleanness\t2026-06-08\nNous sommes aussi organisés l’un que l’autre\tWe are as organized as each other\t2026-06-08\nranger\tto tidy\t2026-06-08\nNous sommes aussi organisés\tWe are as organized\t2026-06-08\nBordélique\tmessy\t2026-06-08\nUn bordel\tA mess\t2026-06-08\nCe n’est pas bien rangé\tIt is not well tidied\t2026-06-08\nLieu de prostitution\tPlace of prostitution\t2026-06-08\nbordel\tbrothel\t2026-06-08\nToi ou ta copine ?\tYou or your girlfriend?\t2026-06-08\nQui est le plus bordélique\tWho is the most messy\t2026-06-08\npublicité\tAdvertising\t2026-06-08\nPour faire de la publicité ciblée\tTo do targeted advertising\t2026-06-08\nCe que\tWhat / That which\t2026-06-08\nPour connaître tes goûts\tTo know your tastes\t2026-06-08\nUn autre objectif\tAnother objective\t2026-06-08\nTes goûts\tYour tastes\t2026-06-08\ntes comportements\tyour behaviors\t2026-06-08\nJe veux te montrer quelque chose que j'ai construit\tI want to show you something I built\t2026-06-05\nl’ambiance\tatmosphere; vibe\t2026-06-05\nune colline\ta hill\t2026-06-04\nPeut-être que je vais sortir\tMaybe I will go out\t2026-06-04\nfêter\tto celebrate\t2026-06-04\nje n’ai rien dit\tI didn’t say anything\t2026-06-04\nmarcher\tto walk, to march, to work (machine)\t2026-06-04\nen marchant\twhile walking, by walking, on foot\t2026-06-04\nC’est très sympa de parler avec toi.\tIt’s very nice speaking with you.\t2026-06-04\n",
+  "stderr": "",
+  "execution_time_ms": 273
+}

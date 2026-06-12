@@ -31,6 +31,7 @@ import {
   parseDateKey,
   type ExtractionModel,
 } from "./googleDrive";
+import { getAllNonSkippedPendingImports } from "./db";
 
 function send(res: Response, data: Record<string, unknown>) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -78,13 +79,15 @@ async function runSync(
     return { found: 0 };
   }
 
-  // Build deduplication set
+  // Build deduplication set — include vocab_entries AND all non-skipped pending imports
+  // (both 'pending' and 'accepted' statuses) so previously queued or accepted words
+  // are never re-imported in a subsequent sync.
   const existingVocab = await db.getVocabByUser(userId);
   const normalize = (s: string) =>
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   const existingTerms = new Set(existingVocab.map((v) => normalize(v.term)));
-  const pending = await db.getPendingImports(userId);
-  for (const p of pending) existingTerms.add(normalize(p.term));
+  const allPending = await getAllNonSkippedPendingImports(userId);
+  for (const p of allPending) existingTerms.add(normalize(p.term));
 
   // Load user's preferred extraction model
   const model: ExtractionModel = (settings.extractionModel as ExtractionModel) ?? "deepseek-v4-flash";
