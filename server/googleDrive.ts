@@ -167,13 +167,24 @@ export function extractDocId(url: string): string | null {
 }
 
 /**
- * Fetch a Google Doc and return its plain-text content plus the document's
- * revisionId (used for incremental sync — skip LLM if doc hasn't changed).
+ * A document line with the styling signal used for header detection:
+ * `styled` is true when the paragraph visually stands out from body text
+ * (a named heading/title style, or a font size larger than the body's).
+ */
+export interface DocLine {
+  text: string;
+  styled: boolean;
+}
+
+/**
+ * Fetch a Google Doc and return its plain-text content, per-line styling,
+ * plus the document's revisionId (used for incremental sync — skip LLM if
+ * doc hasn't changed).
  */
 export async function fetchGoogleDocText(
   docId: string,
   accessToken: string
-): Promise<{ text: string; revisionId: string | null }> {
+): Promise<{ text: string; revisionId: string | null; lines: DocLine[] }> {
   const res = await fetch(DOCS_API_URL(docId), {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -188,26 +199,62 @@ export async function fetchGoogleDocText(
     body?: {
       content?: Array<{
         paragraph?: {
+          paragraphStyle?: { namedStyleType?: string };
           elements?: Array<{
-            textRun?: { content?: string };
+            textRun?: {
+              content?: string;
+              textStyle?: { fontSize?: { magnitude?: number } };
+            };
           }>;
         };
       }>;
     };
   };
 
-  const lines: string[] = [];
+  const paras: Array<{ text: string; named: string; maxSize: number | null }> = [];
   for (const block of doc.body?.content ?? []) {
     if (!block.paragraph) continue;
-    const text = (block.paragraph.elements ?? [])
-      .map((el) => el.textRun?.content ?? "")
-      .join("");
-    if (text.trim()) lines.push(text.trim());
+    const runs = block.paragraph.elements ?? [];
+    const text = runs.map((el) => el.textRun?.content ?? "").join("");
+    if (!text.trim()) continue;
+    const sizes = runs
+      .map((el) => el.textRun?.textStyle?.fontSize?.magnitude)
+      .filter((s): s is number => typeof s === "number");
+    paras.push({
+      text: text.trim(),
+      named: block.paragraph.paragraphStyle?.namedStyleType ?? "NORMAL_TEXT",
+      maxSize: sizes.length ? Math.max(...sizes) : null,
+    });
   }
 
+  // Body font size = the most common explicit size, weighted by text length.
+  // Lines whose font is strictly larger stand out visually, like headings do.
+  const sizeWeight = new Map<number, number>();
+  for (const p of paras) {
+    if (p.maxSize !== null) {
+      sizeWeight.set(p.maxSize, (sizeWeight.get(p.maxSize) ?? 0) + p.text.length);
+    }
+  }
+  let bodySize: number | null = null;
+  let bestWeight = 0;
+  sizeWeight.forEach((weight, size) => {
+    if (weight > bestWeight) {
+      bodySize = size;
+      bestWeight = weight;
+    }
+  });
+
+  const lines: DocLine[] = paras.map((p) => ({
+    text: p.text,
+    styled:
+      (p.named !== "NORMAL_TEXT") ||
+      (bodySize !== null && p.maxSize !== null && p.maxSize > bodySize),
+  }));
+
   return {
-    text: lines.join("\n"),
+    text: lines.map((l) => l.text).join("\n"),
     revisionId: doc.revisionId ?? null,
+    lines,
   };
 }
 
@@ -469,43 +516,43 @@ export function parseDateKey(
  * Calls onProgress(batch, total) after each batch.
  * Returns groups with parsed dateKeys and deduplication applied.
  */
-export async function extractVocabGroups(
-  text: string,
-  existingTerms: Set<string>,
-  onProgress?: (batch: number, total: number) => void,
-  model: ExtractionModel = "deepseek-v4-flash"
-): Promise<{
-  groups: Array<ExtractedGroup & { dateKey: string | null }>;
-  ambiguousDates: string[];
+export interface LineContext {
+  line: string;
+  dateKey: string | null;   // raw date string (not yet parsed to YYYY-MM-DD)
+  topicLabel: string | null;
+}
+
+/**
+ * Pre-pass: walk the document lines, detect date/topic headers, and assign
+ * each content line the (date, topic) context it falls under.
+ *
+ * Visual styling takes priority over text patterns: if any styled line
+ * (heading/title or larger font) matches a date pattern, then ONLY styled
+ * lines can be date headers. This keeps vocabulary that merely looks like a
+ * date — e.g. learning to say "11 juillet" — in the content, while the
+ * actual section headers ("15/05" styled as TITLE) structure the groups.
+ * Docs with no styled date headers fall back to text-pattern detection.
+ */
+export function preparseLines(allLines: DocLine[]): {
+  lineContexts: LineContext[];
   numericDateFormat: NumericDateFormat;
-}> {
-  if (!text.trim()) return { groups: [], ambiguousDates: [], numericDateFormat: "MD" };
+} {
+  const hasStyledDates = allLines.some((l) => l.styled && isDateHeader(l.text));
 
-  const normalize = (s: string) =>
-    s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-
-  // ── Step 1: Split into lines ──────────────────────────────────────────────
-  const allLines = text.split("\n");
-  const numericDateFormat = detectNumericDateFormat(allLines);
-
-  // ── Step 2: Pre-pass — assign date/topic context per line ─────────────────
-  // We track which date and topic are "active" as we walk through lines.
-  // This lets us correctly attribute each word to its section even after batching.
-  interface LineContext {
-    line: string;
-    dateKey: string | null;   // raw date string (not yet parsed to YYYY-MM-DD)
-    topicLabel: string | null;
-  }
+  // Infer DD/MM vs MM/DD only from the lines that actually act as headers.
+  const numericDateFormat = detectNumericDateFormat(
+    allLines.filter((l) => !hasStyledDates || l.styled).map((l) => l.text)
+  );
 
   let currentRawDate: string | null = null;
   let currentTopic: string | null = null;
   const lineContexts: LineContext[] = [];
 
   for (const rawLine of allLines) {
-    const line = rawLine.trim();
+    const line = rawLine.text.trim();
     if (!line) continue;
 
-    if (isDateHeader(line)) {
+    if (isDateHeader(line) && (!hasStyledDates || rawLine.styled)) {
       currentRawDate = line;
       currentTopic = null; // reset topic on new date
       continue; // don't include the header line itself in LLM batches
@@ -519,6 +566,32 @@ export async function extractVocabGroups(
 
     lineContexts.push({ line, dateKey: currentRawDate, topicLabel: currentTopic });
   }
+
+  return { lineContexts, numericDateFormat };
+}
+
+export async function extractVocabGroups(
+  text: string,
+  existingTerms: Set<string>,
+  onProgress?: (batch: number, total: number) => void,
+  model: ExtractionModel = "deepseek-v4-flash",
+  docLines?: DocLine[]
+): Promise<{
+  groups: Array<ExtractedGroup & { dateKey: string | null }>;
+  ambiguousDates: string[];
+  numericDateFormat: NumericDateFormat;
+}> {
+  if (!text.trim()) return { groups: [], ambiguousDates: [], numericDateFormat: "MD" };
+
+  const normalize = (s: string) =>
+    s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+
+  // ── Steps 1+2: Split into lines and assign date/topic context per line ────
+  // Without styling info (plain-text caller), every line is unstyled and
+  // header detection falls back to text patterns alone.
+  const allLines: DocLine[] =
+    docLines ?? text.split("\n").map((t) => ({ text: t, styled: false }));
+  const { lineContexts, numericDateFormat } = preparseLines(allLines);
 
   if (lineContexts.length === 0) return { groups: [], ambiguousDates: [], numericDateFormat };
 
@@ -619,9 +692,10 @@ export async function extractVocabGroups(
 export async function extractVocabFromText(
   text: string,
   existingTerms: Set<string>,
-  onProgress?: (batch: number, total: number) => void
+  onProgress?: (batch: number, total: number) => void,
+  docLines?: DocLine[]
 ): Promise<ExtractedWord[]> {
-  const { groups } = await extractVocabGroups(text, existingTerms, onProgress);
+  const { groups } = await extractVocabGroups(text, existingTerms, onProgress, undefined, docLines);
   return groups.flatMap((g) => g.words);
 }
 

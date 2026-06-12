@@ -67,7 +67,7 @@ async function runSync(
   }
 
   onEvent({ step: "reading_doc" });
-  const { text: docText, revisionId } = await fetchGoogleDocText(docId, accessToken);
+  const { text: docText, revisionId, lines: docLines } = await fetchGoogleDocText(docId, accessToken);
 
   if (!docText.trim()) {
     return { found: 0 };
@@ -97,7 +97,8 @@ async function runSync(
     docText,
     existingTerms,
     (batch, total) => onEvent({ step: "analysing", chunk: batch, total }),
-    model
+    model,
+    docLines
   );
 
   // If there are ambiguous dates and no year override provided, pause and ask

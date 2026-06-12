@@ -1273,7 +1273,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         throw new TRPCError({ code: "UNAUTHORIZED", message: e.message ?? "Google account not connected" });
       }
 
-      const { text: docText, revisionId } = await fetchGoogleDocText(docId, accessToken);
+      const { text: docText, revisionId, lines: docLines } = await fetchGoogleDocText(docId, accessToken);
 
       // Get existing terms for deduplication
       const existingVocab = await getVocabByUser(ctx.user.id);
@@ -1285,7 +1285,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       const pending = await getPendingImports(ctx.user.id);
       for (const p of pending) existingTerms.add(normalize(p.term));
 
-      const extracted = await extractVocabFromText(docText, existingTerms);
+      const extracted = await extractVocabFromText(docText, existingTerms, undefined, docLines);
 
       if (extracted.length > 0) {
         const dateKey = new Date().toISOString().split("T")[0];

@@ -39,7 +39,7 @@ async function syncUserDrive(userId: number): Promise<{ found: number }> {
       return { found: 0 };
     }
 
-    const { text: docText, revisionId } = await fetchGoogleDocText(docId, accessToken);
+    const { text: docText, revisionId, lines: docLines } = await fetchGoogleDocText(docId, accessToken);
 
     // Incremental sync: skip LLM if the document hasn't changed since last sync
     if (revisionId && settings.lastRevisionId && revisionId === settings.lastRevisionId) {
@@ -55,7 +55,7 @@ async function syncUserDrive(userId: number): Promise<{ found: number }> {
     const pending = await getPendingImports(userId);
     for (const p of pending) existingTerms.add(normalize(p.term));
 
-    const extracted = await extractVocabFromText(docText, existingTerms);
+    const extracted = await extractVocabFromText(docText, existingTerms, undefined, docLines);
 
     if (extracted.length > 0) {
       const dateKey = new Date().toISOString().split("T")[0];

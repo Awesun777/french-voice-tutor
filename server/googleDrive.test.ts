@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectNumericDateFormat, extractDocId, parseDateKey } from "./googleDrive";
+import { detectNumericDateFormat, extractDocId, parseDateKey, preparseLines } from "./googleDrive";
 
 // ── extractDocId ──────────────────────────────────────────────────────────────
 
@@ -169,5 +169,49 @@ describe("parseDateKey numeric dates", () => {
   it("rejects impossible dates", () => {
     expect(parseDateKey("13/13", 2026)).toBeNull();
     expect(parseDateKey("32/05", 2026)).toBeNull();
+  });
+});
+
+// ── style-aware date header detection ─────────────────────────────────────────
+
+describe("preparseLines", () => {
+  const styled = (text: string) => ({ text, styled: true });
+  const plain = (text: string) => ({ text, styled: false });
+
+  it("uses only styled lines as date headers when styled date headers exist", () => {
+    // Mirrors the real doc: TITLE-styled numeric headers, while "11 juillet"
+    // is plain body text — vocabulary about saying dates, not a header.
+    const { lineContexts } = preparseLines([
+      styled("15/05"),
+      plain("la santé"),
+      plain("11 juillet"),
+      plain("20 juillet"),
+      styled("02/06"),
+      plain("sur la main"),
+    ]);
+    expect(lineContexts).toEqual([
+      { line: "la santé", dateKey: "15/05", topicLabel: null },
+      { line: "11 juillet", dateKey: "15/05", topicLabel: null },
+      { line: "20 juillet", dateKey: "15/05", topicLabel: null },
+      { line: "sur la main", dateKey: "02/06", topicLabel: null },
+    ]);
+  });
+
+  it("falls back to text patterns when no styled date headers exist", () => {
+    const { lineContexts } = preparseLines([
+      plain("11 juillet"),
+      plain("la santé"),
+    ]);
+    expect(lineContexts).toEqual([
+      { line: "la santé", dateKey: "11 juillet", topicLabel: null },
+    ]);
+  });
+
+  it("infers numeric format from header lines only", () => {
+    const { numericDateFormat } = preparseLines([
+      styled("28/05"),
+      plain("le score était 05/13"),
+    ]);
+    expect(numericDateFormat).toBe("DM");
   });
 });
