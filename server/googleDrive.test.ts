@@ -215,3 +215,27 @@ describe("preparseLines", () => {
     expect(numericDateFormat).toBe("DM");
   });
 });
+
+describe("topic header detection", () => {
+  it("no longer treats all-caps lines as section labels", () => {
+    const { lineContexts } = preparseLines([
+      { text: "15/05", styled: true },
+      { text: "RATP", styled: false },
+      { text: "la santé", styled: false },
+    ]);
+    expect(lineContexts).toEqual([
+      { line: "RATP", dateKey: "15/05", topicLabel: null },
+      { line: "la santé", dateKey: "15/05", topicLabel: null },
+    ]);
+  });
+
+  it("still recognizes colon and bracket labels", () => {
+    const { lineContexts } = preparseLines([
+      { text: "Au restaurant:", styled: false },
+      { text: "la carte", styled: false },
+    ]);
+    expect(lineContexts).toEqual([
+      { line: "la carte", dateKey: null, topicLabel: "Au restaurant" },
+    ]);
+  });
+});

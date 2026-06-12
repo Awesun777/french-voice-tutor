@@ -8,9 +8,10 @@
  *   1. connecting        — auth + load settings
  *   2. reading_doc       — fetch Google Doc text + revisionId
  *   3. up_to_date        — (optional) emitted when revisionId matches lastRevisionId; sync skipped
- *   4. analysing N/M     — LLM extraction per batch
- *   5. needs_year        — (optional) emitted when dates lack a year; client must
- *                          re-request with ?year=YYYY to resume
+ *   4. needs_year        — (optional) emitted BEFORE analysis when date headers
+ *                          lack a year (cheap pre-pass); client re-requests with
+ *                          ?year=YYYY, so the LLM analysis only ever runs once
+ *   5. analysing N/M     — LLM extraction per batch
  *   6. saving            — insert pending imports into DB
  *   7. done              — finished, includes found count
  *   8. error             — something went wrong
@@ -28,7 +29,9 @@ import {
   extractVocabGroups,
   fetchGoogleDocText,
   getValidAccessToken,
+  isYearMissing,
   parseDateKey,
+  preparseLines,
   type ExtractionModel,
 } from "./googleDrive";
 import { getAllNonSkippedPendingImports } from "./db";
@@ -79,6 +82,26 @@ async function runSync(
     return { found: 0 };
   }
 
+  // ── Ask for the year BEFORE the expensive LLM analysis ────────────────────
+  // Date headers come from the cheap regex/style pre-pass, not the LLM, so
+  // year-less dates are known within seconds. Asking up front means the
+  // analysis runs exactly once instead of being thrown away and repeated
+  // after the user answers.
+  if (yearOverride === undefined) {
+    const { lineContexts } = preparseLines(docLines);
+    const yearlessDates = Array.from(
+      new Set(
+        lineContexts
+          .map((lc) => lc.dateKey)
+          .filter((d): d is string => d !== null && isYearMissing(d))
+      )
+    );
+    if (yearlessDates.length > 0) {
+      onEvent({ step: "needs_year", dates: yearlessDates });
+      return { found: -1 }; // sentinel: paused, not an error
+    }
+  }
+
   // Build deduplication set — include vocab_entries AND all non-skipped pending imports
   // (both 'pending' and 'accepted' statuses) so previously queued or accepted words
   // are never re-imported in a subsequent sync.
@@ -92,20 +115,15 @@ async function runSync(
   // Load user's preferred extraction model
   const model: ExtractionModel = (settings.extractionModel as ExtractionModel) ?? "deepseek-v4-flash";
 
-  // Extract with smart grouping using the user's chosen model
-  const { groups, ambiguousDates, numericDateFormat } = await extractVocabGroups(
+  // Extract with smart grouping using the user's chosen model.
+  // (Year-less dates were already resolved by the pre-pass check above.)
+  const { groups, numericDateFormat } = await extractVocabGroups(
     docText,
     existingTerms,
     (batch, total) => onEvent({ step: "analysing", chunk: batch, total }),
     model,
     docLines
   );
-
-  // If there are ambiguous dates and no year override provided, pause and ask
-  if (ambiguousDates.length > 0 && yearOverride === undefined) {
-    onEvent({ step: "needs_year", dates: ambiguousDates });
-    return { found: -1 }; // sentinel: paused, not an error
-  }
 
   // Resolve dateKeys — apply yearOverride for ambiguous dates
   const today = new Date().toISOString().split("T")[0];

@@ -315,12 +315,13 @@ function isDateHeader(line: string): boolean {
 
 /**
  * Patterns that identify a topic/theme sub-header line.
- * Matches: "At the restaurant:", "TRAVEL VOCABULARY", "[Chapter 3]", "Verbs:"
+ * Matches: "At the restaurant:", "[Chapter 3]", "Verbs:"
+ * All-caps lines are NOT treated as labels — in practice they are vocabulary
+ * (acronyms, emphasis), not section headers.
  */
 const TOPIC_PATTERNS = [
   /^.{2,60}:$/, // ends with colon
   /^\[.{1,60}\]$/, // bracketed
-  /^[A-Z][A-Z\s]{3,60}$/, // ALL CAPS (at least 4 chars)
   /^──.+──$/, // our own export format separator
 ];
 
@@ -333,7 +334,7 @@ function isTopicHeader(line: string): boolean {
 /**
  * Check if a date string is missing a year component.
  */
-function isYearMissing(rawDate: string): boolean {
+export function isYearMissing(rawDate: string): boolean {
   return !/\d{4}/.test(rawDate);
 }
 
