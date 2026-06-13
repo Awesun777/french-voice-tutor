@@ -37,7 +37,10 @@ import {
   renameVocabGroup,
   deleteVocabGroup,
   getDueVocab,
+  getReviewQueue,
+  getReviewDates,
   submitSm2Review,
+  submitQuizResult,
   getSm2Stats,
   getReviewSettings,
   updateReviewSettings,
@@ -1174,11 +1177,35 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       return words;
     }),
 
-    /** Submit a SM-2 grade (1-5) for a vocab word */
+    /** Unified launch-screen queue: due-today or all-words, optional date, optional size */
+    getQueue: protectedProcedure
+      .input(z.object({
+        mode: z.enum(["due", "all"]),
+        dateKey: z.string().max(100).optional(),
+        limit: z.number().min(1).max(500).optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        return getReviewQueue(ctx.user.id, input);
+      }),
+
+    /** Date groups with total + due counts, for the launch-screen dropdown */
+    getDates: protectedProcedure.query(async ({ ctx }) => {
+      return getReviewDates(ctx.user.id);
+    }),
+
+    /** Submit a SM-2 grade (1-5) for a vocab word — used by flashcard self-rating */
     submitReview: protectedProcedure
       .input(z.object({ vocabId: z.number(), grade: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]) }))
       .mutation(async ({ ctx, input }) => {
         await submitSm2Review(ctx.user.id, input.vocabId, input.grade);
+        return { ok: true };
+      }),
+
+    /** Record a quiz answer; the server auto-prioritizes (no self-grade) */
+    submitQuizResult: protectedProcedure
+      .input(z.object({ vocabId: z.number(), correct: z.boolean() }))
+      .mutation(async ({ ctx, input }) => {
+        await submitQuizResult(ctx.user.id, input.vocabId, input.correct);
         return { ok: true };
       }),
 

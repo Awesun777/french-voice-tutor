@@ -219,7 +219,7 @@ function PastSessionCard({ session }: { session: any }) {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export default function VoiceChatTab() {
+export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateKey?: string) => void } = {}) {
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -1222,7 +1222,17 @@ export default function VoiceChatTab() {
 
             {savedWords.length > 0 && (
               <div className="w-full bg-primary/5 border border-primary/20 rounded-xl p-4">
-                <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2">Words Saved ({savedWords.length})</p>
+                <div className="flex items-center justify-between mb-2 gap-2">
+                  <p className="text-xs font-bold text-primary uppercase tracking-wider">Words Saved ({savedWords.length})</p>
+                  {onStartReview && (
+                    <button
+                      onClick={() => onStartReview(new Date().toISOString().split("T")[0])}
+                      className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold transition-colors"
+                    >
+                      Review the {savedWords.length} word{savedWords.length === 1 ? "" : "s"} you saved →
+                    </button>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {savedWords.map((w, i) => (
                     <span key={i} className="px-2.5 py-1 bg-primary/15 text-primary rounded-full text-xs font-medium">

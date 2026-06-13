@@ -4,10 +4,10 @@ import { VocabEntry } from "@/types";
 import { Loader2, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useMemo } from "react";
 
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
+import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
 
 function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
 /**
@@ -101,47 +101,29 @@ interface PersistedQuiz {
   fillResult: { correct: boolean; note: string; grammarNote?: string } | null;
   wrongAnswers: { word: VocabEntry; chosenDisplay: string }[];
   direction: "fr2en" | "en2fr";
-  selectedBucket: number | null;
+  choice: ReviewLaunchChoice | null;
   revealedDontKnow: boolean;
 }
 
 // Module-level variable so it persists across component unmounts
 let savedQuizState: PersistedQuiz | null = null;
 
-export default function QuizTab() {
+export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: string } | null }) {
   const { data: words = [] } = trpc.vocab.list.useQuery();
-  const { data: dueWords = [] } = trpc.review.getDueToday.useQuery();
-  const { data: reviewSettings } = trpc.review.getSettings.useQuery();
-  const submitReviewMutation = trpc.review.submitReview.useMutation();
-  const dailyNewCap = reviewSettings?.dailyNewWords ?? 10;
-  const dailyReviewCap = reviewSettings?.dailyReviewCap ?? 20;
-
-  // SM-2 due queue: new words first (interleaved), then review words, capped by settings
-  const sm2DueWords = useMemo(() => {
-    const newWords = dueWords.filter((w: VocabEntry) => (w.sm2Repetitions ?? 0) === 0).slice(0, dailyNewCap);
-    const reviewWords = dueWords.filter((w: VocabEntry) => (w.sm2Repetitions ?? 0) > 0).slice(0, dailyReviewCap);
-    // Interleave: every 3 review words, insert 1 new word
-    const result: VocabEntry[] = [];
-    let ni = 0, ri = 0;
-    while (ni < newWords.length || ri < reviewWords.length) {
-      if (ri < reviewWords.length) result.push(reviewWords[ri++]);
-      if (ri < reviewWords.length) result.push(reviewWords[ri++]);
-      if (ri < reviewWords.length) result.push(reviewWords[ri++]);
-      if (ni < newWords.length) result.push(newWords[ni++]);
-    }
-    return result;
-  }, [dueWords, dailyNewCap, dailyReviewCap]);
+  const submitQuizResultMutation = trpc.review.submitQuizResult.useMutation({
+    onSuccess: () => { utils.review.getStats.invalidate(); utils.review.getDates.invalidate(); },
+  });
 
   const [phase, setPhase] = useState<"select" | "quiz" | "done">(
     savedQuizState ? "quiz" : "select"
   );
-  const [selectedBucket, setSelectedBucket] = useState<number | null>(
-    savedQuizState?.selectedBucket ?? null
+  // What the launch screen chose; null until the user starts (or resumes).
+  const [choice, setChoice] = useState<ReviewLaunchChoice | null>(
+    savedQuizState?.choice ?? null
   );
   const [direction, setDirection] = useState<"fr2en" | "en2fr">(
     savedQuizState?.direction ?? "fr2en"
   );
-  const [dueOnly, setDueOnly] = useState(false);
   const [questions, setQuestions] = useState<QuizQuestion[]>(
     savedQuizState?.questions ?? []
   );
@@ -223,14 +205,6 @@ export default function QuizTab() {
     onSettled: () => utils.vocab.list.invalidate(),
   });
 
-  const buckets = buildBuckets(words.filter((w) => w.translation));
-  // In SM-2 due mode, use the real due queue; in free practice, use legacy bucket/filter
-  const quizableWords = dueOnly
-    ? sm2DueWords
-    : selectedBucket !== null
-      ? (buckets[selectedBucket]?.words ?? [])
-      : words.filter((w) => w.translation);
-
   // Persist quiz state to module-level variable whenever it changes
   const persistState = useCallback(() => {
     if (phase === "quiz" && questions.length > 0) {
@@ -243,36 +217,47 @@ export default function QuizTab() {
         fillResult,
         wrongAnswers,
         direction,
-        selectedBucket,
+        choice,
         revealedDontKnow,
       };
     } else if (phase !== "quiz") {
       savedQuizState = null;
     }
-  }, [phase, questions, qIndex, score, selected, fillInput, fillResult, wrongAnswers, direction, selectedBucket, revealedDontKnow]);
+  }, [phase, questions, qIndex, score, selected, fillInput, fillResult, wrongAnswers, direction, choice, revealedDontKnow]);
 
   useEffect(() => { persistState(); }, [persistState]);
 
-  const startQuiz = () => {
-    if (quizableWords.length < 2) { toast.error("Need at least 2 words to start a quiz"); return; }
-    // In SM-2 due mode, use the pre-sorted due queue; in free practice, use legacy priority sort
-    const pool = dueOnly ? quizableWords : prioritySort(quizableWords).slice(0, 20);
-    const qs: QuizQuestion[] = pool.map((word) => ({
-      word,
-      isPhrase: word.entryKind === "phrase",
-      choices: (word.entryKind !== "phrase" && direction === "fr2en")
-        ? buildChoices(word, quizableWords, direction)
-        : undefined,
-    }));
-    setQuestions(qs);
-    setQIndex(0);
-    setScore(0);
-    setSelected(null);
-    setFillInput("");
-    setFillResult(null);
-    setWrongAnswers([]);
-    setRevealedDontKnow(false);
-    setPhase("quiz");
+  const [starting, setStarting] = useState(false);
+
+  // Launch a session for the chosen queue. Fetches the words imperatively so we
+  // never start before the queue resolves, then builds the questions.
+  const startQuiz = async (c: ReviewLaunchChoice) => {
+    setChoice(c);
+    setStarting(true);
+    try {
+      const pool = (await utils.review.getQueue.fetch(c)) as VocabEntry[];
+      if (pool.length < 2) { toast.error("Need at least 2 words to start a quiz"); setStarting(false); return; }
+      const qs: QuizQuestion[] = pool.map((word) => ({
+        word,
+        isPhrase: word.entryKind === "phrase",
+        choices: (word.entryKind !== "phrase" && direction === "fr2en")
+          ? buildChoices(word, words, direction)
+          : undefined,
+      }));
+      setQuestions(qs);
+      setQIndex(0);
+      setScore(0);
+      setSelected(null);
+      setFillInput("");
+      setFillResult(null);
+      setWrongAnswers([]);
+      setRevealedDontKnow(false);
+      setPhase("quiz");
+    } catch {
+      toast.error("Couldn't load words for the quiz");
+    } finally {
+      setStarting(false);
+    }
   };
 
   const handleSelect = (choice: { display: string; isCorrect: boolean }) => {
@@ -281,12 +266,10 @@ export default function QuizTab() {
     const word = questions[qIndex].word;
     if (choice.isCorrect) {
       setScore((s) => s + 1);
-      // Auto-grade SM-2: correct = grade 4 (Easy)
-      if (dueOnly) submitReviewMutation.mutate({ vocabId: word.id, grade: 4 });
+      submitQuizResultMutation.mutate({ vocabId: word.id, correct: true });
     } else {
       setWrongAnswers((wa) => [...wa, { word, chosenDisplay: choice.display }]);
-      // Auto-grade SM-2: wrong = grade 1 (Again)
-      if (dueOnly) submitReviewMutation.mutate({ vocabId: word.id, grade: 1 });
+      submitQuizResultMutation.mutate({ vocabId: word.id, correct: false });
     }
     setTimeout(() => nextQuestion(), 900);
   };
@@ -296,8 +279,7 @@ export default function QuizTab() {
     setRevealedDontKnow(true);
     const word = questions[qIndex].word;
     setWrongAnswers((wa) => [...wa, { word, chosenDisplay: "" }]);
-    // Auto-grade SM-2: don't know = grade 1 (Again)
-    if (dueOnly) submitReviewMutation.mutate({ vocabId: word.id, grade: 1 });
+    submitQuizResultMutation.mutate({ vocabId: word.id, correct: false });
   };
 
   /** Strip accents and lowercase for accent-insensitive comparison */
@@ -318,7 +300,7 @@ export default function QuizTab() {
         const result = { correct: true, note: "", grammarNote: "" };
         setFillResult(result);
         setScore((s) => s + 1);
-        if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 4 });
+        submitQuizResultMutation.mutate({ vocabId: q.word.id, correct: true });
         setFillGrading(false);
         return;
       }
@@ -330,10 +312,10 @@ export default function QuizTab() {
       setFillResult(result);
       if (result.correct) {
         setScore((s) => s + 1);
-        if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 4 });
+        submitQuizResultMutation.mutate({ vocabId: q.word.id, correct: true });
       } else {
         setWrongAnswers((wa) => [...wa, { word: q.word, chosenDisplay: fillInput.trim() }]);
-        if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 1 });
+        submitQuizResultMutation.mutate({ vocabId: q.word.id, correct: false });
       }
     } catch {
       toast.error("Grading failed");
@@ -346,7 +328,7 @@ export default function QuizTab() {
     const q = questions[qIndex];
     setFillResult({ correct: false, note: "" });
     setWrongAnswers((wa) => [...wa, { word: q.word, chosenDisplay: "" }]);
-    if (dueOnly) submitReviewMutation.mutate({ vocabId: q.word.id, grade: 1 });
+    submitQuizResultMutation.mutate({ vocabId: q.word.id, correct: false });
   };
 
   const nextQuestion = () => {
@@ -365,13 +347,12 @@ export default function QuizTab() {
   const finishQuiz = () => {
     savedQuizState = null;
     setPhase("done");
-    const bucket = selectedBucket !== null ? buckets[selectedBucket] : null;
     saveSessionMutation.mutate({
       score,
       total: questions.length,
       direction,
-      bucketStart: bucket?.start,
-      bucketEnd: bucket?.end,
+      bucketStart: choice?.dateKey,
+      bucketEnd: choice?.dateKey,
     });
     const now = new Date();
     const wrongIds = new Set(wrongAnswers.map((wa) => wa.word.id));
@@ -430,8 +411,7 @@ export default function QuizTab() {
             </div>
           )}
           <div className="flex gap-3 justify-center">
-            <button onClick={startQuiz} className="px-6 py-3 rounded-xl bg-primary hover:bg-primary/90 font-bold text-primary-foreground transition-colors">New Quiz →</button>
-            <button onClick={() => setPhase("select")} className="px-6 py-3 rounded-xl bg-muted hover:bg-muted/80 font-semibold text-foreground transition-colors">Settings</button>
+            <button onClick={() => { setChoice(null); setPhase("select"); }} className="px-6 py-3 rounded-xl bg-primary hover:bg-primary/90 font-bold text-primary-foreground transition-colors">New session →</button>
           </div>
         </div>
       </div>
@@ -450,7 +430,7 @@ export default function QuizTab() {
         </div>
         <div className="p-4 sm:p-6 max-w-lg mx-auto flex flex-col gap-5">
           <div className="flex justify-between items-center pt-2">
-            <button onClick={() => setPhase("select")} className="text-xs text-muted-foreground hover:text-foreground transition-colors">← Back</button>
+            <button onClick={() => { setChoice(null); setPhase("select"); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">← Back</button>
             <div className="flex items-center gap-2">
               <span className={cn("text-xs px-2 py-0.5 rounded-full font-semibold",
                 direction === "fr2en" ? "bg-primary/15 text-primary" : "bg-violet-500/15 text-violet-400"
@@ -632,122 +612,55 @@ export default function QuizTab() {
     );
   }
 
-  // ─── Select phase ─────────────────────────────────────────────────────────
+  // ─── Select phase: direction toggle + shared launch screen ─────────────────
   return (
     <div className="flex flex-col h-full">
-      {/* Scrollable settings area */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-md mx-auto space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-foreground mb-1">Quiz Settings</h2>
-            <p className="text-sm text-muted-foreground">Choose your quiz parameters</p>
-          </div>
-
-          {/* Saved quiz banner */}
-          {savedQuizState && (
-            <button
-              onClick={() => setPhase("quiz")}
-              className="w-full p-4 rounded-xl border border-primary/40 bg-primary/10 text-left hover:bg-primary/15 transition"
-            >
-              <p className="text-sm font-bold text-primary">↩ Resume quiz in progress</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Question {savedQuizState.qIndex + 1} of {savedQuizState.questions.length} · {savedQuizState.score} pts so far
-              </p>
-            </button>
-          )}
-
-          {/* Direction */}
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Direction</p>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { id: "fr2en" as const, label: "FR → EN", desc: "Multiple choice" },
-                { id: "en2fr" as const, label: "EN → FR", desc: "Type in French" },
-              ].map((d) => (
-                <button
-                  key={d.id}
-                  onClick={() => setDirection(d.id)}
-                  className={cn(
-                    "p-4 rounded-xl border text-left transition-all",
-                    direction === d.id ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-foreground hover:bg-muted/30"
-                  )}
-                >
-                  <p className="font-bold text-sm">{d.label}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{d.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Due only toggle */}
-          <div className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
-            <div>
-              <p className="text-sm font-semibold text-foreground">SM-2 Due Today</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {sm2DueWords.length} due · up to {dailyNewCap} new + {dailyReviewCap} review per day
-              </p>
-            </div>
-            <button
-              onClick={() => setDueOnly(!dueOnly)}
-              className={cn("w-11 h-6 rounded-full transition-colors relative", dueOnly ? "bg-primary" : "bg-muted")}
-            >
-              <span className={cn("absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform", dueOnly ? "left-5.5 translate-x-0" : "left-0.5")} />
-            </button>
-          </div>
-
-          {/* Bucket selector — fixed-height scrollable window */}
-          {buckets.length > 1 && (
-            <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Date Range</p>
-              <div className="overflow-y-auto rounded-xl border border-border" style={{ maxHeight: "320px" }}>
-                <div className="divide-y divide-border/50">
-                  <button
-                    onClick={() => setSelectedBucket(null)}
-                    className={cn(
-                      "w-full p-3 text-left text-sm transition-all",
-                      selectedBucket === null ? "bg-primary/15 text-primary" : "bg-card text-foreground hover:bg-muted/30"
-                    )}
-                  >
-                    <span className="font-semibold">All words</span>
-                    <span className="text-muted-foreground ml-2">({words.filter((w) => w.translation).length} total)</span>
-                  </button>
-                  {buckets.map((b, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setSelectedBucket(i)}
-                      className={cn(
-                        "w-full p-3 text-left text-sm transition-all",
-                        selectedBucket === i ? "bg-primary/15 text-primary" : "bg-card text-foreground hover:bg-muted/30"
-                      )}
-                    >
-                      <span className="font-semibold">{fmtRange(b.start, b.end)}</span>
-                      <span className="text-muted-foreground ml-2">({b.words.length} words)</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-muted/30 rounded-xl p-4 text-sm text-muted-foreground">
-            {quizableWords.length} words available for quiz
-            {dueOnly && <span className="text-accent ml-1">({words.filter(isDue).length} due)</span>}
-          </div>
-        </div>
-      </div>
-
-      {/* Start Quiz button — always visible at the bottom */}
-      <div className="flex-shrink-0 p-4 border-t border-border bg-background/80 backdrop-blur-sm">
-        <div className="max-w-md mx-auto">
+      {/* Resume banner */}
+      {savedQuizState && (
+        <div className="flex-shrink-0 px-4 pt-3">
           <button
-            onClick={startQuiz}
-            disabled={quizableWords.length < 2}
-            className="w-full py-3.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground rounded-xl font-bold transition-colors"
+            onClick={() => setPhase("quiz")}
+            className="w-full p-3 rounded-xl border border-primary/40 bg-primary/10 text-left hover:bg-primary/15 transition"
           >
-            Start Quiz →
+            <p className="text-sm font-bold text-primary">↩ Resume quiz in progress</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Question {savedQuizState.qIndex + 1} of {savedQuizState.questions.length} · {savedQuizState.score} pts so far
+            </p>
           </button>
         </div>
+      )}
+
+      {/* Direction toggle */}
+      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center justify-center gap-2">
+        {[
+          { id: "fr2en" as const, label: "FR → EN" },
+          { id: "en2fr" as const, label: "EN → FR" },
+        ].map((d) => (
+          <button
+            key={d.id}
+            onClick={() => setDirection(d.id)}
+            className={cn(
+              "px-4 py-1.5 rounded-lg text-xs font-semibold border transition-all",
+              direction === d.id ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {d.label}
+          </button>
+        ))}
       </div>
+
+      {starting ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        </div>
+      ) : (
+        <ReviewLaunch
+          key={reviewTarget?.dateKey ?? "none"}
+          kind="quiz"
+          initialDateKey={reviewTarget?.dateKey}
+          onStart={startQuiz}
+        />
+      )}
     </div>
   );
 }

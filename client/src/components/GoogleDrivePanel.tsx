@@ -88,7 +88,7 @@ function formatDateKey(dateKey: string): string {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
-export function GoogleDrivePanel() {
+export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?: string) => void } = {}) {
   const utils = trpc.useUtils();
   const [docUrl, setDocUrl] = useState("");
   const [showQueue, setShowQueue] = useState(false);
@@ -178,10 +178,16 @@ export function GoogleDrivePanel() {
 
   const acceptAllMutation = trpc.google.acceptAllImports.useMutation({
     onSuccess: (data) => {
-      toast.success(`Added ${data.added} word${data.added === 1 ? "" : "s"} to your library`);
+      toast.success(`Added ${data.added} word${data.added === 1 ? "" : "s"} to your library`, {
+        action: onStartReview && data.added > 0
+          ? { label: "Review now", onClick: () => onStartReview() }
+          : undefined,
+      });
       utils.google.getPendingImports.invalidate();
       utils.google.status.invalidate();
       utils.vocab.list.invalidate();
+      utils.review.getDates.invalidate();
+      utils.review.getStats.invalidate();
       setShowQueue(false);
     },
     onError: () => toast.error("Failed to add words"),
@@ -197,10 +203,16 @@ export function GoogleDrivePanel() {
 
   const acceptGroupMutation = trpc.google.acceptGroup.useMutation({
     onSuccess: (data, variables) => {
-      toast.success(`Added ${data.added} word${data.added === 1 ? "" : "s"} from group`);
+      toast.success(`Added ${data.added} word${data.added === 1 ? "" : "s"} from group`, {
+        action: onStartReview && data.added > 0
+          ? { label: "Review now", onClick: () => onStartReview(variables.dateKey) }
+          : undefined,
+      });
       utils.google.getPendingImports.invalidate();
       utils.google.status.invalidate();
       utils.vocab.list.invalidate();
+      utils.review.getDates.invalidate();
+      utils.review.getStats.invalidate();
       // Collapse the group after accepting
       setExpandedGroups((prev) => {
         const next = new Set(prev);

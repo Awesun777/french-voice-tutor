@@ -15,7 +15,7 @@ import { Loader2, BookOpen } from "lucide-react";
 
 type VoiceAgent = "romain" | "anna";
 
-function VoiceAgentSelector() {
+function VoiceAgentSelector({ onStartReview }: { onStartReview: (dateKey?: string) => void }) {
   const [agent, setAgent] = useState<VoiceAgent>("romain");
 
   return (
@@ -49,7 +49,7 @@ function VoiceAgentSelector() {
 
       {/* Agent panel */}
       <div className="flex-1 overflow-hidden">
-        {agent === "romain" ? <VoiceChatTab /> : <AnnaVoiceTab />}
+        {agent === "romain" ? <VoiceChatTab onStartReview={onStartReview} /> : <AnnaVoiceTab />}
       </div>
     </div>
   );
@@ -59,6 +59,12 @@ export default function Home() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<SidebarTab>("dictionary");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Set by an import/voice "Review these words" CTA: pre-selects a date in the
+  // review launch screen. Cleared on manual sidebar navigation so it doesn't
+  // keep forcing an old date.
+  const [reviewTarget, setReviewTarget] = useState<{ dateKey: string } | null>(null);
+  const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
+  const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
 
   if (loading) {
     return (
@@ -128,18 +134,18 @@ export default function Home() {
     <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={navTab}
         open={sidebarOpen}
         setOpen={setSidebarOpen}
         user={user}
       />
       <main className="flex-1 overflow-hidden flex flex-col min-w-0">
         {activeTab === "dictionary" && <DictionaryTab />}
-        {activeTab === "library" && <LibraryTab setActiveTab={setActiveTab} />}
-        {activeTab === "quiz" && <QuizTab />}
-        {activeTab === "flashcards" && <FlashcardTab />}
+        {activeTab === "library" && <LibraryTab setActiveTab={setActiveTab} onStartReview={startReview} />}
+        {activeTab === "quiz" && <QuizTab reviewTarget={reviewTarget} />}
+        {activeTab === "flashcards" && <FlashcardTab reviewTarget={reviewTarget} />}
         {activeTab === "tutor" && <TutorTab />}
-        {activeTab === "voice-chat" && <VoiceAgentSelector />}
+        {activeTab === "voice-chat" && <VoiceAgentSelector onStartReview={startReview} />}
         {activeTab === "progress" && <ProgressTab />}
       </main>
     </div>

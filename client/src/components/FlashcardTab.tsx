@@ -1,38 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
-import { Shuffle, Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2, Brain, BookOpen, Settings2 } from "lucide-react";
+import { Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
+import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
 
-function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
-function priorityTier(w: VocabEntry): number {
-  if ((w.quizCount ?? 0) === 0) return 0;
-  if ((w.wrongCount ?? 0) > 0) return 1;
-  if (w.starred) return 2;
-  return 3;
-}
-function prioritySort(words: VocabEntry[]): VocabEntry[] {
-  const tiers: VocabEntry[][] = [[], [], [], []];
-  for (const w of words) tiers[priorityTier(w)].push(w);
-  return tiers.flatMap((t) => shuffle(t));
-}
-function todayKey() { return new Date().toISOString().split("T")[0]; }
-function yesterdayKey() { return new Date(Date.now() - 86400000).toISOString().split("T")[0]; }
-function fmtDateLabel(dk: string) {
-  if (dk === todayKey()) return "Today";
-  if (dk === yesterdayKey()) return "Yesterday";
-  return new Date(dk + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-const SM2_STATUS_LABELS: Record<string, string> = {
-  new: "New",
-  learning: "Learning",
-  review: "Review",
-  mastered: "Mastered",
-};
+const SM2_STATUS_LABELS: Record<string, string> = { new: "New", learning: "Learning", review: "Review", mastered: "Mastered" };
 const SM2_STATUS_COLORS: Record<string, string> = {
   new: "bg-blue-500/20 text-blue-300",
   learning: "bg-amber-500/20 text-amber-300",
@@ -40,79 +16,58 @@ const SM2_STATUS_COLORS: Record<string, string> = {
   mastered: "bg-emerald-500/20 text-emerald-300",
 };
 
-type ReviewMode = "due" | "all";
+// 3-button self-rating → SM-2 grade. Again=1, Good=3, Easy=5.
+const GRADES = [
+  { grade: 1 as const, key: "again" as const, label: "Again", color: "bg-red-500/20 hover:bg-red-500/40 text-red-300 border-red-500/30" },
+  { grade: 3 as const, key: "good" as const, label: "Good", color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 border-blue-500/30" },
+  { grade: 5 as const, key: "easy" as const, label: "Easy", color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border-emerald-500/30" },
+];
 
-interface SessionResult {
-  total: number;
-  again: number;
-  hard: number;
-  good: number;
-  easy: number;
-  perfect: number;
-}
+interface SessionResult { total: number; again: number; good: number; easy: number; }
+const ZERO: SessionResult = { total: 0, again: 0, good: 0, easy: 0 };
 
-export default function FlashcardTab() {
-  const { data: allWords = [] } = trpc.vocab.list.useQuery();
-  const { data: dueWords = [], refetch: refetchDue } = trpc.review.getDueToday.useQuery();
-  const { data: reviewStats, refetch: refetchStats } = trpc.review.getStats.useQuery();
-  const { data: reviewSettings } = trpc.review.getSettings.useQuery();
+export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKey: string } | null }) {
+  const utils = trpc.useUtils();
+  const { speak, state: pronounceState, activeText } = usePronounce();
 
-  const [mode, setMode] = useState<ReviewMode>("due");
-  const [filterStarred, setFilterStarred] = useState(false);
-  const [filterDate, setFilterDate] = useState<string | "all">("all");
+  // null = show the launch screen; set = an active session.
+  const [choice, setChoice] = useState<ReviewLaunchChoice | null>(null);
+
+  const { data: queue = [] } = trpc.review.getQueue.useQuery(choice ?? { mode: "due" }, { enabled: !!choice });
+
   const [deck, setDeck] = useState<VocabEntry[]>([]);
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [recording, setRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [transcription, setTranscription] = useState<string | null>(null);
   const [transcribing, setTranscribing] = useState(false);
   const [sessionDone, setSessionDone] = useState(false);
-  const [sessionResult, setSessionResult] = useState<SessionResult>({ total: 0, again: 0, hard: 0, good: 0, easy: 0, perfect: 0 });
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingNewWords, setSettingNewWords] = useState<number>(10);
-  const [settingReviewCap, setSettingReviewCap] = useState<number>(20);
+  const [sessionResult, setSessionResult] = useState<SessionResult>(ZERO);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const utils = trpc.useUtils();
-  const { speak, state: pronounceState, activeText } = usePronounce();
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
-  // Sync settings from server
+  // Build the deck once the queue for a started session resolves.
   useEffect(() => {
-    if (reviewSettings) {
-      setSettingNewWords(reviewSettings.dailyNewWords);
-      setSettingReviewCap(reviewSettings.dailyReviewCap);
-    }
-  }, [reviewSettings?.dailyNewWords, reviewSettings?.dailyReviewCap]);
+    if (!choice) return;
+    setDeck([...queue] as VocabEntry[]);
+    setIdx(0);
+    setFlipped(false);
+    setSessionDone(false);
+    setSessionResult(ZERO);
+    setTranscription(null);
+  }, [choice, queue]);
 
   const submitReviewMutation = trpc.review.submitReview.useMutation({
     onSuccess: () => {
-      refetchDue();
-      refetchStats();
+      utils.review.getStats.invalidate();
+      utils.review.getDates.invalidate();
       utils.vocab.list.invalidate();
     },
   });
 
-  const updateSettingsMutation = trpc.review.updateSettings.useMutation({
-    onSuccess: () => {
-      refetchDue();
-      toast.success("Review settings saved");
-    },
-  });
-
   const deleteMutation = trpc.vocab.delete.useMutation({
-    onMutate: async ({ id }) => {
-      await utils.vocab.list.cancel();
-      const prev = utils.vocab.list.getData();
-      utils.vocab.list.setData(undefined, (old) => old?.filter((w) => w.id !== id));
-      return { prev };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) utils.vocab.list.setData(undefined, ctx.prev);
-      toast.error("Failed to delete");
-    },
     onSuccess: () => {
       setDeck((d) => {
         const next = d.filter((w) => w.id !== confirmDeleteId);
@@ -120,27 +75,15 @@ export default function FlashcardTab() {
         return next;
       });
       setFlipped(false);
-      setAudioBlob(null);
       setTranscription(null);
       toast.success("Word removed from library");
     },
-    onSettled: () => utils.vocab.list.invalidate(),
+    onError: () => toast.error("Failed to delete"),
+    onSettled: () => { utils.vocab.list.invalidate(); utils.review.getDates.invalidate(); },
   });
 
   const starMutation = trpc.vocab.toggleStar.useMutation({
-    onMutate: async ({ id }) => {
-      await utils.vocab.list.cancel();
-      const prev = utils.vocab.list.getData();
-      utils.vocab.list.setData(undefined, (old) =>
-        old?.map((w) => (w.id === id ? { ...w, starred: !w.starred } : w))
-      );
-      setDeck((d) => d.map((w) => (w.id === id ? { ...w, starred: !w.starred } : w)));
-      return { prev };
-    },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) utils.vocab.list.setData(undefined, ctx.prev);
-      setDeck((d) => d.map((w) => (w.id === _vars.id ? { ...w, starred: !w.starred } : w)));
-    },
+    onMutate: ({ id }) => setDeck((d) => d.map((w) => (w.id === id ? { ...w, starred: !w.starred } : w))),
     onSettled: () => utils.vocab.list.invalidate(),
   });
 
@@ -148,93 +91,28 @@ export default function FlashcardTab() {
     onSuccess: (data) => { setTranscription(data.transcription); setTranscribing(false); },
     onError: () => { toast.error("Transcription failed"); setTranscribing(false); },
   });
-
   const storagePutMutation = trpc.storage.uploadAudio.useMutation();
-
-  // Build deck based on mode
-  const freePracticeWords = allWords.filter((w) => {
-    if (filterStarred && !w.starred) return false;
-    if (filterDate !== "all" && w.dateKey !== filterDate) return false;
-    return true;
-  });
-
-  const dateKeys = Array.from(new Set(allWords.map((w) => w.dateKey))).sort().reverse();
-
-  // Initialize deck when mode or source changes
-  useEffect(() => {
-    setSessionDone(false);
-    setSessionResult({ total: 0, again: 0, hard: 0, good: 0, easy: 0, perfect: 0 });
-    setIdx(0);
-    setFlipped(false);
-    setAudioBlob(null);
-    setTranscription(null);
-    if (mode === "due") {
-      setDeck([...dueWords] as VocabEntry[]);
-    } else {
-      setDeck(prioritySort(freePracticeWords));
-    }
-  }, [mode, dueWords.length]);
-
-  // Reset free-practice deck when filters change
-  useEffect(() => {
-    if (mode === "all") {
-      setDeck(prioritySort(freePracticeWords));
-      setIdx(0);
-      setFlipped(false);
-      setAudioBlob(null);
-      setTranscription(null);
-    }
-  }, [filterStarred, filterDate]);
-
-  const handleShuffle = () => {
-    setDeck(shuffle(mode === "due" ? [...dueWords] as VocabEntry[] : freePracticeWords));
-    setIdx(0);
-    setFlipped(false);
-    setAudioBlob(null);
-    setTranscription(null);
-  };
-
-  const handlePrev = () => {
-    setIdx((i) => Math.max(0, i - 1));
-    setFlipped(false);
-    setAudioBlob(null);
-    setTranscription(null);
-    setConfirmDeleteId(null);
-  };
-
-  const handleNext = () => {
-    if (idx < deck.length - 1) {
-      setIdx((i) => i + 1);
-      setFlipped(false);
-      setAudioBlob(null);
-      setTranscription(null);
-      setConfirmDeleteId(null);
-    }
-  };
-
-  const handleFlip = () => setFlipped((f) => !f);
-
-  const handleDeleteCurrent = () => {
-    if (!currentWord) return;
-    if (confirmDeleteId === currentWord.id) {
-      deleteMutation.mutate({ id: currentWord.id });
-      setConfirmDeleteId(null);
-    } else {
-      setConfirmDeleteId(currentWord.id);
-    }
-  };
 
   const currentWord = deck[idx];
 
-  // SM-2 grade submission
-  const handleGrade = useCallback((grade: 1 | 2 | 3 | 4 | 5) => {
+  const advance = useCallback(() => {
+    setTranscription(null);
+    setConfirmDeleteId(null);
+    if (idx < deck.length - 1) {
+      setIdx((i) => i + 1);
+      setFlipped(false);
+    } else {
+      setSessionDone(true);
+    }
+  }, [idx, deck.length]);
+
+  const handleGrade = useCallback((grade: 1 | 3 | 5) => {
     if (!currentWord) return;
     submitReviewMutation.mutate({ vocabId: currentWord.id, grade });
+    const key = grade === 1 ? "again" : grade === 3 ? "good" : "easy";
+    setSessionResult((prev) => ({ ...prev, total: prev.total + 1, [key]: (prev[key as keyof SessionResult] as number) + 1 }));
 
-    const gradeKey = grade === 1 ? "again" : grade === 2 ? "hard" : grade === 3 ? "good" : grade === 4 ? "easy" : "perfect";
-    setSessionResult((prev) => ({ ...prev, total: prev.total + 1, [gradeKey]: prev[gradeKey as keyof SessionResult] as number + 1 }));
-
-    // If grade 1 (Again), push card to end of deck for re-review
+    // "Again" → requeue to the end of the deck for another pass this session.
     if (grade === 1) {
       setDeck((d) => {
         const next = [...d];
@@ -243,22 +121,21 @@ export default function FlashcardTab() {
         return next;
       });
       setFlipped(false);
-      setAudioBlob(null);
       setTranscription(null);
+      setConfirmDeleteId(null);
       return;
     }
+    advance();
+  }, [currentWord, idx, submitReviewMutation, advance]);
 
-    // Advance to next card
-    if (idx < deck.length - 1) {
-      setIdx((i) => i + 1);
-      setFlipped(false);
-      setAudioBlob(null);
-      setTranscription(null);
-    } else {
-      // Session complete
-      setSessionDone(true);
-    }
-  }, [currentWord, idx, deck.length, submitReviewMutation]);
+  const handlePrev = () => { setIdx((i) => Math.max(0, i - 1)); setFlipped(false); setTranscription(null); setConfirmDeleteId(null); };
+  const handleNext = () => { if (idx < deck.length - 1) { setIdx((i) => i + 1); setFlipped(false); setTranscription(null); setConfirmDeleteId(null); } };
+
+  const handleDeleteCurrent = () => {
+    if (!currentWord) return;
+    if (confirmDeleteId === currentWord.id) { deleteMutation.mutate({ id: currentWord.id }); setConfirmDeleteId(null); }
+    else setConfirmDeleteId(currentWord.id);
+  };
 
   const startRecording = async () => {
     try {
@@ -268,122 +145,78 @@ export default function FlashcardTab() {
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        setAudioBlob(blob);
-        setTranscription(null);
-        await uploadAndTranscribe(blob);
+        await uploadAndTranscribe(new Blob(chunksRef.current, { type: "audio/webm" }));
       };
       mr.start();
       mediaRecorderRef.current = mr;
       setRecording(true);
-    } catch {
-      toast.error("Microphone access denied");
-    }
+    } catch { toast.error("Microphone access denied"); }
   };
-
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setRecording(false);
-  };
-
+  const stopRecording = () => { mediaRecorderRef.current?.stop(); setRecording(false); };
   const uploadAndTranscribe = async (blob: Blob) => {
     if (!deck[idx]) return;
     setTranscribing(true);
     try {
       const arrayBuffer = await blob.arrayBuffer();
-      const uint8 = new Uint8Array(arrayBuffer);
-      const base64 = btoa(Array.from(uint8).map((b) => String.fromCharCode(b)).join(""));
+      const base64 = btoa(Array.from(new Uint8Array(arrayBuffer)).map((b) => String.fromCharCode(b)).join(""));
       const result = await storagePutMutation.mutateAsync({ base64, mimeType: "audio/webm" });
       transcribeMutation.mutate({ audioUrl: result.url, targetTerm: deck[idx].term });
-    } catch {
-      toast.error("Upload failed");
-      setTranscribing(false);
-    }
+    } catch { toast.error("Upload failed"); setTranscribing(false); }
   };
 
-  // ── Empty states ──────────────────────────────────────────────────────────
-  if (mode === "due" && dueWords.length === 0 && !sessionDone) {
+  // ── Launch screen ──────────────────────────────────────────────────────────
+  if (!choice) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-4">
-        {/* Mode toggle */}
-        <div className="flex items-center gap-2 p-1 bg-card border border-border rounded-xl mb-2">
-          <button onClick={() => setMode("due")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground">
-            <Brain className="w-3.5 h-3.5" /> Due Today {reviewStats ? `(${reviewStats.dueToday})` : ""}
-          </button>
-          <button onClick={() => setMode("all")} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors">
-            <BookOpen className="w-3.5 h-3.5" /> Free Practice
-          </button>
-        </div>
-        <p className="text-5xl">🎉</p>
-        <p className="text-xl font-semibold text-foreground">All caught up!</p>
-        <p className="text-sm text-muted-foreground">No cards due for review today. Come back tomorrow or switch to Free Practice.</p>
-        {reviewStats && (
-          <div className="flex gap-3 mt-2">
-            {(["new", "learning", "review", "mastered"] as const).map((s) => (
-              <div key={s} className={cn("px-3 py-1.5 rounded-xl text-xs font-semibold", SM2_STATUS_COLORS[s])}>
-                {SM2_STATUS_LABELS[s]}: {reviewStats[s]}
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="flex flex-col h-full">
+        <ReviewLaunch
+          key={reviewTarget?.dateKey ?? "none"}
+          kind="flashcards"
+          initialDateKey={reviewTarget?.dateKey}
+          onStart={setChoice}
+        />
       </div>
     );
   }
 
-  if (mode === "all" && freePracticeWords.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-        <p className="text-5xl mb-4">🃏</p>
-        <p className="text-xl font-semibold text-foreground mb-2">No cards yet!</p>
-        <p className="text-sm text-muted-foreground">Add words to your library to study with flashcards.</p>
-      </div>
-    );
-  }
-
-  // ── Session complete screen ────────────────────────────────────────────────
+  // ── Session complete ─────────────────────────────────────────────────────
   if (sessionDone) {
-    const pct = sessionResult.total > 0 ? Math.round(((sessionResult.good + sessionResult.easy + sessionResult.perfect) / sessionResult.total) * 100) : 0;
+    const pct = sessionResult.total > 0 ? Math.round(((sessionResult.good + sessionResult.easy) / sessionResult.total) * 100) : 0;
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-4">
         <p className="text-5xl">{pct >= 80 ? "🏆" : pct >= 50 ? "👍" : "💪"}</p>
         <p className="text-2xl font-bold text-foreground">Session Complete!</p>
         <p className="text-sm text-muted-foreground">{sessionResult.total} cards reviewed</p>
-        <div className="grid grid-cols-5 gap-2 mt-2">
-          {([
-            { label: "Again", key: "again", color: "bg-red-500/20 text-red-300" },
-            { label: "Hard", key: "hard", color: "bg-orange-500/20 text-orange-300" },
-            { label: "Good", key: "good", color: "bg-blue-500/20 text-blue-300" },
-            { label: "Easy", key: "easy", color: "bg-emerald-500/20 text-emerald-300" },
-            { label: "Perfect", key: "perfect", color: "bg-violet-500/20 text-violet-300" },
-          ] as const).map(({ label, key, color }) => (
-            <div key={key} className={cn("px-3 py-2 rounded-xl text-xs font-semibold text-center", color)}>
+        <div className="grid grid-cols-3 gap-2 mt-2">
+          {GRADES.map(({ label, key, color }) => (
+            <div key={key} className={cn("px-4 py-2 rounded-xl text-xs font-semibold text-center", color)}>
               <div className="text-lg font-bold">{sessionResult[key as keyof SessionResult]}</div>
               <div>{label}</div>
             </div>
           ))}
         </div>
-        <div className="mt-2 text-sm text-muted-foreground">
-          {pct >= 80 ? "Excellent recall! Keep it up." : pct >= 50 ? "Good progress. Review the harder ones tomorrow." : "Keep practicing — repetition builds memory."}
-        </div>
         <button
-          onClick={() => {
-            setSessionDone(false);
-            setSessionResult({ total: 0, again: 0, hard: 0, good: 0, easy: 0, perfect: 0 });
-            setIdx(0);
-            setFlipped(false);
-            refetchDue();
-          }}
+          onClick={() => { setChoice(null); }}
           className="mt-2 px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors"
         >
-          Done
+          New session
         </button>
       </div>
     );
   }
 
-  if (!currentWord) return null;
+  if (!currentWord) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 gap-3">
+        <p className="text-5xl">🎉</p>
+        <p className="text-xl font-semibold text-foreground">Nothing to review here.</p>
+        <button onClick={() => setChoice(null)} className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold">
+          Pick something else
+        </button>
+      </div>
+    );
+  }
 
-  const matchScore = transcription && currentWord
+  const matchScore = transcription
     ? (() => {
         const t = transcription.toLowerCase().trim();
         const target = currentWord.term.toLowerCase().trim();
@@ -391,8 +224,7 @@ export default function FlashcardTab() {
         if (t.includes(target) || target.includes(t)) return 0.8;
         const tWords = t.split(/\s+/);
         const targetWords = target.split(/\s+/);
-        const matches = targetWords.filter((w) => tWords.some((tw) => tw.includes(w) || w.includes(tw)));
-        return matches.length / targetWords.length;
+        return targetWords.filter((w) => tWords.some((tw) => tw.includes(w) || w.includes(tw))).length / targetWords.length;
       })()
     : null;
 
@@ -400,112 +232,14 @@ export default function FlashcardTab() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center gap-2 flex-wrap">
-        {/* Mode toggle */}
-        <div className="flex items-center gap-1 p-0.5 bg-card border border-border rounded-xl">
-          <button
-            onClick={() => setMode("due")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
-              mode === "due" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Brain className="w-3.5 h-3.5" />
-            Due Today {reviewStats ? `(${reviewStats.dueToday})` : ""}
-          </button>
-          <button
-            onClick={() => setMode("all")}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
-              mode === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <BookOpen className="w-3.5 h-3.5" />
-            Free Practice
-          </button>
-        </div>
-
-        {/* Free practice filters */}
-        {mode === "all" && (
-          <>
-            <button
-              onClick={() => setFilterStarred(!filterStarred)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
-                filterStarred ? "bg-accent/20 text-accent" : "bg-card border border-border text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Star className={cn("w-3.5 h-3.5", filterStarred && "fill-current")} />
-              Starred
-            </button>
-            {dateKeys.length > 1 && (
-              <select
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="px-3 py-2 bg-card border border-border rounded-xl text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
-              >
-                <option value="all">All dates ({allWords.length})</option>
-                {dateKeys.map((dk) => (
-                  <option key={dk} value={dk}>
-                    {fmtDateLabel(dk)} ({allWords.filter((w) => w.dateKey === dk).length})
-                  </option>
-                ))}
-              </select>
-            )}
-          </>
-        )}
-
-        <button
-          onClick={handleShuffle}
-          className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground rounded-xl text-xs font-semibold transition-colors"
-        >
-          <Shuffle className="w-3.5 h-3.5" /> Shuffle
+      {/* Top bar: change session + progress */}
+      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center gap-2">
+        <button onClick={() => setChoice(null)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <ChevronLeft className="w-3.5 h-3.5" /> Change
         </button>
-
-        {/* Settings button */}
-        <button
-          onClick={() => setShowSettings((s) => !s)}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors border",
-            showSettings ? "bg-primary/20 border-primary/50 text-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"
-          )}
-          title="Review settings"
-        >
-          <Settings2 className="w-3.5 h-3.5" />
-        </button>
-
-        <span className="ml-auto text-xs text-muted-foreground font-medium">
-          {idx + 1} / {deck.length}
-        </span>
+        <span className="ml-auto text-xs text-muted-foreground font-medium">{idx + 1} / {deck.length}</span>
       </div>
 
-      {/* Settings panel */}
-      {showSettings && (
-        <div className="flex-shrink-0 border-b border-border bg-card/50 px-4 py-3 space-y-3">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Daily Review Settings</p>
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <label className="text-xs text-muted-foreground w-32">New words/day: <span className="text-foreground font-semibold">{settingNewWords}</span></label>
-              <input type="range" min={1} max={50} step={1} value={settingNewWords} onChange={(e) => setSettingNewWords(Number(e.target.value))}
-                className="w-32 accent-primary" />
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-xs text-muted-foreground w-32">Reviews/day: <span className="text-foreground font-semibold">{settingReviewCap}</span></label>
-              <input type="range" min={5} max={100} step={5} value={settingReviewCap} onChange={(e) => setSettingReviewCap(Number(e.target.value))}
-                className="w-32 accent-primary" />
-            </div>
-            <button
-              onClick={() => updateSettingsMutation.mutate({ dailyNewWords: settingNewWords, dailyReviewCap: settingReviewCap })}
-              className="px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-semibold transition-colors"
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Card area */}
       <div className="flex-1 flex flex-col items-center justify-center p-6 overflow-y-auto">
         <div className="w-full max-w-md space-y-4">
           {/* Progress bar */}
@@ -513,127 +247,88 @@ export default function FlashcardTab() {
             <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${((idx + 1) / deck.length) * 100}%` }} />
           </div>
 
-          {/* Flip card */}
-          <div className="flip-card w-full" style={{ height: "220px" }}>
-            <div className={cn("flip-card-inner w-full h-full", flipped && "flipped")}>
-              {/* Front - French */}
-              <div
-                className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 border border-border rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg"
-                onClick={handleFlip}
-              >
-                <div className="absolute top-3 left-3 flex items-center gap-1">
-                  {sm2Status && (
-                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-semibold", SM2_STATUS_COLORS[sm2Status] ?? "bg-muted text-muted-foreground")}>
-                      {SM2_STATUS_LABELS[sm2Status] ?? sm2Status}
-                    </span>
-                  )}
-                </div>
-                <span className="text-xs font-bold text-primary uppercase tracking-widest mb-4">French</span>
-                <p className="text-3xl font-bold text-foreground text-center mb-3">{currentWord.term}</p>
-                <PronounceButton
-                  text={currentWord.term}
-                  speak={speak}
-                  state={pronounceState}
-                  activeText={activeText}
-                  className="p-2 bg-primary/15 hover:bg-primary/25 text-primary"
-                  iconSize="w-5 h-5"
-                />
-                <p className="text-xs text-muted-foreground mt-4">Tap to reveal</p>
+          {/* Card-top controls: star, pronounce, mic, delete */}
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={() => starMutation.mutate({ id: currentWord.id })}
+              className={cn("p-2.5 rounded-xl border transition-colors", currentWord.starred ? "bg-accent/20 border-accent/50 text-accent" : "bg-card border-border text-muted-foreground hover:text-accent hover:border-accent/50")}
+              title="Star this word"
+            >
+              <Star className={cn("w-4.5 h-4.5", currentWord.starred && "fill-current")} />
+            </button>
+            <PronounceButton
+              text={currentWord.term}
+              speak={speak}
+              state={pronounceState}
+              activeText={activeText}
+              className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50"
+              iconSize="w-4.5 h-4.5"
+            />
+            <button
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              className={cn("p-2.5 rounded-xl border transition-all", recording ? "bg-red-500/20 border-red-500 text-red-400 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50")}
+              title="Hold to record your pronunciation"
+            >
+              {recording ? <MicOff className="w-4.5 h-4.5" /> : <Mic className="w-4.5 h-4.5" />}
+            </button>
+            {confirmDeleteId === currentWord.id ? (
+              <div className="flex items-center gap-1">
+                <button onClick={handleDeleteCurrent} className="px-3 py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:bg-destructive/80 transition-colors">Delete</button>
+                <button onClick={() => setConfirmDeleteId(null)} className="px-3 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-bold hover:bg-muted/80 transition-colors">Cancel</button>
               </div>
-              {/* Back - English */}
-              <div
-                className="flip-card-back absolute inset-0 bg-gradient-to-br from-primary/10 to-card border border-primary/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg"
-                onClick={handleFlip}
-              >
-                <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">English</span>
-                <p className="text-2xl font-bold text-foreground text-center mb-2">{currentWord.translation}</p>
+            ) : (
+              <button onClick={handleDeleteCurrent} className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10 transition-colors" title="Delete this word">
+                <Trash2 className="w-4.5 h-4.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Flip card */}
+          <div className="flip-card w-full" style={{ height: "220px" }} onClick={() => setFlipped((f) => !f)}>
+            <div className={cn("flip-card-inner w-full h-full", flipped && "flipped")}>
+              <div className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 border border-border rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
+                {sm2Status && (
+                  <span className={cn("absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full font-semibold", SM2_STATUS_COLORS[sm2Status] ?? "bg-muted text-muted-foreground")}>
+                    {SM2_STATUS_LABELS[sm2Status] ?? sm2Status}
+                  </span>
+                )}
+                <p className="text-2xl font-bold text-foreground text-center">{currentWord.term}</p>
+                <p className="text-xs text-muted-foreground mt-2">Tap to reveal</p>
+              </div>
+              <div className="flip-card-back absolute inset-0 bg-gradient-to-br from-primary/10 to-card border border-primary/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
+                <p className="text-2xl font-bold text-foreground text-center">{currentWord.translation}</p>
                 <p className="text-xs text-muted-foreground mt-2">Tap to flip back</p>
               </div>
             </div>
           </div>
 
-          {/* SM-2 rating row — only shown after flip in Due Today mode */}
-          {mode === "due" && flipped && (
-            <div className="space-y-1">
-              <p className="text-xs text-center text-muted-foreground font-medium">How well did you know this?</p>
-              <div className="flex gap-1.5 justify-center">
-                {([
-                  { grade: 1, label: "Again", color: "bg-red-500/20 hover:bg-red-500/40 text-red-300 border-red-500/30" },
-                  { grade: 2, label: "Hard", color: "bg-orange-500/20 hover:bg-orange-500/40 text-orange-300 border-orange-500/30" },
-                  { grade: 3, label: "Good", color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 border-blue-500/30" },
-                  { grade: 4, label: "Easy", color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border-emerald-500/30" },
-                  { grade: 5, label: "Perfect", color: "bg-violet-500/20 hover:bg-violet-500/40 text-violet-300 border-violet-500/30" },
-                ] as const).map(({ grade, label, color }) => (
-                  <button
-                    key={grade}
-                    onClick={() => handleGrade(grade)}
-                    className={cn("flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors", color)}
-                  >
+          {/* Nav arrows flanking the 3 grade buttons */}
+          <div className="flex items-center gap-2">
+            <button onClick={handlePrev} disabled={idx === 0} className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            {flipped ? (
+              <div className="flex-1 flex gap-1.5">
+                {GRADES.map(({ grade, label, color }) => (
+                  <button key={grade} onClick={() => handleGrade(grade)} className={cn("flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors", color)}>
                     {label}
                   </button>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="flex-1 text-center text-xs text-muted-foreground py-2.5">Tap the card to reveal, then rate it</div>
+            )}
 
-          {/* Controls (nav + star + mic + delete) — shown in free practice or before flip in due mode */}
-          {(mode === "all" || !flipped) && (
-            <div className="flex items-center justify-between">
-              <button
-                onClick={handlePrev}
-                disabled={idx === 0}
-                className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
+            <button onClick={handleNext} disabled={idx === deck.length - 1} className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => starMutation.mutate({ id: currentWord.id })}
-                  className={cn(
-                    "p-3 rounded-xl border transition-colors",
-                    currentWord.starred ? "bg-accent/20 border-accent/50 text-accent" : "bg-card border-border text-muted-foreground hover:text-accent hover:border-accent/50"
-                  )}
-                  title="Star this word"
-                >
-                  <Star className={cn("w-5 h-5", currentWord.starred && "fill-current")} />
-                </button>
-                <button
-                  onMouseDown={startRecording}
-                  onMouseUp={stopRecording}
-                  onTouchStart={startRecording}
-                  onTouchEnd={stopRecording}
-                  className={cn(
-                    "p-3 rounded-xl border transition-all",
-                    recording ? "bg-red-500/20 border-red-500 text-red-400 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50"
-                  )}
-                  title="Hold to record your pronunciation"
-                >
-                  {recording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                </button>
-                {confirmDeleteId === currentWord.id ? (
-                  <div className="flex items-center gap-1">
-                    <button onClick={handleDeleteCurrent} className="px-3 py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:bg-destructive/80 transition-colors">Delete</button>
-                    <button onClick={() => setConfirmDeleteId(null)} className="px-3 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-bold hover:bg-muted/80 transition-colors">Cancel</button>
-                  </div>
-                ) : (
-                  <button onClick={handleDeleteCurrent} className="p-3 rounded-xl border border-border bg-card text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10 transition-colors" title="Delete this word">
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-
-              <button
-                onClick={handleNext}
-                disabled={idx === deck.length - 1}
-                className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          )}
-
-          {/* Recording feedback */}
+          {/* Pronunciation feedback */}
           {recording && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-center">
               <p className="text-sm text-red-300 font-semibold animate-pulse">🎙 Recording… release to stop</p>
@@ -646,34 +341,19 @@ export default function FlashcardTab() {
             </div>
           )}
           {transcription && !transcribing && (
-            <div className={cn(
-              "rounded-xl p-4 border",
-              matchScore !== null && matchScore >= 0.8 ? "bg-emerald-500/10 border-emerald-700" : "bg-amber-500/10 border-amber-700"
-            )}>
+            <div className={cn("rounded-xl p-4 border", matchScore !== null && matchScore >= 0.8 ? "bg-emerald-500/10 border-emerald-700" : "bg-amber-500/10 border-amber-700")}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">You said:</p>
                   <p className="text-sm font-semibold text-foreground">"{transcription}"</p>
                 </div>
                 {matchScore !== null && (
-                  <span className={cn(
-                    "text-xs px-2 py-1 rounded-full font-bold flex-shrink-0",
-                    matchScore >= 0.8 ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300"
-                  )}>
+                  <span className={cn("text-xs px-2 py-1 rounded-full font-bold flex-shrink-0", matchScore >= 0.8 ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300")}>
                     {matchScore >= 0.8 ? "✓ Good!" : "Try again"}
                   </span>
                 )}
               </div>
-              <div className="mt-2 flex items-center gap-2">
-                <p className="text-xs text-muted-foreground">Target:</p>
-                <p className="text-xs font-semibold text-foreground">{currentWord.term}</p>
-                <PronounceButton text={currentWord.term} speak={speak} state={pronounceState} activeText={activeText} className="p-0.5 hover:bg-primary/15 text-muted-foreground hover:text-primary" iconSize="w-3 h-3" />
-              </div>
             </div>
-          )}
-
-          {mode === "all" && (
-            <p className="text-center text-xs text-muted-foreground">Hold mic button to record your pronunciation</p>
           )}
         </div>
       </div>

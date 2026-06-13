@@ -117,5 +117,17 @@
     "overrides": {
       "tailwindcss>nanoid": "3.3.7"
     }
-  }
+  },
+  "description": "A personal French learning app built around a tight loop: **speak with your AI tutor, save what you learn, then drill it until it sticks.** It combines a real-time voice conversation agent, an intelligent vocabulary library, a French dictionary, and an adaptive quiz and flashcard system — all in one place.",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Awesun777/french-voice-tutor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/Awesun777/french-voice-tutor/issues"
+  },
+  "homepage": "https://github.com/Awesun777/french-voice-tutor#readme"
 }

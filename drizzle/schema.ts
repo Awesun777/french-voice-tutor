@@ -128,7 +128,7 @@ export type DictCacheEntry = typeof dictCache.$inferSelect;
  */
 export const reviewSettings = mysqlTable("review_settings", {
   userId: int("userId").primaryKey(),
-  dailyNewWords: int("dailyNewWords").default(10).notNull(),
+  dailyNewWords: int("dailyNewWords").default(30).notNull(),
   dailyReviewCap: int("dailyReviewCap").default(20).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

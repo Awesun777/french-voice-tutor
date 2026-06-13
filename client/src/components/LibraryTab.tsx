@@ -202,7 +202,7 @@ function GroupHeader({
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void }) {
+export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveTab: (tab: SidebarTab) => void; onStartReview?: (dateKey?: string) => void }) {
   const [search, setSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [showDrivePanel, setShowDrivePanel] = useState(false);
@@ -415,7 +415,7 @@ export default function LibraryTab({ setActiveTab }: { setActiveTab: (tab: Sideb
       {/* Google Drive Panel */}
       {showDrivePanel && (
         <div className="flex-shrink-0 border-b border-border px-4 py-4 bg-background/50">
-          <GoogleDrivePanel />
+          <GoogleDrivePanel onStartReview={onStartReview} />
         </div>
       )}
 

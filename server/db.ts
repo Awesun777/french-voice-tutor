@@ -334,7 +334,7 @@ export async function getVocabStats(userId: number) {
 // ─── SM-2 helpers ──────────────────────────────────────────────────────────────
 
 import { ReviewSettings, reviewSettings } from "../drizzle/schema";
-import { lte, or, isNull } from "drizzle-orm";
+import { lte, or, isNull, inArray } from "drizzle-orm";
 
 /**
  * SM-2 algorithm: given current state and a grade (1-5), compute the next
@@ -461,6 +461,126 @@ export async function getDueVocab(
 }
 
 /**
+ * Order a list of vocab entries for review: overdue/never-reviewed first
+ * (soonest due first), then everything else by creation order. Used by the
+ * "all words" review mode and any date-scoped session.
+ */
+export function orderForReview(words: VocabEntry[]): VocabEntry[] {
+  const now = Date.now();
+  const due: VocabEntry[] = [];
+  const rest: VocabEntry[] = [];
+  for (const w of words) {
+    if (w.sm2Status === "new" || w.sm2NextReviewAt == null || w.sm2NextReviewAt <= now) {
+      due.push(w);
+    } else {
+      rest.push(w);
+    }
+  }
+  due.sort((a, b) => (a.sm2NextReviewAt ?? 0) - (b.sm2NextReviewAt ?? 0));
+  return [...due, ...rest];
+}
+
+/**
+ * Unified review queue used by both the Quiz and Flashcard launch screens.
+ *
+ * mode "due":  today's spaced-repetition queue (new + overdue, interleaved).
+ *              `limit` caps the session and MAY exceed the daily settings caps —
+ *              an explicit session size set by the user wins over the defaults.
+ * mode "all":  every word the user has (optionally one dateKey), ordered
+ *              overdue/new-first, sliced to `limit`.
+ */
+export async function getReviewQueue(
+  userId: number,
+  opts: { mode: "due" | "all"; dateKey?: string; limit?: number }
+): Promise<VocabEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  if (opts.mode === "due") {
+    // Reuse the interleaved due logic; when an explicit limit is given, use it
+    // for both new and review slices so the user can drill more than the cap.
+    const cap = opts.limit && opts.limit > 0 ? opts.limit : undefined;
+    const settings = await getReviewSettings(userId);
+    const newCap = cap ?? settings.dailyNewWords;
+    const reviewCap = cap ?? settings.dailyReviewCap;
+    const queue = await getDueVocab(userId, newCap, reviewCap);
+    const scoped = opts.dateKey ? queue.filter((w) => w.dateKey === opts.dateKey) : queue;
+    return cap ? scoped.slice(0, cap) : scoped;
+  }
+
+  // mode "all"
+  const where = opts.dateKey
+    ? and(eq(vocabEntries.userId, userId), eq(vocabEntries.dateKey, opts.dateKey))
+    : eq(vocabEntries.userId, userId);
+  const rows = await db.select().from(vocabEntries).where(where);
+  const ordered = orderForReview(rows);
+  return opts.limit && opts.limit > 0 ? ordered.slice(0, opts.limit) : ordered;
+}
+
+/**
+ * List the user's date groups with total and currently-due counts, for the
+ * review launch screen's date dropdown. Newest date first.
+ */
+export async function getReviewDates(
+  userId: number
+): Promise<Array<{ dateKey: string; total: number; dueCount: number }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      dateKey: vocabEntries.dateKey,
+      status: vocabEntries.sm2Status,
+      nextReviewAt: vocabEntries.sm2NextReviewAt,
+    })
+    .from(vocabEntries)
+    .where(eq(vocabEntries.userId, userId));
+
+  const now = Date.now();
+  const map = new Map<string, { total: number; dueCount: number }>();
+  for (const r of rows) {
+    const e = map.get(r.dateKey) ?? { total: 0, dueCount: 0 };
+    e.total++;
+    if (r.status === "new" || (r.nextReviewAt != null && r.nextReviewAt <= now)) e.dueCount++;
+    map.set(r.dateKey, e);
+  }
+  return Array.from(map.entries())
+    .map(([dateKey, v]) => ({ dateKey, ...v }))
+    .sort((a, b) => (a.dateKey < b.dateKey ? 1 : a.dateKey > b.dateKey ? -1 : 0));
+}
+
+/**
+ * Map a quiz answer to an SM-2 grade with no self-rating:
+ * incorrect → "Again" (1); correct → "Good" (3); the 3rd consecutive correct
+ * (and onward) → "Easy" (5). `repetitions` is the consecutive-correct count
+ * BEFORE this answer, so a correct answer makes it repetitions + 1.
+ */
+export function quizGradeFor(repetitions: number, correct: boolean): 1 | 3 | 5 {
+  if (!correct) return 1;
+  return repetitions + 1 >= 3 ? 5 : 3;
+}
+
+/**
+ * Record a quiz answer and auto-prioritize without a self-grade.
+ */
+export async function submitQuizResult(
+  userId: number,
+  vocabId: number,
+  correct: boolean
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  const rows = await db
+    .select({ repetitions: vocabEntries.sm2Repetitions })
+    .from(vocabEntries)
+    .where(and(eq(vocabEntries.id, vocabId), eq(vocabEntries.userId, userId)))
+    .limit(1);
+  if (!rows.length) return;
+
+  await submitSm2Review(userId, vocabId, quizGradeFor(rows[0].repetitions, correct));
+}
+
+/**
  * Submit a SM-2 review grade for a vocab entry.
  */
 export async function submitSm2Review(
@@ -532,7 +652,7 @@ export async function getSm2Stats(userId: number): Promise<{
  */
 export async function getReviewSettings(userId: number): Promise<ReviewSettings> {
   const db = await getDb();
-  if (!db) return { userId, dailyNewWords: 10, dailyReviewCap: 20, updatedAt: new Date() };
+  if (!db) return { userId, dailyNewWords: 30, dailyReviewCap: 20, updatedAt: new Date() };
 
   const rows = await db
     .select()
@@ -543,8 +663,8 @@ export async function getReviewSettings(userId: number): Promise<ReviewSettings>
   if (rows.length) return rows[0];
 
   // Create defaults
-  await db.insert(reviewSettings).values({ userId, dailyNewWords: 10, dailyReviewCap: 20 });
-  return { userId, dailyNewWords: 10, dailyReviewCap: 20, updatedAt: new Date() };
+  await db.insert(reviewSettings).values({ userId, dailyNewWords: 30, dailyReviewCap: 20 });
+  return { userId, dailyNewWords: 30, dailyReviewCap: 20, updatedAt: new Date() };
 }
 
 /**
@@ -559,7 +679,7 @@ export async function updateReviewSettings(
 
   await db
     .insert(reviewSettings)
-    .values({ userId, dailyNewWords: patch.dailyNewWords ?? 10, dailyReviewCap: patch.dailyReviewCap ?? 20 })
+    .values({ userId, dailyNewWords: patch.dailyNewWords ?? 30, dailyReviewCap: patch.dailyReviewCap ?? 20 })
     .onDuplicateKeyUpdate({ set: patch });
 }
 

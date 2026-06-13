@@ -92,6 +92,13 @@
       "when": 1781307860740,
       "tag": "0012_old_shaman",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1781322896750,
+      "tag": "0013_nervous_vindicator",
+      "breakpoints": true
     }
   ]
 }

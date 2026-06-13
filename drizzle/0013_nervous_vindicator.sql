@@ -1,0 +1,1 @@
+ALTER TABLE `review_settings` MODIFY COLUMN `dailyNewWords` int NOT NULL DEFAULT 30;
