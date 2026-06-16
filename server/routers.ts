@@ -55,6 +55,8 @@ import {
   exportLibraryToGoogleDoc,
   fetchGoogleDocText,
   getValidAccessToken,
+  parseDateKey,
+  detectNumericDateFormat,
 } from "./googleDrive";
 
 // ─── Dictionary search cache (DB-persisted + in-memory L1) ───────────────────
@@ -92,6 +94,70 @@ const importCache = new Map<string, unknown[]>();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function todayKey() { return new Date().toISOString().split("T")[0]; }
+
+/**
+ * Shared LLM extraction prompt for the paste-import and Google-Doc-URL paths.
+ *
+ * The model returns the date header VERBATIM ("dateHeader") rather than a
+ * computed calendar date — LLMs are unreliable at date arithmetic (e.g. they
+ * turn "12/06" into 2026-06-13). The server then parses the raw header with the
+ * deterministic parseDateKey (see resolveImportDateKeys). The model's own
+ * best-guess "dateKey" is kept only as a fallback for headers we can't parse.
+ */
+function buildExtractPrompt(extraRules: string, text: string): string {
+  return `You are a French language teacher's assistant. Extract all distinct French vocabulary words and phrases from the text below.
+The text may contain date headers (e.g. "March 15", "2024-03-15", "12/06", "Lesson 3 - Monday", "Week 2", "Jan 5th") that separate vocabulary sections. For each word, report the date header that appears above it.
+Ignore headings, titles, page numbers, and purely English metadata that are NOT vocabulary.
+Focus only on French words, expressions, and sentences a student would want to learn.
+${extraRules}
+Rules:
+- "term": French word or phrase WITH accents preserved
+- "translation": English meaning, brief (1-6 words)
+- "kind": "word" for single words or 2-word expressions; "phrase" for 3+ word expressions or full sentences
+- "dateHeader": copy the date-header text above this word EXACTLY as written, character-for-character (e.g. "12/06", "March 15", "Semaine 2"). Do NOT convert it to another format. Use "today" if there is no date header above the word.
+- "dateKey": your best-guess YYYY-MM-DD for that header, or "today" if none. (Used only as a fallback — the server normally computes the date from "dateHeader".)
+Return ONLY a JSON object with an "items" array. Example:
+{"items":[{"term":"bonjour","translation":"hello","kind":"word","dateHeader":"March 15","dateKey":"2026-03-15"},{"term":"Comment allez-vous ?","translation":"How are you?","kind":"phrase","dateHeader":"today","dateKey":"today"}]}
+
+Text:
+${text.slice(0, 20000)}`;
+}
+
+interface ExtractedImportItem {
+  term: string;
+  translation: string;
+  kind: string;
+  dateHeader?: string;
+  dateKey?: string;
+}
+
+/**
+ * Turn each item's raw "dateHeader" into a concrete dateKey deterministically,
+ * matching the Drive-sync path: a component > 12 means day-first, otherwise the
+ * doc-wide majority (DD/MM vs MM/DD) decides. Falls back to the LLM's own
+ * dateKey guess (if a valid ISO date) and finally to today when there is no
+ * header or it can't be parsed.
+ */
+function resolveImportDateKeys<T extends ExtractedImportItem>(items: T[]): (T & { dateKey: string })[] {
+  const todayStr = todayKey();
+  const headers = items
+    .map((i) => i.dateHeader)
+    .filter((h): h is string => !!h && h.trim().toLowerCase() !== "today");
+  const fmt = detectNumericDateFormat(headers);
+  return items.map((item) => {
+    const header = item.dateHeader?.trim();
+    let dk: string | null = null;
+    if (header && header.toLowerCase() !== "today") {
+      dk = parseDateKey(header, undefined, fmt);
+    }
+    if (!dk) {
+      dk = item.dateKey && /^\d{4}-\d{2}-\d{2}$/.test(item.dateKey) && item.dateKey !== "today"
+        ? item.dateKey
+        : todayStr;
+    }
+    return { ...item, dateKey: dk };
+  });
+}
 
 // ─── Routers ──────────────────────────────────────────────────────────────────
 export const appRouter = router({
@@ -565,28 +631,14 @@ ${input.text.slice(0, 20000)}`,
           ? `\nAdditional instructions: ${input.instructions.trim()}\n`
           : "";
 
-        const extractPrompt = `You are a French language teacher's assistant. Extract all distinct French vocabulary words and phrases from the text below.
-The text may contain date headers (e.g. "March 15", "2024-03-15", "Lesson 3 - Monday", "Week 2", "Jan 5th") that separate vocabulary sections. When you find such headers, tag all vocabulary that follows that header with the corresponding dateKey in YYYY-MM-DD format. If no date can be inferred, use "today" as the dateKey. IMPORTANT: If a date header has only a month and day but no year (e.g. "March 15", "Jan 5th", "Oct 2"), always default the year to 2026.
-Ignore headings, titles, page numbers, and purely English metadata that are NOT vocabulary.
-Focus only on French words, expressions, and sentences a student would want to learn.
-${extraRules}
-Rules:
-- "term": French word or phrase WITH accents preserved
-- "translation": English meaning, brief (1-6 words)
-- "kind": "word" for single words or 2-word expressions; "phrase" for 3+ word expressions or full sentences
-- "dateKey": YYYY-MM-DD string if a date header was found above this word, otherwise "today"
-Return ONLY a JSON object with an "items" array. Example:
-{"items":[{"term":"bonjour","translation":"hello","kind":"word","dateKey":"2024-03-15"},{"term":"Comment allez-vous ?","translation":"How are you?","kind":"phrase","dateKey":"today"}]}
-
-Text:
-${correctedText.slice(0, 20000)}`;
+        const extractPrompt = buildExtractPrompt(extraRules, correctedText);
 
         const extractResp = await invokeLLM({
           messages: [{ role: "user", content: extractPrompt }],
           response_format: { type: "json_object" } as any,
         });
 
-        let items: { term: string; translation: string; kind: string; dateKey?: string }[] = [];
+        let items: ExtractedImportItem[] = [];
         try {
           const extractRaw = extractResp.choices[0].message.content ?? '{}';
           const extractStr = typeof extractRaw === 'string' ? extractRaw : JSON.stringify(extractRaw);
@@ -597,12 +649,9 @@ ${correctedText.slice(0, 20000)}`;
           items = [];
         }
 
-        // Resolve "today" dateKeys to actual today string
-        const todayStr = todayKey();
-        items = items.map((item) => ({
-          ...item,
-          dateKey: (!item.dateKey || item.dateKey === "today") ? todayStr : item.dateKey,
-        }));
+        // Compute dateKeys deterministically from each item's raw header,
+        // falling back to the LLM guess / today when there's no header.
+        items = resolveImportDateKeys(items);
 
         // Deduplicate
         const seen = new Set<string>();
@@ -679,25 +728,12 @@ ${docText.slice(0, 20000)}`,
         } catch { /* non-fatal */ }
         // Extract vocabulary
         const extraRules = input.instructions?.trim() ? `\nAdditional instructions: ${input.instructions.trim()}\n` : "";
-        const extractPrompt = `You are a French language teacher's assistant. Extract all distinct French vocabulary words and phrases from the text below.
-The text may contain date headers (e.g. "March 15", "2024-03-15", "Lesson 3 - Monday", "Week 2", "Jan 5th") that separate vocabulary sections. When you find such headers, tag all vocabulary that follows that header with the corresponding dateKey in YYYY-MM-DD format. If no date can be inferred, use "today" as the dateKey. IMPORTANT: If a date header has only a month and day but no year (e.g. "March 15", "Jan 5th", "Oct 2"), always default the year to 2026.
-Ignore headings, titles, page numbers, and purely English metadata that are NOT vocabulary.
-Focus only on French words, expressions, and sentences a student would want to learn.
-${extraRules}
-Rules:
-- "term": French word or phrase WITH accents preserved
-- "translation": English meaning, brief (1-6 words)
-- "kind": "word" for single words or 2-word expressions; "phrase" for 3+ word expressions or full sentences
-- "dateKey": YYYY-MM-DD string if a date header was found above this word, otherwise "today"
-Return ONLY a JSON object with an "items" array. Example:
-{"items":[{"term":"bonjour","translation":"hello","kind":"word","dateKey":"2024-03-15"}]}
-Text:
-${correctedText.slice(0, 20000)}`;
+        const extractPrompt = buildExtractPrompt(extraRules, correctedText);
         const extractResp = await invokeLLM({
           messages: [{ role: "user", content: extractPrompt }],
           response_format: { type: "json_object" } as any,
         });
-        let items: { term: string; translation: string; kind: string; dateKey?: string }[] = [];
+        let items: ExtractedImportItem[] = [];
         try {
           const extractRaw = extractResp.choices[0].message.content ?? '{}';
           const extractStr = typeof extractRaw === 'string' ? extractRaw : JSON.stringify(extractRaw);
@@ -705,11 +741,8 @@ ${correctedText.slice(0, 20000)}`;
           const arr = Array.isArray(parsed) ? parsed : (parsed.items ?? parsed.vocabulary ?? parsed.words ?? []);
           items = arr;
         } catch { items = []; }
-        const todayStr = todayKey();
-        items = items.map((item) => ({
-          ...item,
-          dateKey: (!item.dateKey || item.dateKey === "today") ? todayStr : item.dateKey,
-        }));
+        // Deterministic dates from raw headers (LLM guess / today as fallback).
+        items = resolveImportDateKeys(items);
         const seen = new Set<string>();
         const deduped = items.filter((item) => {
           const k = (item.term ?? "").toLowerCase().trim();

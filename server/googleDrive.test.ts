@@ -170,6 +170,16 @@ describe("parseDateKey numeric dates", () => {
     expect(parseDateKey("13/13", 2026)).toBeNull();
     expect(parseDateKey("32/05", 2026)).toBeNull();
   });
+
+  it("regression: the real doc's DD/MM headers map to the exact dates", () => {
+    // Headers seen in the source doc — inference picks day-first (DM) because
+    // 15/05, 28/05 and 16/06 have a first component > 12.
+    const headers = ["15/05", "28/05", "01/06", "02/06", "05/06", "12/06", "16/06"];
+    const fmt = detectNumericDateFormat(headers);
+    expect(fmt).toBe("DM");
+    expect(parseDateKey("12/06", 2026, fmt)).toBe("2026-06-12"); // not 06-13
+    expect(parseDateKey("16/06", 2026, fmt)).toBe("2026-06-16"); // not 06-15
+  });
 });
 
 // ── style-aware date header detection ─────────────────────────────────────────
