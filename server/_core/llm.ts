@@ -209,16 +209,37 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-const resolveApiUrl = () =>
-  ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
-    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://forge.manus.im/v1/chat/completions";
-
-const assertApiKey = () => {
-  if (!ENV.forgeApiKey) {
-    throw new Error("OPENAI_API_KEY is not configured");
+/**
+ * Pick the LLM backend based on which key is configured.
+ *
+ * - Manus platform: BUILT_IN_FORGE_API_KEY is set → use the Forge gateway
+ *   (gemini-2.5-flash) exactly as before.
+ * - Self-hosted (e.g. Railway): Forge isn't available, so fall back to calling
+ *   OpenAI directly with OPENAI_API_KEY — the same key the voice agent uses.
+ *
+ * The Forge-only "thinking" param and 32k token budget are dropped for OpenAI,
+ * whose chat models reject unknown params and cap output lower.
+ */
+function resolveProvider(): {
+  url: string;
+  key: string;
+  model: string;
+  maxTokens: number;
+  thinking?: Record<string, unknown>;
+} {
+  if (ENV.forgeApiKey) {
+    const url = ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
+      ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
+      : "https://forge.manus.im/v1/chat/completions";
+    return { url, key: ENV.forgeApiKey, model: "gemini-2.5-flash", maxTokens: 32768, thinking: { budget_tokens: 128 } };
   }
-};
+  if (ENV.openAiApiKey) {
+    return { url: "https://api.openai.com/v1/chat/completions", key: ENV.openAiApiKey, model: "gpt-4o-mini", maxTokens: 16384 };
+  }
+  throw new Error(
+    "No LLM provider configured: set OPENAI_API_KEY (self-hosted) or BUILT_IN_FORGE_API_KEY (Manus)."
+  );
+}
 
 const normalizeResponseFormat = ({
   responseFormat,
@@ -266,13 +287,15 @@ const normalizeResponseFormat = ({
 };
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  assertApiKey();
+  const provider = resolveProvider();
 
   const {
     messages,
     tools,
     toolChoice,
     tool_choice,
+    maxTokens,
+    max_tokens,
     outputSchema,
     output_schema,
     responseFormat,
@@ -280,7 +303,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model: provider.model,
     messages: messages.map(normalizeMessage),
   };
 
@@ -296,9 +319,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
+  // Respect a caller-provided token budget, capped to what the provider allows.
+  const requested = maxTokens ?? max_tokens;
+  payload.max_tokens = requested ? Math.min(requested, provider.maxTokens) : provider.maxTokens;
+  if (provider.thinking) {
+    payload.thinking = provider.thinking;
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({
@@ -312,11 +337,11 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.response_format = normalizedResponseFormat;
   }
 
-  const response = await fetch(resolveApiUrl(), {
+  const response = await fetch(provider.url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${ENV.forgeApiKey}`,
+      authorization: `Bearer ${provider.key}`,
     },
     body: JSON.stringify(payload),
   });
