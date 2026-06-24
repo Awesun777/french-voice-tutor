@@ -30,6 +30,8 @@ export interface ReviewLaunchChoice {
   mode: "due" | "all";
   dateKey?: string;
   limit?: number;
+  /** Flashcards only — which side of the card shows first. */
+  front?: "fr" | "en";
 }
 
 interface ReviewLaunchProps {
@@ -46,6 +48,8 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
 
   // source: null = step 1; "due" or a dateKey string = step 2 (count chooser)
   const [source, setSource] = useState<string | null>(initialDateKey ?? null);
+  // Flashcards: which side shows first (French term or English translation).
+  const [front, setFront] = useState<"fr" | "en">("fr");
 
   const dueToday = stats?.dueToday ?? 0;
   const verb = kind === "quiz" ? "Quiz" : "Review";
@@ -60,13 +64,15 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
 
   const presets = [10, 20, 30, 50].filter((n) => n < available);
 
+  const frontChoice = kind === "flashcards" ? front : undefined;
+
   function start(limit?: number) {
     if (source === "due") {
       // For "All left", pass the due count as an explicit limit so the server
       // returns every due word (an explicit limit overrides the daily cap).
-      onStart({ mode: "due", limit: limit ?? (available || undefined) });
+      onStart({ mode: "due", limit: limit ?? (available || undefined), front: frontChoice });
     } else if (source) {
-      onStart({ mode: "all", dateKey: source, limit });
+      onStart({ mode: "all", dateKey: source, limit, front: frontChoice });
     }
   }
 
@@ -155,6 +161,29 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
             <CalendarDays className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           </div>
         </div>
+
+        {kind === "flashcards" && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground text-center">Show first</p>
+            <div className="flex gap-2">
+              {([
+                { id: "fr" as const, label: "French" },
+                { id: "en" as const, label: "English" },
+              ]).map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setFront(o.id)}
+                  className={cn(
+                    "flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold border transition-all",
+                    front === o.id ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {dates.length === 0 && (
           <p className="text-center text-xs text-muted-foreground">

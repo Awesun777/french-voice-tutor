@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
-import { Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2, Combine } from "lucide-react";
+import { Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2, Combine, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePronounce } from "@/lib/pronounce";
@@ -64,6 +64,13 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
   const [sessionDone, setSessionDone] = useState(restore?.sessionDone ?? false);
   const [sessionResult, setSessionResult] = useState<SessionResult>(restore?.sessionResult ?? ZERO);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  // Inline edit state for the current card's French / English text.
+  const [editing, setEditing] = useState(false);
+  const [editTerm, setEditTerm] = useState("");
+  const [editTranslation, setEditTranslation] = useState("");
+
+  // Which side shows first: "fr" (French term) or "en" (English translation).
+  const front: "fr" | "en" = choice?.front ?? "fr";
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -77,24 +84,31 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     }
   }, [choice, deck, idx, flipped, sessionResult, sessionDone]);
 
-  // When a new card appears, auto-play its pronunciation and pre-warm the next
-  // card's audio so it's instant. Keyed on the card id so flipping doesn't replay.
+  // Auto-play French audio when the French side becomes visible, and pre-warm
+  // the next card's audio. With French-first that's on show; with English-first
+  // it would give away the answer, so we wait until the card is flipped.
+  // Keyed on card id (+ flip when English-first) so it doesn't replay needlessly.
   const currentCardId = deck[idx]?.id;
   useEffect(() => {
     const cur = deck[idx];
-    if (!cur || sessionDone) return;
-    speakRef.current(cur.term);
+    if (!cur || sessionDone || editing) return;
+    const frenchVisible = front === "fr" ? !flipped : flipped;
+    if (frenchVisible) speakRef.current(cur.term);
     const next = deck[idx + 1];
     if (next) preloadRef.current(next.term);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentCardId, sessionDone]);
+  }, [currentCardId, sessionDone, flipped, front]);
+
+  // Close the edit panel whenever the displayed card changes.
+  useEffect(() => { setEditing(false); }, [currentCardId]);
 
   // Launch a session: fetch the chosen queue, then build the deck. Fetching
   // imperatively (vs a reactive query) keeps a restored deck from being clobbered.
   const startSession = async (c: ReviewLaunchChoice) => {
     setStarting(true);
     try {
-      const words = (await utils.review.getQueue.fetch(c)) as VocabEntry[];
+      // Only the queue fields go to the server; `front` is a display choice.
+      const words = (await utils.review.getQueue.fetch({ mode: c.mode, dateKey: c.dateKey, limit: c.limit })) as VocabEntry[];
       setChoice(c);
       setDeck([...words]);
       setIdx(0);
@@ -162,6 +176,36 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
   const handleMergeWithPrevious = () => {
     if (idx < 1 || mergeMutation.isPending) return;
     mergeMutation.mutate({ currentId: deck[idx].id, previousId: deck[idx - 1].id });
+  };
+
+  // Inline edit of the current card's French term / English translation.
+  const updateMutation = trpc.vocab.update.useMutation({
+    onSuccess: (_d, vars) => {
+      setDeck((dk) => dk.map((w) => (w.id === vars.id
+        ? { ...w, term: vars.term ?? w.term, translation: vars.translation ?? w.translation }
+        : w)));
+      setEditing(false);
+      toast.success("Card updated");
+      utils.vocab.list.invalidate();
+    },
+    onError: () => toast.error("Failed to save changes"),
+  });
+
+  const startEdit = () => {
+    if (!deck[idx]) return;
+    setEditTerm(deck[idx].term);
+    setEditTranslation(deck[idx].translation);
+    setEditing(true);
+  };
+
+  const saveEdit = () => {
+    const cur = deck[idx];
+    if (!cur) return;
+    const term = editTerm.trim();
+    const translation = editTranslation.trim();
+    if (!term || !translation) { toast.error("Both fields are required"); return; }
+    if (term === cur.term && translation === cur.translation) { setEditing(false); return; }
+    updateMutation.mutate({ id: cur.id, term, translation });
   };
 
   const transcribeMutation = trpc.voice.transcribe.useMutation({
@@ -333,6 +377,13 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
           {/* Card-top controls: merge, star, pronounce, mic, delete */}
           <div className="flex items-center justify-center gap-2">
             <button
+              onClick={startEdit}
+              className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+              title="Edit the French or English text"
+            >
+              <Pencil className="w-4.5 h-4.5" />
+            </button>
+            <button
               onClick={handleMergeWithPrevious}
               disabled={idx < 1 || mergeMutation.isPending}
               className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 disabled:opacity-30 transition-colors"
@@ -377,7 +428,36 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
             )}
           </div>
 
-          {/* Flip card */}
+          {/* Edit panel (replaces the card while editing) */}
+          {editing ? (
+            <div className="w-full rounded-2xl border border-primary/30 bg-card p-4 space-y-3" style={{ minHeight: "220px" }}>
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Edit card</p>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">French</label>
+                <input
+                  value={editTerm}
+                  onChange={(e) => setEditTerm(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">English</label>
+                <input
+                  value={editTranslation}
+                  onChange={(e) => setEditTranslation(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+                  className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={saveEdit} disabled={updateMutation.isPending} className="flex-1 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors disabled:opacity-50">
+                  {updateMutation.isPending ? "Saving…" : "Save"}
+                </button>
+                <button onClick={() => setEditing(false)} className="flex-1 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-sm font-semibold transition-colors">Cancel</button>
+              </div>
+            </div>
+          ) : (
+          /* Flip card — front side depends on the chosen "show first" language */
           <div className="flip-card w-full" style={{ height: "220px" }} onClick={() => setFlipped((f) => !f)}>
             <div className={cn("flip-card-inner w-full h-full", flipped && "flipped")}>
               <div className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 border border-border rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
@@ -386,17 +466,19 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
                     {SM2_STATUS_LABELS[sm2Status] ?? sm2Status}
                   </span>
                 )}
-                <p className="text-2xl font-bold text-foreground text-center">{currentWord.term}</p>
+                <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.term : currentWord.translation}</p>
                 <p className="text-xs text-muted-foreground mt-2">Tap to reveal</p>
               </div>
               <div className="flip-card-back absolute inset-0 bg-gradient-to-br from-primary/10 to-card border border-primary/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
-                <p className="text-2xl font-bold text-foreground text-center">{currentWord.translation}</p>
+                <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.translation : currentWord.term}</p>
                 <p className="text-xs text-muted-foreground mt-2">Tap to flip back</p>
               </div>
             </div>
           </div>
+          )}
 
-          {/* Nav arrows flanking the 3 grade buttons */}
+          {/* Nav arrows flanking the 3 grade buttons (hidden while editing) */}
+          {!editing && (
           <div className="flex items-center gap-2">
             <button onClick={handlePrev} disabled={idx === 0} className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
               <ChevronLeft className="w-5 h-5" />
@@ -415,6 +497,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
+          )}
 
           {/* Pronunciation feedback */}
           {recording && (
