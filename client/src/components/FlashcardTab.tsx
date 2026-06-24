@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
-import { Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2 } from "lucide-react";
+import { Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2, Combine } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePronounce } from "@/lib/pronounce";
@@ -136,6 +136,33 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     onMutate: ({ id }) => setDeck((d) => d.map((w) => (w.id === id ? { ...w, starred: !w.starred } : w))),
     onSettled: () => utils.vocab.list.invalidate(),
   });
+
+  // Merge the current card into the previous one (rejoin a split sentence).
+  const mergeMutation = trpc.vocab.mergeIntoPrevious.useMutation({
+    onSuccess: (merged) => {
+      setDeck((d) => {
+        const next = [...d];
+        const prevIdx = idx - 1;
+        if (prevIdx < 0) return d;
+        next[prevIdx] = { ...next[prevIdx], term: merged.term, translation: merged.translation, entryKind: "phrase" };
+        next.splice(idx, 1); // remove the now-merged current card
+        return next;
+      });
+      setIdx((i) => Math.max(0, i - 1));
+      setFlipped(false);
+      setTranscription(null);
+      toast.success("Merged with previous card");
+      utils.vocab.list.invalidate();
+      utils.review.getDates.invalidate();
+      utils.review.getStats.invalidate();
+    },
+    onError: () => toast.error("Failed to merge"),
+  });
+
+  const handleMergeWithPrevious = () => {
+    if (idx < 1 || mergeMutation.isPending) return;
+    mergeMutation.mutate({ currentId: deck[idx].id, previousId: deck[idx - 1].id });
+  };
 
   const transcribeMutation = trpc.voice.transcribe.useMutation({
     onSuccess: (data) => { setTranscription(data.transcription); setTranscribing(false); },
@@ -303,8 +330,16 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
             <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${((idx + 1) / deck.length) * 100}%` }} />
           </div>
 
-          {/* Card-top controls: star, pronounce, mic, delete */}
+          {/* Card-top controls: merge, star, pronounce, mic, delete */}
           <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={handleMergeWithPrevious}
+              disabled={idx < 1 || mergeMutation.isPending}
+              className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 disabled:opacity-30 transition-colors"
+              title="Merge this card into the previous one (rejoin a split sentence)"
+            >
+              {mergeMutation.isPending ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : <Combine className="w-4.5 h-4.5" />}
+            </button>
             <button
               onClick={() => starMutation.mutate({ id: currentWord.id })}
               className={cn("p-2.5 rounded-xl border transition-colors", currentWord.starred ? "bg-accent/20 border-accent/50 text-accent" : "bg-card border-border text-muted-foreground hover:text-accent hover:border-accent/50")}

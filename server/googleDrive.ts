@@ -216,8 +216,16 @@ export async function fetchGoogleDocText(
   for (const block of doc.body?.content ?? []) {
     if (!block.paragraph) continue;
     const runs = block.paragraph.elements ?? [];
-    const text = runs.map((el) => el.textRun?.content ?? "").join("");
-    if (!text.trim()) continue;
+    // A manual line break inside a paragraph (Shift+Enter) arrives as \v / \n.
+    // Collapse those to a single space so a sentence the user split with a
+    // soft break stays one line instead of becoming two vocab entries.
+    const text = runs
+      .map((el) => el.textRun?.content ?? "")
+      .join("")
+      .replace(/[\r\n\t\u000B\u2028\u2029 ]+/g, " ")
+      .replace(/ {2,}/g, " ")
+      .trim();
+    if (!text) continue;
     const sizes = runs
       .map((el) => el.textRun?.textStyle?.fontSize?.magnitude)
       .filter((s): s is number => typeof s === "number");
@@ -408,6 +416,7 @@ Return a JSON array (no wrapper object) where each element is:
 
 Rules:
 - "kind" is "word" for single words or short expressions (≤4 words), "phrase" for longer sentences or full sentences
+- SPLIT SENTENCES: occasionally one French sentence has been split across two consecutive lines (the first line ends mid-thought and the next line clearly continues it). When you are confident two consecutive lines form ONE sentence, join them into a single "term". Be conservative — only join when the continuation is obvious (e.g. the first line has no translation of its own and does not stand alone as a complete entry). If each line is a self-contained word or phrase, keep them as separate entries.
 - IMPORTANT: Many lines already contain both a French term and its English meaning, separated by characters like —, →, -, :, =, or a tab. For these lines, extract the French part as "term" and the English part as "translation" directly. Do NOT skip these lines.
 - For lines that contain only French (no English translation present), translate the French to English yourself.
 - Skip lines that are clearly date headers (e.g. "June 5", "5 juin 2025"), page numbers, section titles with no vocabulary, or lines that contain only English with no French.

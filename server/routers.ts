@@ -470,6 +470,52 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         return { success: true };
       }),
 
+    /**
+     * Merge two vocab entries — used by the flashcard "merge with previous"
+     * button to rejoin a sentence the doc split across two cards. The current
+     * entry's French is appended to the previous one's, the combined phrase is
+     * re-translated for accuracy, and the current entry is deleted.
+     */
+    mergeIntoPrevious: protectedProcedure
+      .input(z.object({ currentId: z.number(), previousId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const all = await getVocabByUser(ctx.user.id);
+        const current = all.find((w) => w.id === input.currentId);
+        const previous = all.find((w) => w.id === input.previousId);
+        if (!current || !previous) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Word not found" });
+        }
+
+        const mergedTerm = `${previous.term} ${current.term}`.replace(/\s+/g, " ").trim();
+
+        // Re-translate the combined phrase; fall back to joining the two
+        // existing translations if the LLM call fails.
+        let translation = `${previous.translation} ${current.translation}`.replace(/\s+/g, " ").trim();
+        try {
+          const resp = await invokeLLM({
+            messages: [{
+              role: "user",
+              content: `Translate this French phrase to English. Return ONLY JSON: {"translation":"concise English meaning"}\nFrench: "${mergedTerm}"`,
+            }],
+            response_format: { type: "json_object" } as any,
+          });
+          const raw = resp.choices[0].message.content ?? "{}";
+          const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+          if (parsed.translation) translation = parsed.translation;
+        } catch {
+          // keep the concatenated fallback
+        }
+
+        await updateVocabEntry(ctx.user.id, previous.id, {
+          term: mergedTerm,
+          translation,
+          entryKind: "phrase",
+        });
+        await deleteVocabEntry(ctx.user.id, current.id);
+
+        return { id: previous.id, term: mergedTerm, translation };
+      }),
+
     updateQuizProgress: protectedProcedure
       .input(
         z.array(
