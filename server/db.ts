@@ -334,7 +334,7 @@ export async function getVocabStats(userId: number) {
 // ─── SM-2 helpers ──────────────────────────────────────────────────────────────
 
 import { ReviewSettings, reviewSettings } from "../drizzle/schema";
-import { lte, or, isNull, inArray } from "drizzle-orm";
+import { lte, lt, or, isNull, inArray } from "drizzle-orm";
 
 /**
  * SM-2 algorithm: given current state and a grade (1-5), compute the next
@@ -403,6 +403,23 @@ export function computeNextReview(
  * Returns up to (dailyNewWords) new words + up to (dailyReviewCap) review words,
  * ordered: overdue first, then new words interleaved every 3 review cards.
  */
+/** UTC midnight of the current day, in ms — the boundary for "reviewed today". */
+function todayStartMs(): number {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/**
+ * Today's review queue, framed as a *daily goal* rather than the whole backlog:
+ *   - up to (dailyNewWords) brand-new cards, minus the new cards already
+ *     introduced today, and
+ *   - review cards that are due now and haven't been reviewed yet today
+ *     (capped at dailyReviewCap).
+ * Anything reviewed today (in any mode, including by-date) is excluded, so the
+ * queue — and the "Due Today" count derived from its size — shrinks as you
+ * review and resets at UTC midnight.
+ */
 export async function getDueVocab(
   userId: number,
   dailyNewWords: number,
@@ -411,16 +428,35 @@ export async function getDueVocab(
   const db = await getDb();
   if (!db) return [];
   const now = Date.now();
+  const dayStart = todayStartMs();
 
-  // Fetch new words (never reviewed)
-  const newWords = await db
-    .select()
+  // New cards already introduced today (touched, still early: repetitions ≤ 1)
+  // count against today's new quota so the goal doesn't refill endlessly.
+  const newSeenToday = await db
+    .select({ id: vocabEntries.id })
     .from(vocabEntries)
-    .where(and(eq(vocabEntries.userId, userId), eq(vocabEntries.sm2Status, "new")))
-    .orderBy(vocabEntries.createdAt)
-    .limit(dailyNewWords);
+    .where(and(
+      eq(vocabEntries.userId, userId),
+      gte(vocabEntries.sm2LastReviewAt, dayStart),
+      lte(vocabEntries.sm2Repetitions, 1),
+    ));
+  const newRemaining = Math.max(0, dailyNewWords - newSeenToday.length);
 
-  // Fetch due review words (nextReviewAt <= now, status != new)
+  // Fresh new words never touched yet.
+  const newWords = newRemaining > 0
+    ? await db
+        .select()
+        .from(vocabEntries)
+        .where(and(
+          eq(vocabEntries.userId, userId),
+          eq(vocabEntries.sm2Status, "new"),
+          isNull(vocabEntries.sm2LastReviewAt),
+        ))
+        .orderBy(vocabEntries.createdAt)
+        .limit(newRemaining)
+    : [];
+
+  // Due review words (status != new, due now) NOT already reviewed today.
   const dueWords = await db
     .select()
     .from(vocabEntries)
@@ -431,8 +467,11 @@ export async function getDueVocab(
           isNull(vocabEntries.sm2NextReviewAt),
           lte(vocabEntries.sm2NextReviewAt, now)
         ),
-        // Exclude "new" status (handled separately above)
-        sql`${vocabEntries.sm2Status} != 'new'`
+        sql`${vocabEntries.sm2Status} != 'new'`,
+        or(
+          isNull(vocabEntries.sm2LastReviewAt),
+          lt(vocabEntries.sm2LastReviewAt, dayStart)
+        ),
       )
     )
     .orderBy(vocabEntries.sm2NextReviewAt)
@@ -632,18 +671,20 @@ export async function getSm2Stats(userId: number): Promise<{
   if (!db) return { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0 };
 
   const rows = await db
-    .select({ status: vocabEntries.sm2Status, nextReviewAt: vocabEntries.sm2NextReviewAt })
+    .select({ status: vocabEntries.sm2Status })
     .from(vocabEntries)
     .where(eq(vocabEntries.userId, userId));
 
-  const now = Date.now();
   const counts = { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0 };
-  for (const row of rows) {
-    counts[row.status]++;
-    if (row.status === "new" || (row.nextReviewAt != null && row.nextReviewAt <= now)) {
-      counts.dueToday++;
-    }
-  }
+  for (const row of rows) counts[row.status]++;
+
+  // "Due Today" is the size of today's daily-goal queue — the exact set the
+  // user gets when they tap "Due Today". It counts down as they review (in any
+  // mode, including by-date) and resets at UTC midnight.
+  const settings = await getReviewSettings(userId);
+  const queue = await getDueVocab(userId, settings.dailyNewWords, settings.dailyReviewCap);
+  counts.dueToday = queue.length;
+
   return counts;
 }
 
