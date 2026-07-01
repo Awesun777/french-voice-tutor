@@ -29,6 +29,51 @@ export const TENSE_KEYS: TenseKey[] = TENSES.map((t) => t.key);
 export const PERSONS = ["je", "tu", "il/elle", "nous", "vous", "ils/elles"];
 
 /**
+ * Words that elide (drop their final vowel → apostrophe) when the next word
+ * starts with a vowel or mute h. In our sentences the blank ("___") holds the
+ * conjugated verb, so the elidable word is whatever directly precedes it —
+ * most commonly the subject "je" (→ "j'") before a vowel-initial form.
+ */
+const ELIDABLE: Record<string, string> = {
+  je: "j'", me: "m'", te: "t'", se: "s'", ce: "c'",
+  le: "l'", la: "l'", ne: "n'", de: "d'", que: "qu'", jusque: "jusqu'",
+};
+
+/**
+ * Whether `answer`'s first sound triggers elision. Vowels always do; we also
+ * treat a leading "h" as mute (the common case for B1 verbs like habiter →
+ * "j'habite"). Rare h-aspiré verbs are the accepted false-positive edge.
+ */
+function triggersElision(answer: string): boolean {
+  const first = answer
+    .trim()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")[0]
+    ?.toLowerCase();
+  return !!first && "aeiouyh".includes(first);
+}
+
+/**
+ * Fix elision at the blank boundary so the rendered sentence is spelled
+ * correctly once the answer is filled in. E.g. the LLM (or the fallback
+ * template) may emit "Je ___" for a passé-composé item whose answer is
+ * "ai voyagé"; this rewrites it to "J'___" so it reads "J'ai voyagé".
+ * A word already elided (e.g. "J'___") is left untouched.
+ */
+export function applyElisionBeforeBlank(sentence: string, answer: string): string {
+  if (!answer || !triggersElision(answer)) return sentence;
+  return sentence.replace(/([A-Za-zÀ-ÿ]+)(\s+)___/, (whole, word: string) => {
+    const elided = ELIDABLE[word.toLowerCase()];
+    if (!elided) return whole;
+    const cased =
+      word[0] === word[0].toUpperCase()
+        ? elided[0].toUpperCase() + elided.slice(1)
+        : elided;
+    return `${cased}___`;
+  });
+}
+
+/**
  * Curated bank of common B1-level French verbs (infinitives), covering the
  * regular -er/-ir/-re patterns plus the high-frequency irregulars a student
  * preparing for the B1 exam is expected to conjugate.

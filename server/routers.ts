@@ -10,7 +10,7 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { dictCache as dictCacheTable } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "./db";
-import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, type TenseKey } from "./grammarVerbs";
+import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, applyElisionBeforeBlank, type TenseKey } from "./grammarVerbs";
 import {
   addVocabEntries,
   addVocabEntry,
@@ -225,13 +225,20 @@ ${picks.map((p, i) => `${i + 1}. verb "${p.infinitive}" — tense ${tenseLabel(p
 
         const questions = picks.map((p, i) => {
           const g = generated[i] ?? {};
+          const answer = (g.answer ?? "").trim();
+          // Fallback template uses the pronoun capitalized when it starts the sentence.
+          const subject = PERSONS[p.person];
+          const rawSentence = (g.sentence ?? "").includes("___")
+            ? g.sentence!
+            : `${subject.charAt(0).toUpperCase()}${subject.slice(1)} ___ (${p.infinitive}).`;
           return {
             infinitive: p.infinitive,
             tenseKey: p.tense,
             tenseLabel: tenseLabel(p.tense),
             person: PERSONS[p.person],
-            sentence: (g.sentence ?? "").includes("___") ? g.sentence! : `${PERSONS[p.person]} ___ (${p.infinitive}).`,
-            answer: (g.answer ?? "").trim(),
+            // Correct elision at the blank (e.g. "Je ___" + "ai voyagé" → "J'___").
+            sentence: applyElisionBeforeBlank(rawSentence, answer),
+            answer,
             english: (g.english ?? "").trim(),
           };
         }).filter((q) => q.answer.length > 0);

@@ -9,10 +9,11 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Loader2, Check, X, GraduationCap } from "lucide-react";
+import { Loader2, Check, X, GraduationCap, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
+import type { DictWordResult } from "@/types";
 
 const TENSES: { key: string; label: string }[] = [
   { key: "present", label: "Présent" },
@@ -36,6 +37,233 @@ interface Question {
 
 const normalize = (s: string) =>
   s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ");
+
+const PERSON_LABELS = ["je", "tu", "il/elle", "nous", "vous", "ils/elles"];
+
+/** Attach a subject pronoun to a form, eliding "je" → "j'" before a vowel/mute-h. */
+function withPronoun(pron: string, form: string): string {
+  const first = form.normalize("NFD").replace(/[̀-ͯ]/g, "")[0]?.toLowerCase();
+  if (pron === "je" && first && "aeiouyh".includes(first)) return `j'${form}`;
+  return `${pron} ${form}`;
+}
+
+const TENSE_LABELS: Record<string, string> = {
+  present: "Présent",
+  passeCompose: "Passé composé",
+  imparfait: "Imparfait",
+  futurSimple: "Futur simple",
+  conditionnel: "Conditionnel",
+  subjonctif: "Subjonctif",
+};
+const TENSE_ORDER = ["present", "passeCompose", "imparfait", "futurSimple", "conditionnel", "subjonctif"];
+
+/**
+ * Conjugation reference for the "Grammar notes" panel. Fully-worked model verbs
+ * for the three regular groups plus the two auxiliaries, one row per subject
+ * (je→ils/elles), across the six tested tenses.
+ */
+interface ModelVerb {
+  infinitive: string;
+  heading: string;
+  tenses: Record<string, string[]>; // 6 forms, je→ils/elles
+}
+const MODEL_VERBS: ModelVerb[] = [
+  {
+    infinitive: "parler",
+    heading: "-ER verbs (parler → parl-)",
+    tenses: {
+      present: ["parle", "parles", "parle", "parlons", "parlez", "parlent"],
+      passeCompose: ["ai parlé", "as parlé", "a parlé", "avons parlé", "avez parlé", "ont parlé"],
+      imparfait: ["parlais", "parlais", "parlait", "parlions", "parliez", "parlaient"],
+      futurSimple: ["parlerai", "parleras", "parlera", "parlerons", "parlerez", "parleront"],
+      conditionnel: ["parlerais", "parlerais", "parlerait", "parlerions", "parleriez", "parleraient"],
+      subjonctif: ["parle", "parles", "parle", "parlions", "parliez", "parlent"],
+    },
+  },
+  {
+    infinitive: "finir",
+    heading: "-IR verbs (finir → fin- / finiss-)",
+    tenses: {
+      present: ["finis", "finis", "finit", "finissons", "finissez", "finissent"],
+      passeCompose: ["ai fini", "as fini", "a fini", "avons fini", "avez fini", "ont fini"],
+      imparfait: ["finissais", "finissais", "finissait", "finissions", "finissiez", "finissaient"],
+      futurSimple: ["finirai", "finiras", "finira", "finirons", "finirez", "finiront"],
+      conditionnel: ["finirais", "finirais", "finirait", "finirions", "finiriez", "finiraient"],
+      subjonctif: ["finisse", "finisses", "finisse", "finissions", "finissiez", "finissent"],
+    },
+  },
+  {
+    infinitive: "vendre",
+    heading: "-RE verbs (vendre → vend-)",
+    tenses: {
+      present: ["vends", "vends", "vend", "vendons", "vendez", "vendent"],
+      passeCompose: ["ai vendu", "as vendu", "a vendu", "avons vendu", "avez vendu", "ont vendu"],
+      imparfait: ["vendais", "vendais", "vendait", "vendions", "vendiez", "vendaient"],
+      futurSimple: ["vendrai", "vendras", "vendra", "vendrons", "vendrez", "vendront"],
+      conditionnel: ["vendrais", "vendrais", "vendrait", "vendrions", "vendriez", "vendraient"],
+      subjonctif: ["vende", "vendes", "vende", "vendions", "vendiez", "vendent"],
+    },
+  },
+  {
+    infinitive: "avoir",
+    heading: "avoir (auxiliary — most passé composé)",
+    tenses: {
+      present: ["ai", "as", "a", "avons", "avez", "ont"],
+      passeCompose: ["ai eu", "as eu", "a eu", "avons eu", "avez eu", "ont eu"],
+      imparfait: ["avais", "avais", "avait", "avions", "aviez", "avaient"],
+      futurSimple: ["aurai", "auras", "aura", "aurons", "aurez", "auront"],
+      conditionnel: ["aurais", "aurais", "aurait", "aurions", "auriez", "auraient"],
+      subjonctif: ["aie", "aies", "ait", "ayons", "ayez", "aient"],
+    },
+  },
+  {
+    infinitive: "être",
+    heading: "être (auxiliary — motion & pronominal verbs)",
+    tenses: {
+      present: ["suis", "es", "est", "sommes", "êtes", "sont"],
+      passeCompose: ["ai été", "as été", "a été", "avons été", "avez été", "ont été"],
+      imparfait: ["étais", "étais", "était", "étions", "étiez", "étaient"],
+      futurSimple: ["serai", "seras", "sera", "serons", "serez", "seront"],
+      conditionnel: ["serais", "serais", "serait", "serions", "seriez", "seraient"],
+      subjonctif: ["sois", "sois", "soit", "soyons", "soyez", "soient"],
+    },
+  },
+];
+
+/** Grammar-notes panel: subject/tense conjugation reference for verb review. */
+function GrammarNotesPanel({ speak, pronounceState, activeText }: {
+  speak: (t: string) => void;
+  pronounceState: import("@/lib/pronounce").PronounceState;
+  activeText: string | null;
+}) {
+  const [openVerb, setOpenVerb] = useState<string>(MODEL_VERBS[0].infinitive);
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-amber-700/40 bg-amber-500/10 p-3 text-xs text-amber-100/90 leading-relaxed">
+        <p className="font-bold text-amber-300 mb-1">Passé composé</p>
+        <p>auxiliary (<span className="italic">avoir</span> / <span className="italic">être</span>) in the présent + past participle
+        (-ER → <span className="italic">-é</span>, -IR → <span className="italic">-i</span>, -RE → <span className="italic">-u</span>).
+        Verbs of motion (aller, venir, partir…) and all pronominal verbs use <span className="italic">être</span>, and the
+        participle then agrees with the subject (elle est allé<span className="italic">e</span>).</p>
+      </div>
+      {MODEL_VERBS.map((mv) => {
+        const open = openVerb === mv.infinitive;
+        return (
+          <div key={mv.infinitive} className="rounded-xl border border-border bg-card overflow-hidden">
+            <button
+              onClick={() => setOpenVerb(open ? "" : mv.infinitive)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+            >
+              <span className="text-sm font-semibold text-foreground">{mv.heading}</span>
+              {open ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
+            </button>
+            {open && (
+              <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {TENSE_ORDER.map((tk) => (
+                  <div key={tk}>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
+                    <div className="space-y-0.5">
+                      {mv.tenses[tk].map((form, i) => {
+                        const full = withPronoun(PERSON_LABELS[i], form);
+                        return (
+                          <div key={i} className="flex items-center gap-1.5 text-sm">
+                            <PronounceButton text={full} speak={speak} state={pronounceState} activeText={activeText} className="p-0.5 hover:bg-primary/15 text-muted-foreground hover:text-primary shrink-0" iconSize="w-3 h-3" />
+                            <span className="text-foreground">{full}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Clickable infinitive: looks the verb up in the dictionary on demand and shows
+ * its meaning + full conjugations inline, for when the user doesn't know the word.
+ */
+function InfinitiveLookup({ infinitive, speak, pronounceState, activeText }: {
+  infinitive: string;
+  speak: (t: string) => void;
+  pronounceState: import("@/lib/pronounce").PronounceState;
+  activeText: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const search = trpc.dictionary.search.useMutation();
+  const result = search.data as DictWordResult | undefined;
+
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (!search.data && !search.isPending) {
+      try {
+        await search.mutateAsync({ term: infinitive });
+      } catch {
+        toast.error("Lookup failed");
+      }
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <p className="text-center text-sm text-muted-foreground">
+        (
+        <button
+          onClick={toggle}
+          className="text-primary font-medium underline decoration-dotted underline-offset-2 hover:text-primary/80 transition-colors"
+          title="Look up this verb"
+        >
+          {infinitive}
+        </button>
+        )
+      </p>
+      {open && (
+        <div className="mt-3 rounded-xl border border-border bg-card/60 p-4 text-left">
+          {search.isPending ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
+              <Loader2 className="w-4 h-4 animate-spin" /> Looking up…
+            </div>
+          ) : result?.type === "word" && result.found ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-lg font-bold text-foreground">{result.word}</span>
+                {result.pronunciation && <span className="text-xs text-muted-foreground font-mono">[{result.pronunciation}]</span>}
+                <PronounceButton text={result.word} speak={speak} state={pronounceState} activeText={activeText} className="p-1 bg-primary/15 hover:bg-primary/25 text-primary" iconSize="w-3.5 h-3.5" />
+              </div>
+              <p className="text-sm text-foreground">{result.translation}</p>
+              {result.grammar && <p className="text-xs text-muted-foreground italic">{result.grammar}</p>}
+              {result.conjugations && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {TENSE_ORDER.filter((tk) => result.conjugations[tk as keyof typeof result.conjugations]?.length).map((tk) => (
+                    <div key={tk}>
+                      <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
+                      <div className="space-y-0.5">
+                        {result.conjugations[tk as keyof typeof result.conjugations].map((f, i) => (
+                          <div key={i} className="flex items-center gap-1.5 text-sm">
+                            <PronounceButton text={f} speak={speak} state={pronounceState} activeText={activeText} className="p-0.5 hover:bg-primary/15 text-muted-foreground hover:text-primary shrink-0" iconSize="w-3 h-3" />
+                            <span className="text-foreground">{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-1">No dictionary entry found.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Render a sentence, replacing "___" with either the input field or the answer. */
 function SentenceWithBlank({ sentence, children }: { sentence: string; children: React.ReactNode }) {
@@ -62,6 +290,7 @@ export default function GrammarTestTab() {
   const [result, setResult] = useState<null | { correct: boolean }>(null);
   const [score, setScore] = useState(0);
   const [wrong, setWrong] = useState<Question[]>([]);
+  const [showNotes, setShowNotes] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const generateMutation = trpc.grammar.generateTest.useMutation();
@@ -160,6 +389,20 @@ export default function GrammarTestTab() {
             <p className="text-sm font-mono text-muted-foreground">{qIndex + 1} / {questions.length}</p>
           </div>
 
+          <button
+            onClick={() => setShowNotes((s) => !s)}
+            className={cn(
+              "self-center flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors",
+              showNotes ? "bg-amber-500/15 border-amber-600/50 text-amber-300" : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+            )}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            {showNotes ? "Hide grammar notes" : "Grammar notes"}
+          </button>
+          {showNotes && (
+            <GrammarNotesPanel speak={speak} pronounceState={pronounceState} activeText={activeText} />
+          )}
+
           <p className="text-xs uppercase tracking-widest text-muted-foreground text-center">
             Complete with the correct form in the <span className="text-foreground font-semibold">{q.tenseLabel}</span>
           </p>
@@ -172,7 +415,13 @@ export default function GrammarTestTab() {
                 <span className="font-bold text-primary px-1">____</span>
               )}
             </SentenceWithBlank>
-            <p className="text-center text-sm text-muted-foreground mt-3">({q.infinitive})</p>
+            <InfinitiveLookup
+              key={qIndex}
+              infinitive={q.infinitive}
+              speak={speak}
+              pronounceState={pronounceState}
+              activeText={activeText}
+            />
           </div>
 
           {!result ? (
