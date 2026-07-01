@@ -1,6 +1,39 @@
 import { describe, it, expect } from "vitest";
-import { computeNextReview, quizGradeFor, orderForReview } from "./db";
+import { computeNextReview, quizGradeFor, orderForReview, interleaveReviewNew } from "./db";
 import type { VocabEntry } from "../drizzle/schema";
+
+// ── interleaveReviewNew: must always terminate (regression for the prod hang) ──
+
+describe("interleaveReviewNew", () => {
+  it("terminates when reviews run out with new words left (the hang case)", () => {
+    // 2 reviews + 5 new: the old loop spun forever here (position 2, not %3).
+    const out = interleaveReviewNew([1, 2], [10, 11, 12, 13, 14]);
+    expect(out.length).toBe(7);
+    expect(out).toEqual([1, 2, 10, 11, 12, 13, 14]);
+  });
+
+  it("inserts a new card after every 3 reviews", () => {
+    const out = interleaveReviewNew([1, 2, 3, 4, 5, 6], [10, 11]);
+    expect(out).toEqual([1, 2, 3, 10, 4, 5, 6, 11]);
+  });
+
+  it("handles empty lists and new-only / review-only", () => {
+    expect(interleaveReviewNew([], [])).toEqual([]);
+    expect(interleaveReviewNew([], [10, 11])).toEqual([10, 11]);
+    expect(interleaveReviewNew([1, 2], [])).toEqual([1, 2]);
+  });
+
+  it("never loops forever across many review/new size combinations", () => {
+    for (let r = 0; r <= 20; r++) {
+      for (let n = 0; n <= 20; n++) {
+        const dues = Array.from({ length: r }, (_, i) => i);
+        const news = Array.from({ length: n }, (_, i) => 100 + i);
+        const out = interleaveReviewNew(dues, news);
+        expect(out.length).toBe(r + n); // completes and keeps every card exactly once
+      }
+    }
+  });
+});
 
 // ── Quiz auto-grade mapping (no self-rating) ──────────────────────────────────
 

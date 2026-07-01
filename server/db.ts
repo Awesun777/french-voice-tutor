@@ -477,25 +477,31 @@ export async function getDueVocab(
     .orderBy(vocabEntries.sm2NextReviewAt)
     .limit(dailyReviewCap);
 
-  // Interleave: every 3 review cards, insert 1 new card
-  const result: VocabEntry[] = [];
+  return interleaveReviewNew(dueWords, newWords);
+}
+
+/**
+ * Interleave review cards with new cards: after every 3 review cards, insert 1
+ * new card; append any leftover new cards at the end.
+ *
+ * Driven by the review list ONLY. An earlier version looped while EITHER list
+ * still had items and could spin forever once reviews ran out but new words
+ * remained and the running position wasn't a multiple of 3 — neither branch
+ * advanced, hanging the event loop and taking the whole server down. This
+ * version always terminates.
+ */
+export function interleaveReviewNew<T>(dueWords: T[], newWords: T[]): T[] {
+  const result: T[] = [];
   let newIdx = 0;
-  let reviewIdx = 0;
-  let position = 0;
-  while (reviewIdx < dueWords.length || newIdx < newWords.length) {
-    if (reviewIdx < dueWords.length) {
-      result.push(dueWords[reviewIdx++]);
-      position++;
-    }
-    if (position % 3 === 0 && newIdx < newWords.length) {
+  for (let reviewIdx = 0; reviewIdx < dueWords.length; reviewIdx++) {
+    result.push(dueWords[reviewIdx]);
+    if ((reviewIdx + 1) % 3 === 0 && newIdx < newWords.length) {
       result.push(newWords[newIdx++]);
     }
   }
-  // Append any remaining new words
   while (newIdx < newWords.length) {
     result.push(newWords[newIdx++]);
   }
-
   return result;
 }
 
