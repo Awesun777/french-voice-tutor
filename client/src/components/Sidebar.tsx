@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Mic,
   BarChart3,
+  GraduationCap,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -31,6 +32,7 @@ const NAV_ITEMS: { id: SidebarTab; label: string; icon: React.ReactNode; emoji: 
   { id: "library", label: "My Library", icon: <BookMarked className="w-4.5 h-4.5" />, emoji: "📚" },
   { id: "quiz", label: "Quiz", icon: <Brain className="w-4.5 h-4.5" />, emoji: "🧠" },
   { id: "flashcards", label: "Flashcards", icon: <CreditCard className="w-4.5 h-4.5" />, emoji: "🃏" },
+  { id: "grammar", label: "Grammar Test", icon: <GraduationCap className="w-4.5 h-4.5" />, emoji: "✍️" },
   { id: "progress", label: "Progress", icon: <BarChart3 className="w-4.5 h-4.5" />, emoji: "📊" },
 ];
 

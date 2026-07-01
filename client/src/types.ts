@@ -77,7 +77,7 @@ export interface DictQuestionResult {
 
 export type DictResult = DictWordResult | DictPhraseResult | DictQuestionResult | { type: "error"; message: string };
 
-export type SidebarTab = "dictionary" | "library" | "quiz" | "flashcards" | "tutor" | "voice-chat" | "progress";
+export type SidebarTab = "dictionary" | "library" | "quiz" | "flashcards" | "grammar" | "tutor" | "voice-chat" | "progress";
 
 export interface ImportItem {
   term: string;

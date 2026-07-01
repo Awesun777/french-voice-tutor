@@ -10,6 +10,7 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { dictCache as dictCacheTable } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "./db";
+import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, type TenseKey } from "./grammarVerbs";
 import {
   addVocabEntries,
   addVocabEntry,
@@ -160,8 +161,84 @@ function resolveImportDateKeys<T extends ExtractedImportItem>(items: T[]): (T & 
 }
 
 // ─── Routers ──────────────────────────────────────────────────────────────────
+/** Verb-like infinitive endings, used to pick verb candidates out of vocab. */
+const VERB_ENDING = /(?:er|ir|re|oir)$/i;
+
 export const appRouter = router({
   system: systemRouter,
+
+  // ─── Grammar Test ────────────────────────────────────────────────────────────
+  grammar: router({
+    /**
+     * Generate a set of fill-in-the-blank conjugation questions for the chosen
+     * tenses. Verbs are drawn from the user's own vocab (verb-like entries) plus
+     * a curated B1 bank. Each question anchors on a specific (verb, tense,
+     * person); the LLM writes a natural sentence with that form blanked out and
+     * returns the exact form, which the client grades against (accents optional).
+     */
+    generateTest: protectedProcedure
+      .input(z.object({
+        tenses: z.array(z.enum(TENSE_KEYS as [TenseKey, ...TenseKey[]])).min(1),
+        count: z.number().min(1).max(20).default(10),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verb pool: the user's verb-like vocab words + the B1 bank, deduped.
+        const vocab = await getVocabByUser(ctx.user.id);
+        const vocabVerbs = vocab
+          .filter((v) => v.entryKind === "word" && VERB_ENDING.test(v.term.trim()) && !v.term.includes(" "))
+          .map((v) => v.term.trim().toLowerCase());
+        const pool = Array.from(new Set([...vocabVerbs, ...B1_VERBS]));
+        // Fisher–Yates shuffle.
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+
+        // Pre-select (verb, tense, person) tuples so we control the mix.
+        const tenseLabel = (k: TenseKey) => TENSES.find((t) => t.key === k)!.instruction;
+        const picks = Array.from({ length: input.count }, (_, i) => {
+          const infinitive = pool[i % pool.length];
+          const tense = input.tenses[Math.floor(Math.random() * input.tenses.length)];
+          const person = Math.floor(Math.random() * PERSONS.length);
+          return { infinitive, tense, person };
+        });
+
+        const prompt = `You are a French teacher creating B1-level fill-in-the-blank conjugation exercises.
+For each item below, write ONE natural French sentence (B1 difficulty) that requires the given verb, conjugated in the given tense for the given subject.
+Replace ONLY that conjugated verb form with "___" (three underscores). For passé composé include the auxiliary (e.g. "ai voyagé"); for pronominal verbs include the reflexive pronoun (e.g. "me suis levé").
+Return ONLY JSON: {"questions":[{"sentence":"French sentence with ___","answer":"exact text that fills the blank","english":"brief English translation"}]}
+The "answer" MUST be exactly the text that goes in the "___", correctly conjugated. Keep sentences short and idiomatic.
+
+Items:
+${picks.map((p, i) => `${i + 1}. verb "${p.infinitive}" — tense ${tenseLabel(p.tense)} — subject ${PERSONS[p.person]}`).join("\n")}`;
+
+        const resp = await invokeLLM({
+          messages: [{ role: "user", content: prompt }],
+          response_format: { type: "json_object" } as any,
+        });
+        const raw = resp.choices[0].message.content ?? "{}";
+        let generated: { sentence?: string; answer?: string; english?: string }[] = [];
+        try {
+          const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+          if (Array.isArray(parsed.questions)) generated = parsed.questions;
+        } catch { /* fall through to empty */ }
+
+        const questions = picks.map((p, i) => {
+          const g = generated[i] ?? {};
+          return {
+            infinitive: p.infinitive,
+            tenseKey: p.tense,
+            tenseLabel: tenseLabel(p.tense),
+            person: PERSONS[p.person],
+            sentence: (g.sentence ?? "").includes("___") ? g.sentence! : `${PERSONS[p.person]} ___ (${p.infinitive}).`,
+            answer: (g.answer ?? "").trim(),
+            english: (g.english ?? "").trim(),
+          };
+        }).filter((q) => q.answer.length > 0);
+
+        return { questions };
+      }),
+  }),
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
