@@ -6,7 +6,7 @@
  * conjugated form. Grading is deterministic and accent/case-insensitive against
  * the answer generated server-side.
  */
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Loader2, Check, X, GraduationCap, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
@@ -185,81 +185,68 @@ function GrammarNotesPanel({ speak, pronounceState, activeText }: {
 }
 
 /**
- * Clickable infinitive: looks the verb up in the dictionary on demand and shows
- * its meaning + full conjugations inline, for when the user doesn't know the word.
+ * Dictionary lookup for the current question's infinitive, rendered at the very
+ * bottom of the test screen so it never pushes the blank/answer section around.
+ *
+ * The lookup and the word's pronunciation are preloaded as soon as the question
+ * mounts (this component is keyed by question), so opening the panel is instant.
+ * `visible` is controlled by the trigger next to the sentence.
  */
-function InfinitiveLookup({ infinitive, speak, pronounceState, activeText }: {
+function InfinitiveLookupPanel({ infinitive, visible, speak, preload, pronounceState, activeText }: {
   infinitive: string;
+  visible: boolean;
   speak: (t: string) => void;
+  preload: (t: string) => Promise<void>;
   pronounceState: import("@/lib/pronounce").PronounceState;
   activeText: string | null;
 }) {
-  const [open, setOpen] = useState(false);
   const search = trpc.dictionary.search.useMutation();
   const result = search.data as DictWordResult | undefined;
 
-  const toggle = async () => {
-    if (open) { setOpen(false); return; }
-    setOpen(true);
-    if (!search.data && !search.isPending) {
-      try {
-        await search.mutateAsync({ term: infinitive });
-      } catch {
-        toast.error("Lookup failed");
-      }
-    }
-  };
+  // Warm the dictionary entry + TTS the moment the question appears.
+  useEffect(() => {
+    search.mutate({ term: infinitive });
+    void preload(infinitive);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [infinitive]);
+
+  if (!visible) return null;
 
   return (
-    <div className="mt-3">
-      <p className="text-center text-sm text-muted-foreground">
-        (
-        <button
-          onClick={toggle}
-          className="text-primary font-medium underline decoration-dotted underline-offset-2 hover:text-primary/80 transition-colors"
-          title="Look up this verb"
-        >
-          {infinitive}
-        </button>
-        )
-      </p>
-      {open && (
-        <div className="mt-3 rounded-xl border border-border bg-card/60 p-4 text-left">
-          {search.isPending ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
-              <Loader2 className="w-4 h-4 animate-spin" /> Looking up…
-            </div>
-          ) : result?.type === "word" && result.found ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-lg font-bold text-foreground">{result.word}</span>
-                {result.pronunciation && <span className="text-xs text-muted-foreground font-mono">[{result.pronunciation}]</span>}
-                <PronounceButton text={result.word} speak={speak} state={pronounceState} activeText={activeText} className="p-1 bg-primary/15 hover:bg-primary/25 text-primary" iconSize="w-3.5 h-3.5" />
-              </div>
-              <p className="text-sm text-foreground">{result.translation}</p>
-              {result.grammar && <p className="text-xs text-muted-foreground italic">{result.grammar}</p>}
-              {result.conjugations && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  {TENSE_ORDER.filter((tk) => result.conjugations[tk as keyof typeof result.conjugations]?.length).map((tk) => (
-                    <div key={tk}>
-                      <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
-                      <div className="space-y-0.5">
-                        {result.conjugations[tk as keyof typeof result.conjugations].map((f, i) => (
-                          <div key={i} className="flex items-center gap-1.5 text-sm">
-                            <PronounceButton text={f} speak={speak} state={pronounceState} activeText={activeText} className="p-0.5 hover:bg-primary/15 text-muted-foreground hover:text-primary shrink-0" iconSize="w-3 h-3" />
-                            <span className="text-foreground">{f}</span>
-                          </div>
-                        ))}
+    <div className="rounded-xl border border-border bg-card/60 p-4 text-left">
+      {search.isPending || !search.data ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> Looking up…
+        </div>
+      ) : result?.type === "word" && result.found ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-lg font-bold text-foreground">{result.word}</span>
+            {result.pronunciation && <span className="text-xs text-muted-foreground font-mono">[{result.pronunciation}]</span>}
+            <PronounceButton text={result.word} speak={speak} state={pronounceState} activeText={activeText} className="p-1 bg-primary/15 hover:bg-primary/25 text-primary" iconSize="w-3.5 h-3.5" />
+          </div>
+          <p className="text-sm text-foreground">{result.translation}</p>
+          {result.grammar && <p className="text-xs text-muted-foreground italic">{result.grammar}</p>}
+          {result.conjugations && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {TENSE_ORDER.filter((tk) => result.conjugations[tk as keyof typeof result.conjugations]?.length).map((tk) => (
+                <div key={tk}>
+                  <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
+                  <div className="space-y-0.5">
+                    {result.conjugations[tk as keyof typeof result.conjugations].map((f, i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-sm">
+                        <PronounceButton text={f} speak={speak} state={pronounceState} activeText={activeText} className="p-0.5 hover:bg-primary/15 text-muted-foreground hover:text-primary shrink-0" iconSize="w-3 h-3" />
+                        <span className="text-foreground">{f}</span>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-1">No dictionary entry found.</p>
           )}
         </div>
+      ) : (
+        <p className="text-sm text-muted-foreground text-center py-1">No dictionary entry found.</p>
       )}
     </div>
   );
@@ -278,7 +265,7 @@ function SentenceWithBlank({ sentence, children }: { sentence: string; children:
 }
 
 export default function GrammarTestTab() {
-  const { speak, state: pronounceState, activeText } = usePronounce();
+  const { speak, preload, state: pronounceState, activeText } = usePronounce();
 
   const [phase, setPhase] = useState<"select" | "test" | "done">("select");
   const [selectedTenses, setSelectedTenses] = useState<Set<string>>(new Set(TENSES.map((t) => t.key)));
@@ -291,6 +278,7 @@ export default function GrammarTestTab() {
   const [score, setScore] = useState(0);
   const [wrong, setWrong] = useState<Question[]>([]);
   const [showNotes, setShowNotes] = useState(false);
+  const [showLookup, setShowLookup] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const generateMutation = trpc.grammar.generateTest.useMutation();
@@ -316,6 +304,7 @@ export default function GrammarTestTab() {
       setResult(null);
       setScore(0);
       setWrong([]);
+      setShowLookup(false);
       setPhase("test");
       setTimeout(() => inputRef.current?.focus(), 100);
     } catch {
@@ -339,6 +328,7 @@ export default function GrammarTestTab() {
     setQIndex((i) => i + 1);
     setInput("");
     setResult(null);
+    setShowLookup(false);
     setTimeout(() => inputRef.current?.focus(), 100);
   };
 
@@ -399,9 +389,6 @@ export default function GrammarTestTab() {
             <BookOpen className="w-3.5 h-3.5" />
             {showNotes ? "Hide grammar notes" : "Grammar notes"}
           </button>
-          {showNotes && (
-            <GrammarNotesPanel speak={speak} pronounceState={pronounceState} activeText={activeText} />
-          )}
 
           <p className="text-xs uppercase tracking-widest text-muted-foreground text-center">
             Complete with the correct form in the <span className="text-foreground font-semibold">{q.tenseLabel}</span>
@@ -415,13 +402,20 @@ export default function GrammarTestTab() {
                 <span className="font-bold text-primary px-1">____</span>
               )}
             </SentenceWithBlank>
-            <InfinitiveLookup
-              key={qIndex}
-              infinitive={q.infinitive}
-              speak={speak}
-              pronounceState={pronounceState}
-              activeText={activeText}
-            />
+            <p className="text-center text-sm text-muted-foreground mt-3">
+              (
+              <button
+                onClick={() => setShowLookup((s) => !s)}
+                className={cn(
+                  "font-medium underline decoration-dotted underline-offset-2 transition-colors",
+                  showLookup ? "text-primary/80" : "text-primary hover:text-primary/80"
+                )}
+                title="Don't know this verb? Tap to look it up"
+              >
+                {q.infinitive}
+              </button>
+              )
+            </p>
           </div>
 
           {!result ? (
@@ -457,7 +451,46 @@ export default function GrammarTestTab() {
               </button>
             </div>
           )}
+
+          {/* Dictionary lookup — pinned to the bottom so it never shifts the answer box.
+              Preloads on mount (keyed by question) even while hidden. */}
+          <InfinitiveLookupPanel
+            key={qIndex}
+            infinitive={q.infinitive}
+            visible={showLookup}
+            speak={speak}
+            preload={preload}
+            pronounceState={pronounceState}
+            activeText={activeText}
+          />
         </div>
+
+        {/* Grammar notes — right-side drawer so it doesn't squeeze the question out.
+            On small screens a tap-to-close backdrop dims the test; on large screens
+            there's no backdrop, so notes and the exercise stay visible together. */}
+        {showNotes && (
+          <>
+            <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setShowNotes(false)} />
+            <aside className="fixed inset-y-0 right-0 z-50 w-[92%] max-w-md bg-background border-l border-border shadow-2xl flex flex-col">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-amber-400" />
+                  <span className="text-sm font-bold text-foreground">Grammar notes</span>
+                </div>
+                <button
+                  onClick={() => setShowNotes(false)}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <GrammarNotesPanel speak={speak} pronounceState={pronounceState} activeText={activeText} />
+              </div>
+            </aside>
+          </>
+        )}
       </div>
     );
   }
