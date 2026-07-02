@@ -281,6 +281,7 @@ export default function GrammarTestTab() {
   const { data: vocabList = [] } = trpc.vocab.list.useQuery();
   const addVocab = trpc.vocab.add.useMutation();
   const [savedVerbs, setSavedVerbs] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
 
   const generateMutation = trpc.grammar.generateTest.useMutation();
 
@@ -365,24 +366,33 @@ export default function GrammarTestTab() {
   const verbInLibrary = vocabList.some((v) => normalizeVerb(v.term) === currentVerb);
 
   const saveVerb = async () => {
-    if (!q || addVocab.isPending || justSaved) return;
+    if (!q || saving || justSaved) return;
     // Already in the library → don't create a duplicate, just mark it saved.
     if (verbInLibrary) {
       setSavedVerbs((s) => new Set(s).add(currentVerb));
       toast.success(`“${q.infinitive}” is already in your library`);
       return;
     }
-    const res = activeLookup.result;
-    const translation = res?.found ? res.translation.trim() : "";
-    if (!translation) { toast.error("Meaning isn't ready yet — give it a second"); return; }
-    const term = (res?.word?.trim() || q.infinitive).trim();
+    setSaving(true);
     try {
+      // Use the preloaded lookup if it's ready; otherwise fetch it now so a slow
+      // or failed preload can never block saving.
+      let res = activeLookup.result;
+      if (!res?.found) {
+        const r = await searchMutation.mutateAsync({ term: q.infinitive });
+        res = (r as { type?: string })?.type === "word" ? (r as DictWordResult) : null;
+      }
+      const translation = res?.found ? res.translation.trim() : "";
+      if (!translation) { toast.error("Couldn't fetch the verb's meaning — try again"); return; }
+      const term = (res?.word?.trim() || q.infinitive).trim();
       await addVocab.mutateAsync({ term, translation, entryKind: "word", lessonSource: "Grammar Test" });
       setSavedVerbs((s) => new Set(s).add(currentVerb));
       utils.vocab.list.invalidate();
       toast.success(`Saved “${term}” to your library`);
     } catch {
       toast.error("Couldn't save the verb");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -505,7 +515,7 @@ export default function GrammarTestTab() {
               </button>
               <button
                 onClick={saveVerb}
-                disabled={justSaved || addVocab.isPending || (!activeLookup.result?.found && !verbInLibrary)}
+                disabled={justSaved || saving}
                 className={cn(
                   "py-2.5 rounded-xl font-semibold text-sm border transition flex items-center justify-center gap-2",
                   justSaved
@@ -516,10 +526,8 @@ export default function GrammarTestTab() {
               >
                 {justSaved ? (
                   <><Check className="w-4 h-4" /> Saved to library</>
-                ) : addVocab.isPending ? (
+                ) : saving ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
-                ) : (!activeLookup.result?.found && !verbInLibrary) ? (
-                  <><Plus className="w-4 h-4" /> Save verb (preparing…)</>
                 ) : (
                   <><Plus className="w-4 h-4" /> Save “{q.infinitive}” to library</>
                 )}
