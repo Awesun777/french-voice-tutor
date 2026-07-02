@@ -39,8 +39,9 @@ export interface DictWordResult {
   reflexiveType: string | null;
   reflexiveExplanation: string | null;
   hasReflexiveForm: boolean;
-  usesDePreposition: boolean;
-  dePrepositionExplanation: string | null;
+  // Preposition the verb governs before its object: "à", "de", or "" (none).
+  governedPreposition: string;
+  prepositionExplanation: string | null;
   reflexiveForm: string | null;
   nonReflexiveForm: string | null;
   examples: { fr: string; en: string }[];

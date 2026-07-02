@@ -363,7 +363,13 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
           // Single word — use json_schema so special chars in conjugations never break JSON parsing
           messages = [
             { role: "system", content: "You are a precise French-English dictionary. Always set the \"type\" field to exactly the string \"word\". Return only valid JSON matching the schema exactly." },
-            { role: "user", content: `Look up the French word: "${input.term}". The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) The "word" field MUST always be the canonical base form (infinitive for verbs, masculine singular for adjectives/nouns) — NEVER a conjugated, gendered, or plural form. For example: if the user types "allées" return "aller"; if they type "belle" return "beau"; if they type "allé" return "aller". (3) If the searched term differs from the base form, set isConjugated to true and explain the transformation in conjugationInfo and formExplanation. Provide a complete dictionary entry including all conjugation tenses (present, imparfait, passeCompose, futurSimple, conditionnel, subjonctif) each as an array of exactly 6 conjugated forms (je/tu/il-elle/nous/vous/ils-elles). For reflexive verbs like se promener, include the reflexive pronoun in each conjugated form (e.g. "je me promène"). Provide 2 example sentences, 3-5 synonyms, and 1-2 confusing words. If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.` },
+            { role: "user", content: `Look up the French word: "${input.term}". The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) The "word" field MUST always be the canonical base form (infinitive for verbs, masculine singular for adjectives/nouns) — NEVER a conjugated, gendered, or plural form. For example: if the user types "allées" return "aller"; if they type "belle" return "beau"; if they type "allé" return "aller". (3) If the searched term differs from the base form, set isConjugated to true and explain the transformation in conjugationInfo and formExplanation. Provide a complete dictionary entry including all conjugation tenses (present, imparfait, passeCompose, futurSimple, conditionnel, subjonctif) each as an array of exactly 6 conjugated forms (je/tu/il-elle/nous/vous/ils-elles). For reflexive verbs like se promener, include the reflexive pronoun in each conjugated form (e.g. "je me promène").
+
+REFLEXIVE FIELDS (for verbs): set "isReflexive" true only if the base form is pronominal (has "se"/"s'", e.g. se souvenir). Set "hasReflexiveForm" true if the verb is normally non-reflexive but also has a common pronominal use (e.g. "laver" → "se laver", "appeler" → "s'appeler"). When either is true, fill "reflexiveForm" (e.g. "se laver") and "nonReflexiveForm" (e.g. "laver"), set "reflexiveType" (e.g. "reflexive", "reciprocal", "idiomatic"), and in "reflexiveExplanation" explain in English what the reflexive form means and how it differs from the plain verb. If the word is not a verb or has no reflexive use, set isReflexive and hasReflexiveForm to false and leave those string fields empty.
+
+GOVERNED PREPOSITION (for verbs): set "governedPreposition" to the preposition the verb normally requires before its complement — "à" (e.g. jouer à, penser à, téléphoner à, réussir à), "de" (e.g. se souvenir de, parler de, avoir besoin de, décider de), or "" (empty) if it takes a direct object with no preposition (e.g. regarder, écouter, attendre) or isn't a verb. In "prepositionExplanation" briefly explain the pattern with a short example, especially when it differs from English (e.g. "attendre takes no preposition, unlike English 'wait FOR'"). Leave prepositionExplanation empty when governedPreposition is "".
+
+Provide 2 example sentences, 3-5 synonyms, and 1-2 confusing words. If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.` },
           ];
           responseFormat = {
             type: "json_schema",
@@ -387,8 +393,8 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
                   reflexiveType: { type: "string" },
                   reflexiveExplanation: { type: "string" },
                   hasReflexiveForm: { type: "boolean" },
-                  usesDePreposition: { type: "boolean" },
-                  dePrepositionExplanation: { type: "string" },
+                  governedPreposition: { type: "string", enum: ["à", "de", ""] },
+                  prepositionExplanation: { type: "string" },
                   reflexiveForm: { type: "string" },
                   nonReflexiveForm: { type: "string" },
                   grammar: { type: "string" },
@@ -437,7 +443,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
                   "type", "found", "word", "isConjugated", "conjugationInfo", "baseForm",
                   "formExplanation", "translation", "pronunciation", "wordType",
                   "isReflexive", "reflexiveType", "reflexiveExplanation", "hasReflexiveForm",
-                  "usesDePreposition", "dePrepositionExplanation", "reflexiveForm", "nonReflexiveForm",
+                  "governedPreposition", "prepositionExplanation", "reflexiveForm", "nonReflexiveForm",
                   "grammar", "examples", "conjugations", "synonyms", "confusingWords",
                 ],
                 additionalProperties: false,

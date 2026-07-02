@@ -214,6 +214,23 @@ function WordResult({
           </div>
         )}
 
+        {/* Governed preposition (verbs) — e.g. jouer À, se souvenir DE */}
+        {result.governedPreposition && (
+          <div className="border border-sky-500/40 bg-sky-500/10 rounded-xl p-3 mb-3 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <span className="text-xs font-bold text-sky-300 uppercase tracking-wide">Preposition</span>
+              <span className="font-semibold text-foreground">{result.word}</span>
+              <span className="px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-200 font-bold">
+                {result.governedPreposition}
+              </span>
+              <span className="text-muted-foreground">+ complement</span>
+            </div>
+            {result.prepositionExplanation && (
+              <p className="text-sm text-sky-100/80 leading-relaxed">{result.prepositionExplanation}</p>
+            )}
+          </div>
+        )}
+
         {result.grammar && (
           <p className="text-sm text-muted-foreground italic mb-3">{result.grammar}</p>
         )}
