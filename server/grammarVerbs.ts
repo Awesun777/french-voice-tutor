@@ -73,6 +73,85 @@ export function applyElisionBeforeBlank(sentence: string, answer: string): strin
   });
 }
 
+/** A requested (verb, tense, subject) tuple, before the sentence is written. */
+export interface VerbPick {
+  infinitive: string;
+  tense: TenseKey;
+  person: number; // 0–5, index into PERSONS
+}
+
+/** One raw item as returned by the generation LLM (all fields untrusted). */
+export interface RawGeneratedItem {
+  n?: unknown;
+  infinitive?: unknown;
+  isVerb?: unknown;
+  sentence?: unknown;
+  answer?: unknown;
+  english?: unknown;
+}
+
+/** A finished question ready for the client. */
+export interface GrammarQuestion {
+  infinitive: string;
+  tenseKey: TenseKey;
+  tenseLabel: string;
+  person: string;
+  sentence: string;
+  answer: string;
+  english: string;
+}
+
+/**
+ * Pair the requested picks with the LLM's output and keep only well-formed,
+ * verb-backed questions, up to `target`.
+ *
+ * Robustness against the two failure modes we've seen:
+ *  - Alignment: items are matched by the echoed item number "n" (1-based),
+ *    falling back to array position, so a reordered/short response can't
+ *    silently pair a pick's infinitive with a different verb's sentence.
+ *  - Non-verbs: a pick whose word isn't a real verb (e.g. the adjective
+ *    "autoritaire") is dropped when the model flags `isVerb: false` — we never
+ *    show it mislabeled. The DISPLAYED infinitive is the one the model actually
+ *    conjugated, so the parenthetical can never disagree with the blank.
+ */
+export function assembleGrammarQuestions(
+  picks: VerbPick[],
+  generated: RawGeneratedItem[],
+  target: number,
+): GrammarQuestion[] {
+  const tenseLabel = (k: TenseKey) => TENSES.find((t) => t.key === k)!.instruction;
+
+  // Index the LLM output by echoed item number; fall back to array position.
+  const byN = new Map<number, RawGeneratedItem>();
+  generated.forEach((g, i) => {
+    const n = typeof g?.n === "number" && Number.isFinite(g.n) ? g.n : i + 1;
+    if (!byN.has(n)) byN.set(n, g);
+  });
+
+  const out: GrammarQuestion[] = [];
+  for (let i = 0; i < picks.length && out.length < target; i++) {
+    const p = picks[i];
+    const g = byN.get(i + 1) ?? {};
+    if (g.isVerb === false) continue; // model says it isn't a conjugable verb
+    const answer = String(g.answer ?? "").trim();
+    const sentence = String(g.sentence ?? "");
+    if (!answer || !sentence.includes("___")) continue; // malformed → drop
+    // Trust the model's own infinitive so the label matches the blank; if it
+    // didn't echo one, fall back to what we requested.
+    const infinitive = String(g.infinitive ?? "").trim().toLowerCase() || p.infinitive;
+    out.push({
+      infinitive,
+      tenseKey: p.tense,
+      tenseLabel: tenseLabel(p.tense),
+      person: PERSONS[p.person],
+      sentence: applyElisionBeforeBlank(sentence, answer),
+      answer,
+      english: String(g.english ?? "").trim(),
+    });
+  }
+  return out;
+}
+
 /**
  * Curated bank of common B1-level French verbs (infinitives), covering the
  * regular -er/-ir/-re patterns plus the high-frequency irregulars a student

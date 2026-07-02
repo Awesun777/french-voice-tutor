@@ -10,7 +10,7 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { dictCache as dictCacheTable } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "./db";
-import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, applyElisionBeforeBlank, type TenseKey } from "./grammarVerbs";
+import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, assembleGrammarQuestions, type TenseKey, type VerbPick, type RawGeneratedItem } from "./grammarVerbs";
 import {
   addVocabEntries,
   addVocabEntry,
@@ -195,8 +195,11 @@ export const appRouter = router({
         }
 
         // Pre-select (verb, tense, person) tuples so we control the mix.
+        // Over-generate a buffer so that after dropping any non-verbs / malformed
+        // items we can still return the requested count.
         const tenseLabel = (k: TenseKey) => TENSES.find((t) => t.key === k)!.instruction;
-        const picks = Array.from({ length: input.count }, (_, i) => {
+        const genCount = Math.min(input.count + 5, pool.length);
+        const picks: VerbPick[] = Array.from({ length: genCount }, (_, i) => {
           const infinitive = pool[i % pool.length];
           const tense = input.tenses[Math.floor(Math.random() * input.tenses.length)];
           const person = Math.floor(Math.random() * PERSONS.length);
@@ -204,10 +207,18 @@ export const appRouter = router({
         });
 
         const prompt = `You are a French teacher creating B1-level fill-in-the-blank conjugation exercises.
-For each item below, write ONE natural French sentence (B1 difficulty) that requires the given verb, conjugated in the given tense for the given subject.
-Replace ONLY that conjugated verb form with "___" (three underscores). For passé composé include the auxiliary (e.g. "ai voyagé"); for pronominal verbs include the reflexive pronoun (e.g. "me suis levé").
-Return ONLY JSON: {"questions":[{"sentence":"French sentence with ___","answer":"exact text that fills the blank","english":"brief English translation"}]}
-The "answer" MUST be exactly the text that goes in the "___", correctly conjugated. Keep sentences short and idiomatic.
+You are given a numbered list of items. Each names a CANDIDATE French verb (infinitive), a target tense, and a subject pronoun.
+
+For each item, return an object with these keys:
+- "n": the item number, copied exactly.
+- "infinitive": the exact infinitive you conjugated.
+- "isVerb": true only if the candidate word is a real, conjugable French verb. If it is actually an adjective, noun, or anything that cannot be conjugated (e.g. "autoritaire", "dictionnaire"), set "isVerb": false. NEVER substitute a different verb — just flag it and leave "sentence" and "answer" empty.
+- "sentence": ONE natural French sentence (B1 difficulty) requiring that verb in the given tense and subject, with ONLY the conjugated verb form replaced by "___" (three underscores). For passé composé include the auxiliary (e.g. "ai voyagé"); for pronominal verbs include the reflexive pronoun (e.g. "me suis levé").
+- "answer": exactly the text that fills the "___", correctly conjugated.
+- "english": brief English translation of the completed sentence.
+
+Return ONLY JSON: {"questions":[{"n":1,"infinitive":"...","isVerb":true,"sentence":"French sentence with ___","answer":"...","english":"..."}]}
+Return one object per item, in the original order. Keep sentences short and idiomatic.
 
 Items:
 ${picks.map((p, i) => `${i + 1}. verb "${p.infinitive}" — tense ${tenseLabel(p.tense)} — subject ${PERSONS[p.person]}`).join("\n")}`;
@@ -217,31 +228,13 @@ ${picks.map((p, i) => `${i + 1}. verb "${p.infinitive}" — tense ${tenseLabel(p
           response_format: { type: "json_object" } as any,
         });
         const raw = resp.choices[0].message.content ?? "{}";
-        let generated: { sentence?: string; answer?: string; english?: string }[] = [];
+        let generated: RawGeneratedItem[] = [];
         try {
           const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
           if (Array.isArray(parsed.questions)) generated = parsed.questions;
         } catch { /* fall through to empty */ }
 
-        const questions = picks.map((p, i) => {
-          const g = generated[i] ?? {};
-          const answer = (g.answer ?? "").trim();
-          // Fallback template uses the pronoun capitalized when it starts the sentence.
-          const subject = PERSONS[p.person];
-          const rawSentence = (g.sentence ?? "").includes("___")
-            ? g.sentence!
-            : `${subject.charAt(0).toUpperCase()}${subject.slice(1)} ___ (${p.infinitive}).`;
-          return {
-            infinitive: p.infinitive,
-            tenseKey: p.tense,
-            tenseLabel: tenseLabel(p.tense),
-            person: PERSONS[p.person],
-            // Correct elision at the blank (e.g. "Je ___" + "ai voyagé" → "J'___").
-            sentence: applyElisionBeforeBlank(rawSentence, answer),
-            answer,
-            english: (g.english ?? "").trim(),
-          };
-        }).filter((q) => q.answer.length > 0);
+        const questions = assembleGrammarQuestions(picks, generated, input.count);
 
         return { questions };
       }),
