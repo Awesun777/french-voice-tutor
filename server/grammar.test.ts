@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   B1_VERBS, TENSES, TENSE_KEYS, PERSONS, applyElisionBeforeBlank,
-  assembleGrammarQuestions, sentenceHasContext, type VerbPick, type RawGeneratedItem,
+  assembleGrammarQuestions, sentenceHasContext, answerMatchesTense,
+  type VerbPick, type RawGeneratedItem,
 } from "./grammarVerbs";
 
 describe("grammar verb bank + tense config", () => {
@@ -190,5 +191,49 @@ describe("sentenceHasContext", () => {
     expect(sentenceHasContext("L'été dernier, j'___ en Italie.")).toBe(true);
     expect(sentenceHasContext("Tu ___ le bus tous les matins.")).toBe(true);
     expect(sentenceHasContext("Ils ___ toujours à l'heure.")).toBe(true);
+  });
+});
+
+describe("answerMatchesTense", () => {
+  it("rejects a présent/subjonctif form mislabeled as imparfait", () => {
+    // The reported bug: "mange" is not imparfait ("mangeait" is).
+    expect(answerMatchesTense("mange", "imparfait")).toBe(false);
+    expect(answerMatchesTense("mangeait", "imparfait")).toBe(true);
+    expect(answerMatchesTense("finissions", "imparfait")).toBe(true);
+    expect(answerMatchesTense("étais", "imparfait")).toBe(true);
+  });
+  it("distinguishes futur simple from conditionnel by ending", () => {
+    expect(answerMatchesTense("voyagera", "futurSimple")).toBe(true);
+    expect(answerMatchesTense("voyagerais", "futurSimple")).toBe(false);
+    expect(answerMatchesTense("voyagerais", "conditionnel")).toBe(true);
+    expect(answerMatchesTense("voyagera", "conditionnel")).toBe(false);
+  });
+  it("requires a compound form for passé composé", () => {
+    expect(answerMatchesTense("mange", "passeCompose")).toBe(false);
+    expect(answerMatchesTense("ai mangé", "passeCompose")).toBe(true);
+    expect(answerMatchesTense("me suis levé", "passeCompose")).toBe(true);
+    expect(answerMatchesTense("est allée", "passeCompose")).toBe(true);
+  });
+  it("accepts anything for présent / subjonctif (not reliably checkable)", () => {
+    expect(answerMatchesTense("mange", "present")).toBe(true);
+    expect(answerMatchesTense("mange", "subjonctif")).toBe(true);
+    expect(answerMatchesTense("vais", "present")).toBe(true);
+  });
+});
+
+describe("assembleGrammarQuestions — tense fidelity", () => {
+  const pick = (infinitive: string, tense: VerbPick["tense"], person: number): VerbPick =>
+    ({ infinitive, tense, person });
+
+  it("drops a subjunctive-forced answer labeled imparfait, keeps a real imparfait", () => {
+    const picks = [pick("manger", "imparfait", 2), pick("finir", "imparfait", 5)];
+    const generated: RawGeneratedItem[] = [
+      { n: 1, infinitive: "manger", isVerb: true, sentence: "Il est important qu'elle ___ des légumes chaque jour.", answer: "mange" }, // subjonctif → drop
+      { n: 2, infinitive: "finir", isVerb: true, sentence: "Quand j'étais petit, ils ___ toujours tôt.", answer: "finissaient" },
+    ];
+    const out = assembleGrammarQuestions(picks, generated, 2);
+    expect(out).toHaveLength(1);
+    expect(out[0].infinitive).toBe("finir");
+    expect(out[0].answer).toBe("finissaient");
   });
 });

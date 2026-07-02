@@ -103,6 +103,42 @@ export function sentenceHasContext(sentence: string): boolean {
   return words.length >= 2;
 }
 
+/**
+ * Universal answer-ending patterns for the tenses that are fully regular across
+ * (nearly) every French verb, so we can deterministically reject an answer that
+ * isn't actually in the requested tense:
+ *  - imparfait:    stem + ais/ais/ait/ions/iez/aient (true for every verb, incl. être)
+ *  - futur simple: infinitive-stem + rai/ras/ra/rons/rez/ront
+ *  - conditionnel: futur-stem + rais/rait/rions/riez/raient
+ * present and subjonctif are too irregular to check this way (left to the prompt).
+ */
+const TENSE_ANSWER_PATTERNS: Partial<Record<TenseKey, RegExp>> = {
+  imparfait: /(?:ais|ait|ions|iez|aient)$/i,
+  futurSimple: /(?:rai|ras|ra|rons|rez|ront)$/i,
+  conditionnel: /(?:rais|rait|rions|riez|raient)$/i,
+};
+
+/**
+ * Whether `answer` plausibly belongs to `tense`. Guards against the LLM writing
+ * a sentence whose context forces a different tense/mood than requested — e.g.
+ * "Il est important qu'elle ___" (subjonctif → "mange") mislabeled as imparfait.
+ * Returns true for present/subjonctif (not reliably checkable) and for passé
+ * composé requires a compound form (auxiliary + participle).
+ */
+export function answerMatchesTense(answer: string, tense: TenseKey): boolean {
+  const a = answer.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (!a) return false;
+  if (tense === "passeCompose") {
+    const tokens = a.split(/\s+/);
+    if (tokens.length < 2) return false; // needs auxiliary + participle
+    const AUX = new Set(["ai", "as", "a", "avons", "avez", "ont", "suis", "es", "est", "sommes", "etes", "sont"]);
+    return tokens.some((t) => AUX.has(t));
+  }
+  const pattern = TENSE_ANSWER_PATTERNS[tense];
+  if (!pattern) return true; // present / subjonctif — accept
+  return pattern.test(a);
+}
+
 /** A finished question ready for the client. */
 export interface GrammarQuestion {
   infinitive: string;
@@ -150,6 +186,7 @@ export function assembleGrammarQuestions(
     const sentence = String(g.sentence ?? "");
     if (!answer || !sentence.includes("___")) continue;   // malformed → drop
     if (!sentenceHasContext(sentence)) continue;          // bare "subject ___" → drop
+    if (!answerMatchesTense(answer, p.tense)) continue;   // answer isn't in the requested tense → drop
     // Trust the model's own infinitive so the label matches the blank; if it
     // didn't echo one, fall back to what we requested.
     const infinitive = String(g.infinitive ?? "").trim().toLowerCase() || p.infinitive;
