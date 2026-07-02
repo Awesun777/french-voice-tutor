@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   B1_VERBS, TENSES, TENSE_KEYS, PERSONS, applyElisionBeforeBlank,
-  assembleGrammarQuestions, type VerbPick, type RawGeneratedItem,
+  assembleGrammarQuestions, sentenceHasContext, type VerbPick, type RawGeneratedItem,
 } from "./grammarVerbs";
 
 describe("grammar verb bank + tense config", () => {
@@ -166,5 +166,29 @@ describe("assembleGrammarQuestions — pairing + vetting", () => {
       { n: 1, infinitive: "parler", sentence: "Tu ___ trop vite.", answer: "parles" },
     ];
     expect(assembleGrammarQuestions(picks, generated, 1)).toHaveLength(1);
+  });
+
+  it("drops bare 'subject ___' sentences that lack context", () => {
+    const picks = [pick("parler", "present", 4), pick("finir", "present", 5)];
+    const generated: RawGeneratedItem[] = [
+      { n: 1, infinitive: "parler", isVerb: true, sentence: "Vous ___.", answer: "parlez" },        // bare → drop
+      { n: 2, infinitive: "finir", isVerb: true, sentence: "Ils ___ toujours à l'heure.", answer: "finissent" },
+    ];
+    const out = assembleGrammarQuestions(picks, generated, 2);
+    expect(out).toHaveLength(1);
+    expect(out[0].infinitive).toBe("finir");
+  });
+});
+
+describe("sentenceHasContext", () => {
+  it("rejects bare subject + blank skeletons", () => {
+    expect(sentenceHasContext("Vous ___.")).toBe(false);
+    expect(sentenceHasContext("Je ___.")).toBe(false);
+    expect(sentenceHasContext("Ils ___ !")).toBe(false);
+  });
+  it("accepts full contextual sentences", () => {
+    expect(sentenceHasContext("L'été dernier, j'___ en Italie.")).toBe(true);
+    expect(sentenceHasContext("Tu ___ le bus tous les matins.")).toBe(true);
+    expect(sentenceHasContext("Ils ___ toujours à l'heure.")).toBe(true);
   });
 });

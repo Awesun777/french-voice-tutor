@@ -9,7 +9,7 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Loader2, Check, X, GraduationCap, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Check, X, GraduationCap, BookOpen, ChevronDown, ChevronUp, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
@@ -185,40 +185,28 @@ function GrammarNotesPanel({ speak, pronounceState, activeText }: {
 }
 
 /**
- * Dictionary lookup for the current question's infinitive, rendered at the very
- * bottom of the test screen so it never pushes the blank/answer section around.
- *
- * The lookup and the word's pronunciation are preloaded as soon as the question
- * mounts (this component is keyed by question), so opening the panel is instant.
- * `visible` is controlled by the trigger next to the sentence.
+ * Presentational dictionary card for the current question's infinitive, rendered
+ * at the very bottom of the test screen so it never pushes the blank/answer
+ * section around. The parent preloads the lookup + pronunciation as each question
+ * appears, so opening this (via `visible`) is instant.
  */
-function InfinitiveLookupPanel({ infinitive, visible, speak, preload, pronounceState, activeText }: {
-  infinitive: string;
+function InfinitiveLookupPanel({ visible, loading, result, speak, pronounceState, activeText }: {
   visible: boolean;
+  loading: boolean;
+  result: DictWordResult | null;
   speak: (t: string) => void;
-  preload: (t: string) => Promise<void>;
   pronounceState: import("@/lib/pronounce").PronounceState;
   activeText: string | null;
 }) {
-  const search = trpc.dictionary.search.useMutation();
-  const result = search.data as DictWordResult | undefined;
-
-  // Warm the dictionary entry + TTS the moment the question appears.
-  useEffect(() => {
-    search.mutate({ term: infinitive });
-    void preload(infinitive);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [infinitive]);
-
   if (!visible) return null;
 
   return (
     <div className="rounded-xl border border-border bg-card/60 p-4 text-left">
-      {search.isPending || !search.data ? (
+      {loading || !result ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
           <Loader2 className="w-4 h-4 animate-spin" /> Looking up…
         </div>
-      ) : result?.type === "word" && result.found ? (
+      ) : result.type === "word" && result.found ? (
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg font-bold text-foreground">{result.word}</span>
@@ -281,6 +269,19 @@ export default function GrammarTestTab() {
   const [showLookup, setShowLookup] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Dictionary lookup for the current infinitive — preloaded per question and
+  // shared by the bottom panel and the "Save verb" button.
+  const searchMutation = trpc.dictionary.search.useMutation();
+  const [lookup, setLookup] = useState<{ infinitive: string; loading: boolean; result: DictWordResult | null }>(
+    { infinitive: "", loading: false, result: null }
+  );
+
+  // Saving tested verbs into the vocab library.
+  const utils = trpc.useUtils();
+  const { data: vocabList = [] } = trpc.vocab.list.useQuery();
+  const addVocab = trpc.vocab.add.useMutation();
+  const [savedVerbs, setSavedVerbs] = useState<Set<string>>(new Set());
+
   const generateMutation = trpc.grammar.generateTest.useMutation();
 
   const toggleTense = (key: string) =>
@@ -330,6 +331,49 @@ export default function GrammarTestTab() {
     setResult(null);
     setShowLookup(false);
     setTimeout(() => inputRef.current?.focus(), 100);
+  };
+
+  // Preload the dictionary entry + pronunciation for the current question's verb
+  // as soon as it appears, so opening the lookup / saving is instant.
+  useEffect(() => {
+    if (phase !== "test") return;
+    const cur = questions[qIndex];
+    if (!cur) return;
+    const term = cur.infinitive;
+    setLookup({ infinitive: term, loading: true, result: null });
+    void preload(term);
+    let cancelled = false;
+    searchMutation.mutateAsync({ term })
+      .then((r) => { if (!cancelled) setLookup({ infinitive: term, loading: false, result: (r as { type?: string })?.type === "word" ? (r as DictWordResult) : null }); })
+      .catch(() => { if (!cancelled) setLookup({ infinitive: term, loading: false, result: null }); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, qIndex]);
+
+  const normalizeVerb = (s: string) => s.trim().toLowerCase();
+  const currentVerb = q ? normalizeVerb(q.infinitive) : "";
+  // Lookup that belongs to the question currently on screen (guards against a
+  // stale in-flight result from the previous question).
+  const activeLookup = lookup.infinitive === q?.infinitive
+    ? lookup
+    : { infinitive: currentVerb, loading: true, result: null as DictWordResult | null };
+  const alreadyInLibrary =
+    savedVerbs.has(currentVerb) || vocabList.some((v) => normalizeVerb(v.term) === currentVerb);
+
+  const saveVerb = async () => {
+    if (!q || addVocab.isPending || alreadyInLibrary) return;
+    const res = activeLookup.result;
+    const translation = res?.found ? res.translation.trim() : "";
+    if (!translation) { toast.error("Meaning isn't ready yet — give it a second"); return; }
+    const term = (res?.word?.trim() || q.infinitive).trim();
+    try {
+      await addVocab.mutateAsync({ term, translation, entryKind: "word", lessonSource: "Grammar Test" });
+      setSavedVerbs((s) => new Set(s).add(currentVerb));
+      utils.vocab.list.invalidate();
+      toast.success(`Saved “${term}” to your library`);
+    } catch {
+      toast.error("Couldn't save the verb");
+    }
   };
 
   // ── Done screen ────────────────────────────────────────────────────────────
@@ -449,17 +493,37 @@ export default function GrammarTestTab() {
               <button onClick={next} className="py-3 rounded-xl font-bold text-sm bg-muted hover:bg-muted/80 text-foreground transition">
                 {qIndex + 1 >= questions.length ? "See results →" : "Next →"}
               </button>
+              <button
+                onClick={saveVerb}
+                disabled={alreadyInLibrary || addVocab.isPending || !activeLookup.result?.found}
+                className={cn(
+                  "py-2.5 rounded-xl font-semibold text-sm border transition flex items-center justify-center gap-2",
+                  alreadyInLibrary
+                    ? "bg-emerald-500/10 border-emerald-700 text-emerald-300 cursor-default"
+                    : "bg-card border-border text-foreground hover:bg-muted/40 disabled:opacity-50"
+                )}
+                title={`Save “${q.infinitive}” to your vocabulary library`}
+              >
+                {alreadyInLibrary ? (
+                  <><Check className="w-4 h-4" /> In your library</>
+                ) : addVocab.isPending ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                ) : !activeLookup.result?.found ? (
+                  <><Plus className="w-4 h-4" /> Save verb (preparing…)</>
+                ) : (
+                  <><Plus className="w-4 h-4" /> Save “{q.infinitive}” to library</>
+                )}
+              </button>
             </div>
           )}
 
           {/* Dictionary lookup — pinned to the bottom so it never shifts the answer box.
-              Preloads on mount (keyed by question) even while hidden. */}
+              The parent preloads it per question, so opening it is instant. */}
           <InfinitiveLookupPanel
-            key={qIndex}
-            infinitive={q.infinitive}
             visible={showLookup}
+            loading={activeLookup.loading}
+            result={activeLookup.result}
             speak={speak}
-            preload={preload}
             pronounceState={pronounceState}
             activeText={activeText}
           />

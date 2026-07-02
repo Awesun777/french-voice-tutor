@@ -90,6 +90,19 @@ export interface RawGeneratedItem {
   english?: unknown;
 }
 
+/**
+ * A sentence has context if, aside from the blank, it carries more than just the
+ * subject — i.e. it isn't a bare "Vous ___." skeleton (the "only the subjects
+ * were left" bug). Needs ≥2 real (letter-bearing) words; punctuation doesn't count.
+ */
+export function sentenceHasContext(sentence: string): boolean {
+  const words = sentence
+    .replace("___", " ")
+    .split(/\s+/)
+    .filter((w) => /[a-zà-ÿ]/i.test(w));
+  return words.length >= 2;
+}
+
 /** A finished question ready for the client. */
 export interface GrammarQuestion {
   infinitive: string;
@@ -135,7 +148,8 @@ export function assembleGrammarQuestions(
     if (g.isVerb === false) continue; // model says it isn't a conjugable verb
     const answer = String(g.answer ?? "").trim();
     const sentence = String(g.sentence ?? "");
-    if (!answer || !sentence.includes("___")) continue; // malformed → drop
+    if (!answer || !sentence.includes("___")) continue;   // malformed → drop
+    if (!sentenceHasContext(sentence)) continue;          // bare "subject ___" → drop
     // Trust the model's own infinitive so the label matches the blank; if it
     // didn't echo one, fall back to what we requested.
     const infinitive = String(g.infinitive ?? "").trim().toLowerCase() || p.infinitive;

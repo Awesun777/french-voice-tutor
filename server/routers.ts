@@ -213,12 +213,12 @@ For each item, return an object with these keys:
 - "n": the item number, copied exactly.
 - "infinitive": the exact infinitive you conjugated.
 - "isVerb": true only if the candidate word is a real, conjugable French verb. If it is actually an adjective, noun, or anything that cannot be conjugated (e.g. "autoritaire", "dictionnaire"), set "isVerb": false. NEVER substitute a different verb — just flag it and leave "sentence" and "answer" empty.
-- "sentence": ONE natural French sentence (B1 difficulty) requiring that verb in the given tense and subject, with ONLY the conjugated verb form replaced by "___" (three underscores). For passé composé include the auxiliary (e.g. "ai voyagé"); for pronominal verbs include the reflexive pronoun (e.g. "me suis levé").
+- "sentence": ONE complete, natural French sentence at B1 level that gives real CONTEXT — a time, place, object, or reason — so the exercise is a full sentence, NOT just a subject and a blank. Replace ONLY the conjugated target verb with "___" (three underscores) and keep the rest of the sentence intact. For passé composé include the auxiliary (e.g. "ai voyagé"); for pronominal verbs include the reflexive pronoun (e.g. "me suis levé"). Example (verb "voyager", passé composé, subject je): "L'été dernier, j'___ en Italie avec toute ma famille." with answer "ai voyagé".
 - "answer": exactly the text that fills the "___", correctly conjugated.
 - "english": brief English translation of the completed sentence.
 
 Return ONLY JSON: {"questions":[{"n":1,"infinitive":"...","isVerb":true,"sentence":"French sentence with ___","answer":"...","english":"..."}]}
-Return one object per item, in the original order. Keep sentences short and idiomatic.
+Return one object per item, in the original order. Make each sentence idiomatic and give it enough context to feel natural (roughly 6–12 words); NEVER return just a subject followed by the blank.
 
 Items:
 ${picks.map((p, i) => `${i + 1}. verb "${p.infinitive}" — tense ${tenseLabel(p.tense)} — subject ${PERSONS[p.person]}`).join("\n")}`;
