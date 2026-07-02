@@ -233,6 +233,20 @@ function WordResult({
           </div>
         )}
 
+        {/* Adjective / state auxiliary — avoir vs être */}
+        {result.adjectiveAuxiliary && (
+          <div className="border border-violet-500/40 bg-violet-500/10 rounded-xl p-3 mb-3 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <span className="text-xs font-bold text-violet-300 uppercase tracking-wide">Auxiliary</span>
+              <span className="px-2 py-0.5 rounded-full bg-violet-500/25 text-violet-200 font-bold">{result.adjectiveAuxiliary}</span>
+              <span className="text-muted-foreground">+ {result.word}</span>
+            </div>
+            {result.adjectiveAuxiliaryExplanation && (
+              <p className="text-sm text-violet-100/80 leading-relaxed">{result.adjectiveAuxiliaryExplanation}</p>
+            )}
+          </div>
+        )}
+
         {result.grammar && (
           <p className="text-sm text-muted-foreground italic mb-3">{result.grammar}</p>
         )}
@@ -720,7 +734,7 @@ export default function DictionaryTab() {
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
-  const { speak, state: pronounceState, activeText } = usePronounce();
+  const { speak, preload, state: pronounceState, activeText } = usePronounce();
 
   const suggestMutation = trpc.dictionary.suggest.useMutation({
     onSuccess: (data) => setSuggestions(data.suggestions),
@@ -747,6 +761,7 @@ export default function DictionaryTab() {
       // into the matching result once they arrive (essentials show immediately).
       if (result.type === "word" && (result as DictWordResult).found) {
         const w = (result as DictWordResult).word;
+        void preload(w); // warm the pronunciation so tapping speak is instant
         setDetailsWord(w);
         detailsMutation.mutate(
           { word: w },

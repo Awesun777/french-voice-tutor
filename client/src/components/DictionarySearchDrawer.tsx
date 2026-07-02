@@ -35,7 +35,7 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
   onClose: () => void;
   initialTerm?: string;
 }) {
-  const { speak, state: pronounceState, activeText } = usePronounce();
+  const { speak, preload, state: pronounceState, activeText } = usePronounce();
   const { search, reset, result, quickLoading, detailsLoading } = useProgressiveDictionary();
   const [term, setTerm] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -54,6 +54,13 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
     setTimeout(() => inputRef.current?.focus(), 60);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTerm]);
+
+  // Preload the looked-up word's pronunciation so tapping speak is instant.
+  useEffect(() => {
+    if (result?.type === "word" && (result as DictWordResult).found) {
+      void preload((result as DictWordResult).word);
+    }
+  }, [result, preload]);
 
   if (!open) return null;
 

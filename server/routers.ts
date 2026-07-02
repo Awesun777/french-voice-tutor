@@ -409,6 +409,8 @@ REFLEXIVE FIELDS (for verbs): set "isReflexive" true only if the base form is pr
 
 GOVERNED PREPOSITION (for verbs): set "governedPreposition" to the preposition the verb normally requires before its complement — "à" (e.g. jouer à, penser à, téléphoner à, réussir à), "de" (e.g. se souvenir de, parler de, avoir besoin de, décider de), or "" (empty) if it takes a direct object with no preposition (e.g. regarder, écouter, attendre) or isn't a verb. In "prepositionExplanation" briefly explain the pattern with a short example, especially when it differs from English (e.g. "attendre takes no preposition, unlike English 'wait FOR'"). Leave prepositionExplanation empty when governedPreposition is "".
 
+ADJECTIVE / STATE AUXILIARY: if the word is an adjective or expresses a personal state, set "adjectiveAuxiliary" to the verb used to express that state about a person — "être" for normal adjectives (e.g. "je suis content", "elle est fatiguée") or "avoir" for the sensation/state set (e.g. "j'ai faim", "j'ai froid", "j'ai peur", "j'ai raison", "j'ai sommeil"). Set "" if it is not an adjective or state word (e.g. a plain verb or concrete noun). In "adjectiveAuxiliaryExplanation" give a short example in French with its English gloss (e.g. "j'ai froid = I'm cold (uses avoir, not être)"). Leave empty when adjectiveAuxiliary is "".
+
 Provide 2 example sentences. ${detailsInstruction} If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.` },
           ];
           const wordProps: Record<string, unknown> = {
@@ -428,6 +430,8 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
             hasReflexiveForm: { type: "boolean" },
             governedPreposition: { type: "string", enum: ["à", "de", ""] },
             prepositionExplanation: { type: "string" },
+            adjectiveAuxiliary: { type: "string", enum: ["avoir", "être", ""] },
+            adjectiveAuxiliaryExplanation: { type: "string" },
             reflexiveForm: { type: "string" },
             nonReflexiveForm: { type: "string" },
             grammar: { type: "string" },
@@ -445,7 +449,9 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
             "type", "found", "word", "isConjugated", "conjugationInfo", "baseForm",
             "formExplanation", "translation", "pronunciation", "wordType",
             "isReflexive", "reflexiveType", "reflexiveExplanation", "hasReflexiveForm",
-            "governedPreposition", "prepositionExplanation", "reflexiveForm", "nonReflexiveForm",
+            "governedPreposition", "prepositionExplanation",
+            "adjectiveAuxiliary", "adjectiveAuxiliaryExplanation",
+            "reflexiveForm", "nonReflexiveForm",
             "grammar", "examples",
           ];
           if (wantDetails) {
@@ -1076,7 +1082,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
             voice: 'marin',
             response_format: 'mp3',
             speed: 0.9,
-            instructions: 'You are a native French speaker. Pronounce every word with authentic French phonetics and a natural French accent. Never anglicize French words.',
+            instructions: 'The text to speak is ALWAYS French — read it as a native French speaker with authentic French phonetics and a natural French accent. This holds even for single words that happen to be spelled like English words (e.g. "important", "table", "message", "nation", "orange", "possible", "restaurant", "double", "impossible"): pronounce them the French way, NEVER anglicized.',
           }),
         });
         if (!resp.ok) {

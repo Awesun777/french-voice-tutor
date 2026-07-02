@@ -143,7 +143,14 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
   );
   const fillRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
-  const { speak, state: pronounceState, activeText } = usePronounce();
+  const { speak, preload, state: pronounceState, activeText } = usePronounce();
+
+  // Preload the current question's French term so pronunciation is instant.
+  useEffect(() => {
+    if (phase !== "quiz") return;
+    const term = questions[qIndex]?.word?.term;
+    if (term) void preload(term);
+  }, [phase, qIndex, questions, preload]);
 
   const gradeMutation = trpc.quiz.gradeAnswer.useMutation();
   const saveSessionMutation = trpc.quiz.saveSession.useMutation();

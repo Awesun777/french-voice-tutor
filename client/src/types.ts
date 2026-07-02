@@ -42,6 +42,10 @@ export interface DictWordResult {
   // Preposition the verb governs before its object: "à", "de", or "" (none).
   governedPreposition: string;
   prepositionExplanation: string | null;
+  // For adjectives/state words: which verb expresses the state — "avoir"
+  // (j'ai faim), "être" (je suis content), or "" (not applicable).
+  adjectiveAuxiliary: string;
+  adjectiveAuxiliaryExplanation: string | null;
   reflexiveForm: string | null;
   nonReflexiveForm: string | null;
   examples: { fr: string; en: string }[];

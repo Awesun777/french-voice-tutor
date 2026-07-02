@@ -17,10 +17,19 @@ import { trpc } from "./trpc";
 
 // Client-side blob URL cache — persists for the lifetime of the browser tab.
 // Version suffix ensures stale blobs from previous voice/model changes are not reused.
-const CACHE_VERSION = 'v2-marin';
+const CACHE_VERSION = 'v3-marin-fr';
 const audioCache = new Map<string, string>(); // `${CACHE_VERSION}:${text}` → blob URL
 
 let _currentAudio: HTMLAudioElement | null = null;
+
+/**
+ * Best-effort French voice for the Web Speech fallback, so words spelled like
+ * English ones (important, table, message…) aren't read with an English voice.
+ */
+function pickFrenchVoice(): SpeechSynthesisVoice | undefined {
+  const voices = window.speechSynthesis?.getVoices?.() ?? [];
+  return voices.find((v) => v.lang?.toLowerCase().startsWith("fr"));
+}
 
 function stopCurrent() {
   if (_currentAudio) {
@@ -103,6 +112,8 @@ export function usePronounce() {
             setState("speaking");
             const u = new SpeechSynthesisUtterance(text);
             u.lang = "fr-FR";
+            const fr = pickFrenchVoice();
+            if (fr) u.voice = fr;
             u.rate = 0.9;
             u.onend = () => {
               if (pendingRef.current === text) {
@@ -180,6 +191,8 @@ export function pronounce(text: string): void {
   if (window.speechSynthesis) {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "fr-FR";
+    const fr = pickFrenchVoice();
+    if (fr) u.voice = fr;
     u.rate = 0.9;
     window.speechSynthesis.speak(u);
   }

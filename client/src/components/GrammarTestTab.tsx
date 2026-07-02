@@ -343,6 +343,8 @@ export default function GrammarTestTab() {
     const term = cur.infinitive;
     setLookup({ infinitive: term, loading: true, result: null });
     void preload(term);
+    // Warm the completed sentence too, since that's what's pronounced after answering.
+    if (cur.sentence && cur.answer) void preload(cur.sentence.replace("___", cur.answer));
     let cancelled = false;
     searchMutation.mutateAsync({ term })
       .then((r) => { if (!cancelled) setLookup({ infinitive: term, loading: false, result: (r as { type?: string })?.type === "word" ? (r as DictWordResult) : null }); })
