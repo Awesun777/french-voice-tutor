@@ -357,11 +357,21 @@ export default function GrammarTestTab() {
   const activeLookup = lookup.infinitive === q?.infinitive
     ? lookup
     : { infinitive: currentVerb, loading: true, result: null as DictWordResult | null };
-  const alreadyInLibrary =
-    savedVerbs.has(currentVerb) || vocabList.some((v) => normalizeVerb(v.term) === currentVerb);
+  // "Saved" reflects ONLY an explicit click this session — never auto-detected
+  // from the library (grammar-test verbs are partly drawn from your own vocab,
+  // so auto-detecting would wrongly show them as saved and block the button).
+  const justSaved = savedVerbs.has(currentVerb);
+  // Used only to avoid inserting a duplicate when the user does click Save.
+  const verbInLibrary = vocabList.some((v) => normalizeVerb(v.term) === currentVerb);
 
   const saveVerb = async () => {
-    if (!q || addVocab.isPending || alreadyInLibrary) return;
+    if (!q || addVocab.isPending || justSaved) return;
+    // Already in the library → don't create a duplicate, just mark it saved.
+    if (verbInLibrary) {
+      setSavedVerbs((s) => new Set(s).add(currentVerb));
+      toast.success(`“${q.infinitive}” is already in your library`);
+      return;
+    }
     const res = activeLookup.result;
     const translation = res?.found ? res.translation.trim() : "";
     if (!translation) { toast.error("Meaning isn't ready yet — give it a second"); return; }
@@ -495,20 +505,20 @@ export default function GrammarTestTab() {
               </button>
               <button
                 onClick={saveVerb}
-                disabled={alreadyInLibrary || addVocab.isPending || !activeLookup.result?.found}
+                disabled={justSaved || addVocab.isPending || (!activeLookup.result?.found && !verbInLibrary)}
                 className={cn(
                   "py-2.5 rounded-xl font-semibold text-sm border transition flex items-center justify-center gap-2",
-                  alreadyInLibrary
+                  justSaved
                     ? "bg-emerald-500/10 border-emerald-700 text-emerald-300 cursor-default"
                     : "bg-card border-border text-foreground hover:bg-muted/40 disabled:opacity-50"
                 )}
                 title={`Save “${q.infinitive}” to your vocabulary library`}
               >
-                {alreadyInLibrary ? (
-                  <><Check className="w-4 h-4" /> In your library</>
+                {justSaved ? (
+                  <><Check className="w-4 h-4" /> Saved to library</>
                 ) : addVocab.isPending ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
-                ) : !activeLookup.result?.found ? (
+                ) : (!activeLookup.result?.found && !verbInLibrary) ? (
                   <><Plus className="w-4 h-4" /> Save verb (preparing…)</>
                 ) : (
                   <><Plus className="w-4 h-4" /> Save “{q.infinitive}” to library</>
