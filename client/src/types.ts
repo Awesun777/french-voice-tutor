@@ -76,6 +76,13 @@ export interface DictQuestionResult {
   options: { french: string; english: string; summary: string }[];
 }
 
+/** The "heavy" half of a word entry, fetched separately by dictionary.searchDetails. */
+export interface DictWordDetails {
+  conjugations: DictWordResult["conjugations"];
+  synonyms: DictWordResult["synonyms"];
+  confusingWords: DictWordResult["confusingWords"];
+}
+
 export type DictResult = DictWordResult | DictPhraseResult | DictQuestionResult | { type: "error"; message: string };
 
 export type SidebarTab = "dictionary" | "library" | "quiz" | "flashcards" | "grammar" | "tutor" | "voice-chat" | "progress";

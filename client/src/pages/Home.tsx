@@ -1,7 +1,8 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SidebarTab } from "@/types";
+import { DictionaryFab, DictionarySearchDrawer } from "@/components/DictionarySearchDrawer";
 import Sidebar from "@/components/Sidebar";
 import DictionaryTab from "@/components/DictionaryTab";
 import LibraryTab from "@/components/LibraryTab";
@@ -66,6 +67,12 @@ export default function Home() {
   const [reviewTarget, setReviewTarget] = useState<{ dateKey: string } | null>(null);
   const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
   const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
+
+  // Dictionary search drawer — available while practising (flashcards/grammar/quiz).
+  const [dictOpen, setDictOpen] = useState(false);
+  const dictTabs: SidebarTab[] = ["flashcards", "grammar", "quiz"];
+  const dictAvailable = dictTabs.includes(activeTab);
+  useEffect(() => { if (!dictAvailable) setDictOpen(false); }, [dictAvailable]);
 
   if (loading) {
     return (
@@ -150,6 +157,12 @@ export default function Home() {
         {activeTab === "voice-chat" && <VoiceAgentSelector onStartReview={startReview} />}
         {activeTab === "progress" && <ProgressTab />}
       </main>
+      {dictAvailable && (
+        <>
+          <DictionaryFab open={dictOpen} onOpen={() => setDictOpen(true)} />
+          <DictionarySearchDrawer open={dictOpen} onClose={() => setDictOpen(false)} />
+        </>
+      )}
     </div>
   );
 }

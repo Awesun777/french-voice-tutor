@@ -90,6 +90,32 @@ async function setCache(key: string, result: unknown) {
   } catch { /* non-fatal — cache write failure should not break the response */ }
 }
 
+// The "heavy" dictionary fields, shared by the full word schema and the
+// separate searchDetails endpoint so the two stay in lockstep.
+const DETAILS_SCHEMA_PROPS = {
+  conjugations: {
+    type: "object",
+    properties: {
+      present:      { type: "array", items: { type: "string" } },
+      imparfait:    { type: "array", items: { type: "string" } },
+      passeCompose: { type: "array", items: { type: "string" } },
+      futurSimple:  { type: "array", items: { type: "string" } },
+      conditionnel: { type: "array", items: { type: "string" } },
+      subjonctif:   { type: "array", items: { type: "string" } },
+    },
+    required: ["present", "imparfait", "passeCompose", "futurSimple", "conditionnel", "subjonctif"],
+    additionalProperties: false,
+  },
+  synonyms: {
+    type: "array",
+    items: { type: "object", properties: { word: { type: "string" }, meaning: { type: "string" } }, required: ["word", "meaning"], additionalProperties: false },
+  },
+  confusingWords: {
+    type: "array",
+    items: { type: "object", properties: { word: { type: "string" }, meaning: { type: "string" }, difference: { type: "string" } }, required: ["word", "meaning", "difference"], additionalProperties: false },
+  },
+} as const;
+
 // ─── AI import cache (per-chunk) ──────────────────────────────────────────────
 const importCache = new Map<string, unknown[]>();
 
@@ -278,9 +304,15 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         }
       }),
     search: protectedProcedure
-      .input(z.object({ term: z.string().min(1).max(300) }))
+      .input(z.object({
+        term: z.string().min(1).max(300),
+        // "quick" omits the heavy folded fields (conjugations/synonyms/confusing)
+        // for a much faster first paint; "full" is the complete entry (default,
+        // so existing callers are unchanged).
+        parts: z.enum(["quick", "full"]).default("full"),
+      }))
       .mutation(async ({ input }) => {
-        const key = input.term.toLowerCase().trim();
+        const key = input.term.toLowerCase().trim() + (input.parts === "quick" ? "::q" : "");
         const cached = await getCached(key);
         if (cached) return cached;
 
@@ -361,94 +393,71 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
             },
           };
         } else {
+          const wantDetails = input.parts === "full";
+          // In "quick" mode we omit the heavy fields (conjugations/synonyms/
+          // confusing) so the first paint is fast; they are fetched separately
+          // via searchDetails and merged in on the client.
+          const detailsInstruction = wantDetails
+            ? `Provide a complete dictionary entry including all conjugation tenses (present, imparfait, passeCompose, futurSimple, conditionnel, subjonctif) each as an array of exactly 6 conjugated forms (je/tu/il-elle/nous/vous/ils-elles). For reflexive verbs like se promener, include the reflexive pronoun in each conjugated form (e.g. "je me promène"). Also provide 3-5 synonyms and 1-2 confusing words.`
+            : `Do NOT include conjugations, synonyms, or confusing words in this response.`;
           // Single word — use json_schema so special chars in conjugations never break JSON parsing
           messages = [
             { role: "system", content: "You are a precise French-English dictionary. Always set the \"type\" field to exactly the string \"word\". Return only valid JSON matching the schema exactly." },
-            { role: "user", content: `Look up the French word: "${input.term}". The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) The "word" field MUST always be the canonical base form (infinitive for verbs, masculine singular for adjectives/nouns) — NEVER a conjugated, gendered, or plural form. For example: if the user types "allées" return "aller"; if they type "belle" return "beau"; if they type "allé" return "aller". (3) If the searched term differs from the base form, set isConjugated to true and explain the transformation in conjugationInfo and formExplanation. Provide a complete dictionary entry including all conjugation tenses (present, imparfait, passeCompose, futurSimple, conditionnel, subjonctif) each as an array of exactly 6 conjugated forms (je/tu/il-elle/nous/vous/ils-elles). For reflexive verbs like se promener, include the reflexive pronoun in each conjugated form (e.g. "je me promène").
+            { role: "user", content: `Look up the French word: "${input.term}". The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) The "word" field MUST always be the canonical base form (infinitive for verbs, masculine singular for adjectives/nouns) — NEVER a conjugated, gendered, or plural form. For example: if the user types "allées" return "aller"; if they type "belle" return "beau"; if they type "allé" return "aller". (3) If the searched term differs from the base form, set isConjugated to true and explain the transformation in conjugationInfo and formExplanation.
 
 REFLEXIVE FIELDS (for verbs): set "isReflexive" true only if the base form is pronominal (has "se"/"s'", e.g. se souvenir). Set "hasReflexiveForm" true if the verb is normally non-reflexive but also has a common pronominal use (e.g. "laver" → "se laver", "appeler" → "s'appeler"). When either is true, fill "reflexiveForm" (e.g. "se laver") and "nonReflexiveForm" (e.g. "laver"), set "reflexiveType" (e.g. "reflexive", "reciprocal", "idiomatic"), and in "reflexiveExplanation" explain in English what the reflexive form means and how it differs from the plain verb. If the word is not a verb or has no reflexive use, set isReflexive and hasReflexiveForm to false and leave those string fields empty.
 
 GOVERNED PREPOSITION (for verbs): set "governedPreposition" to the preposition the verb normally requires before its complement — "à" (e.g. jouer à, penser à, téléphoner à, réussir à), "de" (e.g. se souvenir de, parler de, avoir besoin de, décider de), or "" (empty) if it takes a direct object with no preposition (e.g. regarder, écouter, attendre) or isn't a verb. In "prepositionExplanation" briefly explain the pattern with a short example, especially when it differs from English (e.g. "attendre takes no preposition, unlike English 'wait FOR'"). Leave prepositionExplanation empty when governedPreposition is "".
 
-Provide 2 example sentences, 3-5 synonyms, and 1-2 confusing words. If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.` },
+Provide 2 example sentences. ${detailsInstruction} If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.` },
           ];
+          const wordProps: Record<string, unknown> = {
+            type: { type: "string", enum: ["word"] },
+            found: { type: "boolean" },
+            word: { type: "string" },
+            isConjugated: { type: "boolean" },
+            conjugationInfo: { type: "string" },
+            baseForm: { type: "string" },
+            formExplanation: { type: "string" },
+            translation: { type: "string" },
+            pronunciation: { type: "string" },
+            wordType: { type: "string" },
+            isReflexive: { type: "boolean" },
+            reflexiveType: { type: "string" },
+            reflexiveExplanation: { type: "string" },
+            hasReflexiveForm: { type: "boolean" },
+            governedPreposition: { type: "string", enum: ["à", "de", ""] },
+            prepositionExplanation: { type: "string" },
+            reflexiveForm: { type: "string" },
+            nonReflexiveForm: { type: "string" },
+            grammar: { type: "string" },
+            examples: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { fr: { type: "string" }, en: { type: "string" } },
+                required: ["fr", "en"],
+                additionalProperties: false,
+              },
+            },
+          };
+          const wordRequired = [
+            "type", "found", "word", "isConjugated", "conjugationInfo", "baseForm",
+            "formExplanation", "translation", "pronunciation", "wordType",
+            "isReflexive", "reflexiveType", "reflexiveExplanation", "hasReflexiveForm",
+            "governedPreposition", "prepositionExplanation", "reflexiveForm", "nonReflexiveForm",
+            "grammar", "examples",
+          ];
+          if (wantDetails) {
+            Object.assign(wordProps, DETAILS_SCHEMA_PROPS);
+            wordRequired.push("conjugations", "synonyms", "confusingWords");
+          }
           responseFormat = {
             type: "json_schema",
             json_schema: {
               name: "word_result",
               strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  type: { type: "string", enum: ["word"] },
-                  found: { type: "boolean" },
-                  word: { type: "string" },
-                  isConjugated: { type: "boolean" },
-                  conjugationInfo: { type: "string" },
-                  baseForm: { type: "string" },
-                  formExplanation: { type: "string" },
-                  translation: { type: "string" },
-                  pronunciation: { type: "string" },
-                  wordType: { type: "string" },
-                  isReflexive: { type: "boolean" },
-                  reflexiveType: { type: "string" },
-                  reflexiveExplanation: { type: "string" },
-                  hasReflexiveForm: { type: "boolean" },
-                  governedPreposition: { type: "string", enum: ["à", "de", ""] },
-                  prepositionExplanation: { type: "string" },
-                  reflexiveForm: { type: "string" },
-                  nonReflexiveForm: { type: "string" },
-                  grammar: { type: "string" },
-                  examples: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: { fr: { type: "string" }, en: { type: "string" } },
-                      required: ["fr", "en"],
-                      additionalProperties: false,
-                    },
-                  },
-                  conjugations: {
-                    type: "object",
-                    properties: {
-                      present:      { type: "array", items: { type: "string" } },
-                      imparfait:    { type: "array", items: { type: "string" } },
-                      passeCompose: { type: "array", items: { type: "string" } },
-                      futurSimple:  { type: "array", items: { type: "string" } },
-                      conditionnel: { type: "array", items: { type: "string" } },
-                      subjonctif:   { type: "array", items: { type: "string" } },
-                    },
-                    required: ["present", "imparfait", "passeCompose", "futurSimple", "conditionnel", "subjonctif"],
-                    additionalProperties: false,
-                  },
-                  synonyms: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: { word: { type: "string" }, meaning: { type: "string" } },
-                      required: ["word", "meaning"],
-                      additionalProperties: false,
-                    },
-                  },
-                  confusingWords: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: { word: { type: "string" }, meaning: { type: "string" }, difference: { type: "string" } },
-                      required: ["word", "meaning", "difference"],
-                      additionalProperties: false,
-                    },
-                  },
-                },
-                required: [
-                  "type", "found", "word", "isConjugated", "conjugationInfo", "baseForm",
-                  "formExplanation", "translation", "pronunciation", "wordType",
-                  "isReflexive", "reflexiveType", "reflexiveExplanation", "hasReflexiveForm",
-                  "governedPreposition", "prepositionExplanation", "reflexiveForm", "nonReflexiveForm",
-                  "grammar", "examples", "conjugations", "synonyms", "confusingWords",
-                ],
-                additionalProperties: false,
-              },
+              schema: { type: "object", properties: wordProps, required: wordRequired, additionalProperties: false },
             },
           };
         }
@@ -475,6 +484,52 @@ Provide 2 example sentences, 3-5 synonyms, and 1-2 confusing words. If the input
         // (e.g. "dictionaryEntry", "word_result") instead of the expected values.
         if (result.type !== "word" && result.type !== "phrase" && result.type !== "question" && result.type !== "error") {
           result.type = type; // fall back to the detected input type
+        }
+        await setCache(key, result);
+        return result;
+      }),
+
+    // The "heavy" half of a word entry (conjugations / synonyms / confusing
+    // words), fetched in the background after a quick search so the folded
+    // sections fill in without blocking the first paint.
+    searchDetails: protectedProcedure
+      .input(z.object({ word: z.string().min(1).max(120) }))
+      .mutation(async ({ input }) => {
+        const key = "details::" + input.word.toLowerCase().trim();
+        const cached = await getCached(key);
+        if (cached) return cached;
+
+        const response = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a precise French-English dictionary. Return only valid JSON matching the schema exactly." },
+            { role: "user", content: `For the French word "${input.word}" (already the canonical base form), return ONLY: all conjugation tenses (present, imparfait, passeCompose, futurSimple, conditionnel, subjonctif), each an array of exactly 6 forms (je/tu/il-elle/nous/vous/ils-elles) — for reflexive verbs include the reflexive pronoun in each form (e.g. "je me promène"), and if it is NOT a verb leave every tense array empty; plus 3-5 synonyms and 1-2 confusing words. Return proper French WITH accents.` },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "word_details",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: { ...DETAILS_SCHEMA_PROPS },
+                required: ["conjugations", "synonyms", "confusingWords"],
+                additionalProperties: false,
+              },
+            },
+          } as any,
+        });
+
+        const rawContent = response.choices[0].message.content ?? "{}";
+        const raw = typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent);
+        let result: Record<string, unknown>;
+        try {
+          result = JSON.parse(raw);
+        } catch {
+          try {
+            result = JSON.parse(raw.trim().replace(/^```json\n?|```\n?$/g, ""));
+          } catch {
+            result = { conjugations: { present: [], imparfait: [], passeCompose: [], futurSimple: [], conditionnel: [], subjonctif: [] }, synonyms: [], confusingWords: [] };
+          }
         }
         await setCache(key, result);
         return result;

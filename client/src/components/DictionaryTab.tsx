@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
-import { DictResult, DictWordResult, DictPhraseResult, DictQuestionResult } from "@/types";
+import { DictResult, DictWordResult, DictPhraseResult, DictQuestionResult, DictWordDetails } from "@/types";
 import {
   Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp,
   MessageCircle, Send, Sparkles, RefreshCw, ArrowLeftRight,
@@ -44,6 +44,7 @@ function WordResult({
   onRemove,
   isSelected,
   onSelect,
+  detailsLoading,
   speak,
   pronounceState,
   activeText,
@@ -54,6 +55,7 @@ function WordResult({
   onRemove?: () => void;
   isSelected?: boolean;
   onSelect?: () => void;
+  detailsLoading?: boolean;
 } & PronounceProps) {
   const [showConjugations, setShowConjugations] = useState(false);
   const [showSynonyms, setShowSynonyms] = useState(false);
@@ -252,6 +254,13 @@ function WordResult({
           </div>
         )}
       </div>
+
+      {/* Details (conjugations/synonyms/confusing) load quietly after essentials */}
+      {detailsLoading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground px-1" onClick={(e) => e.stopPropagation()}>
+          <Loader2 className="w-3 h-3 animate-spin" /> Loading conjugations & synonyms…
+        </div>
+      )}
 
       {/* Conjugations */}
       {result.conjugations && result.wordType?.toLowerCase().includes("verb") && (
@@ -717,6 +726,10 @@ export default function DictionaryTab() {
     onSuccess: (data) => setSuggestions(data.suggestions),
   });
 
+  // Background-loaded heavy fields: which word is currently fetching details.
+  const [detailsWord, setDetailsWord] = useState<string | null>(null);
+  const detailsMutation = trpc.dictionary.searchDetails.useMutation();
+
   const searchMutation = trpc.dictionary.search.useMutation({
     onSuccess: (data) => {
       const result = data as DictResult;
@@ -729,6 +742,30 @@ export default function DictionaryTab() {
         setLastNotFoundTerm("");
       }
       setResults((prev) => [result, ...prev.slice(0, 9)]);
+
+      // For a found word, fetch the heavy fields in the background and merge them
+      // into the matching result once they arrive (essentials show immediately).
+      if (result.type === "word" && (result as DictWordResult).found) {
+        const w = (result as DictWordResult).word;
+        setDetailsWord(w);
+        detailsMutation.mutate(
+          { word: w },
+          {
+            onSuccess: (d) => {
+              const det = d as DictWordDetails;
+              setResults((prev) =>
+                prev.map((r) =>
+                  r.type === "word" && (r as DictWordResult).word === w
+                    ? { ...(r as DictWordResult), conjugations: det.conjugations, synonyms: det.synonyms, confusingWords: det.confusingWords }
+                    : r
+                )
+              );
+              setDetailsWord((cur) => (cur === w ? null : cur));
+            },
+            onError: () => setDetailsWord((cur) => (cur === w ? null : cur)),
+          }
+        );
+      }
     },
     onError: (err) => toast.error(err.message),
   });
@@ -749,14 +786,18 @@ export default function DictionaryTab() {
     onError: () => toast.error("Failed to remove"),
   });
 
-  // Auto-add word OR phrase to library when a new found result arrives
+  // Auto-add word OR phrase to library when a new found result arrives.
+  // `autoAddingRef` guards against a duplicate add when the background details
+  // merge re-renders results[0] before addMutation's onSuccess sets addedMap.
+  const autoAddingRef = useRef<string>("");
   useEffect(() => {
     if (results.length === 0) return;
     const latest = results[0];
 
     if (latest.type === "word" && (latest as DictWordResult).found) {
       const wr = latest as DictWordResult;
-      if (addedMap[0] && addedMap[0].term === wr.word) return;
+      if ((addedMap[0] && addedMap[0].term === wr.word) || autoAddingRef.current === wr.word) return;
+      autoAddingRef.current = wr.word;
       addMutation.mutate(
         { term: wr.word, translation: wr.translation, entryKind: classifyKind(wr.word) },
         {
@@ -792,7 +833,7 @@ export default function DictionaryTab() {
       setSelectedIdx(null);
       setAddedMap({});
       if (!history.includes(term)) setHistory((prev) => [term, ...prev.slice(0, 19)]);
-      searchMutation.mutate({ term });
+      searchMutation.mutate({ term, parts: "quick" });
     },
     [searchTerm, history, searchMutation]
   );
@@ -975,6 +1016,7 @@ export default function DictionaryTab() {
                     onRemove={() => handleRemove(i)}
                     isSelected={selectedIdx === i}
                     onSelect={() => setSelectedIdx(selectedIdx === i ? null : i)}
+                    detailsLoading={detailsWord === (result as DictWordResult).word}
                     speak={speak}
                     pronounceState={pronounceState}
                     activeText={activeText}
