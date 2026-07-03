@@ -196,6 +196,15 @@ function isTv5Host(u: URL): boolean {
   return u.hostname === "apprendre.tv5monde.com" || u.hostname.endsWith(".tv5monde.com");
 }
 
+// TV5Monde returns 403 to non-browser User-Agents (e.g. Node's default), so we
+// send browser-like headers on every request to their site.
+const TV5_HEADERS: Record<string, string> = {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+};
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // OpenAI transcription limit
 
 /** Transcribe raw audio bytes as French via OpenAI (gpt-4o-transcribe). */
@@ -230,7 +239,7 @@ async function fetchAudioBytes(url: string): Promise<{ bytes: Buffer; mimeType: 
   if (parsed.protocol !== "https:" || !isTv5Host(parsed)) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Only https audio URLs on tv5monde.com are allowed. For other sources, upload the file." });
   }
-  const resp = await fetch(parsed.toString(), { redirect: "follow" });
+  const resp = await fetch(parsed.toString(), { redirect: "follow", headers: TV5_HEADERS });
   if (!resp.ok) throw new TRPCError({ code: "BAD_REQUEST", message: `Could not fetch the audio (HTTP ${resp.status}).` });
   const mimeType = resp.headers.get("content-type") ?? "audio/mpeg";
   const buf = Buffer.from(await resp.arrayBuffer());
@@ -1760,9 +1769,10 @@ The user is asking about this specific word/phrase. Answer in the context of thi
           const frameUrl = `https://apprendre.tv5monde.com/fr/tcf/entrainement-frame?question=${q}&tcf_lot_id=${lotId}&competence=`;
           let html = "";
           try {
-            const r = await fetch(frameUrl, { redirect: "follow" });
+            const r = await fetch(frameUrl, { redirect: "follow", headers: TV5_HEADERS });
             if (r.ok) html = await r.text();
           } catch { /* skip */ }
+          await sleep(150); // be polite — avoid tripping TV5Monde's rate limiter
           // The audio path lives in a JSON blob with escaped slashes (\/), so
           // unescape before matching, then build the canonical file URL.
           const unescaped = html.replace(/\\\//g, "/");

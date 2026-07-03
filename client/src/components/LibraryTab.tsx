@@ -209,6 +209,10 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
   const [filterStarred, setFilterStarred] = useState(false);
   // Track which groups are collapsed; default: all open
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Inline word editing.
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editTerm, setEditTerm] = useState("");
+  const [editTranslation, setEditTranslation] = useState("");
   const utils = trpc.useUtils();
 
   const { data: words = [], isLoading } = trpc.vocab.list.useQuery();
@@ -216,6 +220,24 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
   const deleteMutation = trpc.vocab.delete.useMutation({
     onError: () => toast.error("Failed to delete"),
   });
+
+  const updateMutation = trpc.vocab.update.useMutation({
+    onSuccess: () => utils.vocab.list.invalidate(),
+    onError: () => toast.error("Failed to save changes"),
+  });
+
+  const startEdit = (w: { id: number; term: string; translation: string }) => {
+    setEditId(w.id);
+    setEditTerm(w.term);
+    setEditTranslation(w.translation);
+  };
+  const cancelEdit = () => setEditId(null);
+  const saveEdit = async (id: number) => {
+    const term = editTerm.trim(), translation = editTranslation.trim();
+    if (!term || !translation) { toast.error("Both fields are required"); return; }
+    await updateMutation.mutateAsync({ id, term, translation });
+    setEditId(null);
+  };
 
   const starMutation = trpc.vocab.toggleStar.useMutation({
     onMutate: async ({ id }) => {
@@ -493,16 +515,36 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                           )}>
                             {w.entryKind === "phrase" ? "📝" : "📖"}
                           </span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground truncate">{w.term}</p>
-                            <p className="text-xs text-muted-foreground truncate">{w.translation}</p>
-                            {w.groupLabel && (
-                              <p className="text-xs text-blue-400/80 truncate mt-0.5">🏷 {w.groupLabel}</p>
-                            )}
-                            {w.lessonSource && (
-                              <p className="text-xs text-primary/70 truncate mt-0.5">📌 {w.lessonSource}</p>
-                            )}
-                          </div>
+                          {editId === w.id ? (
+                            <div className="flex-1 min-w-0 flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                value={editTerm}
+                                onChange={(e) => setEditTerm(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(w.id); if (e.key === "Escape") cancelEdit(); }}
+                                placeholder="French"
+                                autoFocus
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-primary/50 bg-card text-sm font-semibold text-foreground focus:outline-none focus:border-primary"
+                              />
+                              <input
+                                value={editTranslation}
+                                onChange={(e) => setEditTranslation(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(w.id); if (e.key === "Escape") cancelEdit(); }}
+                                placeholder="English meaning"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground focus:outline-none focus:border-primary"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-foreground truncate">{w.term}</p>
+                              <p className="text-xs text-muted-foreground truncate">{w.translation}</p>
+                              {w.groupLabel && (
+                                <p className="text-xs text-blue-400/80 truncate mt-0.5">🏷 {w.groupLabel}</p>
+                              )}
+                              {w.lessonSource && (
+                                <p className="text-xs text-primary/70 truncate mt-0.5">📌 {w.lessonSource}</p>
+                              )}
+                            </div>
+                          )}
                           {/* SM-2 status badge */}
                           {w.sm2Status && w.sm2Status !== "new" && (
                             <span className={cn(
@@ -520,26 +562,53 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                               due
                             </span>
                           )}
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <button
-                              onClick={() => starMutation.mutate({ id: w.id })}
-                              className={cn(
-                                "p-1.5 rounded-lg transition-colors",
-                                w.starred
-                                  ? "text-accent"
-                                  : "text-muted-foreground hover:text-accent sm:opacity-0 sm:group-hover:opacity-100"
-                              )}
-                            >
-                              <Star className={cn("w-3.5 h-3.5", w.starred && "fill-current")} />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(w.id)}
-                              className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
-                              title="Delete word"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          {editId === w.id ? (
+                            <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => saveEdit(w.id)}
+                                disabled={updateMutation.isPending}
+                                className="p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                                title="Save"
+                              >
+                                {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                onClick={cancelEdit}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                title="Cancel"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <button
+                                onClick={() => startEdit(w)}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
+                                title="Edit word"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => starMutation.mutate({ id: w.id })}
+                                className={cn(
+                                  "p-1.5 rounded-lg transition-colors",
+                                  w.starred
+                                    ? "text-accent"
+                                    : "text-muted-foreground hover:text-accent sm:opacity-0 sm:group-hover:opacity-100"
+                                )}
+                              >
+                                <Star className={cn("w-3.5 h-3.5", w.starred && "fill-current")} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(w.id)}
+                                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
+                                title="Delete word"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
