@@ -190,6 +190,54 @@ function resolveImportDateKeys<T extends ExtractedImportItem>(items: T[]): (T & 
 /** Verb-like infinitive endings, used to pick verb candidates out of vocab. */
 const VERB_ENDING = /(?:er|ir|re|oir)$/i;
 
+// ─── Listening Lab helpers ────────────────────────────────────────────────────
+/** SSRF guard: only fetch audio/pages from TV5Monde. */
+function isTv5Host(u: URL): boolean {
+  return u.hostname === "apprendre.tv5monde.com" || u.hostname.endsWith(".tv5monde.com");
+}
+
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // OpenAI transcription limit
+
+/** Transcribe raw audio bytes as French via OpenAI (gpt-4o-transcribe). */
+async function openaiTranscribeBytes(bytes: Buffer, filename: string, mimeType: string): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "OpenAI not configured" });
+  if (bytes.length > MAX_AUDIO_BYTES) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Audio is too large (max 25 MB). Try a single clip." });
+  }
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(bytes)], { type: mimeType || "audio/mpeg" }), filename);
+  form.append("model", "gpt-4o-transcribe");
+  form.append("language", "fr");
+  form.append("response_format", "json");
+  const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Transcription failed: ${err.slice(0, 200)}` });
+  }
+  const data = (await resp.json()) as { text?: string };
+  return (data.text ?? "").trim();
+}
+
+/** Fetch a public audio URL (TV5Monde only) and return its bytes + mime. */
+async function fetchAudioBytes(url: string): Promise<{ bytes: Buffer; mimeType: string }> {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid URL" }); }
+  if (parsed.protocol !== "https:" || !isTv5Host(parsed)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Only https audio URLs on tv5monde.com are allowed. For other sources, upload the file." });
+  }
+  const resp = await fetch(parsed.toString(), { redirect: "follow" });
+  if (!resp.ok) throw new TRPCError({ code: "BAD_REQUEST", message: `Could not fetch the audio (HTTP ${resp.status}).` });
+  const mimeType = resp.headers.get("content-type") ?? "audio/mpeg";
+  const buf = Buffer.from(await resp.arrayBuffer());
+  if (buf.length > MAX_AUDIO_BYTES) throw new TRPCError({ code: "BAD_REQUEST", message: "Audio is too large (max 25 MB)." });
+  return { bytes: buf, mimeType };
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -1662,6 +1710,101 @@ The user is asking about this specific word/phrase. Answer in the context of thi
 
       return { docId, url: `https://docs.google.com/document/d/${docId}/edit` };
     }),
+  }),
+
+  // ─── Listening Lab (transcribe TCF / uploaded audio) ──────────────────────────
+  listening: router({
+    /** Transcribe a public TV5Monde audio URL (French). Cached by URL. */
+    transcribeUrl: protectedProcedure
+      .input(z.object({ url: z.string().url().max(600) }))
+      .mutation(async ({ input }) => {
+        const cacheKey = "listen::" + input.url;
+        const cached = await getCached(cacheKey);
+        if (cached) return cached as { transcript: string };
+        const { bytes, mimeType } = await fetchAudioBytes(input.url);
+        const filename = (() => { try { return new URL(input.url).pathname.split("/").pop() || "audio.mp3"; } catch { return "audio.mp3"; } })();
+        const transcript = await openaiTranscribeBytes(bytes, filename, mimeType);
+        const result = { transcript };
+        if (transcript) await setCache(cacheKey, result);
+        return result;
+      }),
+
+    /** Transcribe an uploaded audio file (base64), French. */
+    transcribeUpload: protectedProcedure
+      .input(z.object({ base64: z.string().min(1), mimeType: z.string().default("audio/mpeg"), filename: z.string().max(200).default("upload.mp3") }))
+      .mutation(async ({ input }) => {
+        const bytes = Buffer.from(input.base64, "base64");
+        if (!bytes.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Empty audio file." });
+        const transcript = await openaiTranscribeBytes(bytes, input.filename, input.mimeType);
+        return { transcript };
+      }),
+
+    /**
+     * Discover the listening clips in a TCF training test by its URL. Walks the
+     * per-question frame pages and pulls out each embedded .mp3. Best-effort:
+     * returns [] if the site markup changes (UI then falls back to upload / URL).
+     */
+    tcfClips: protectedProcedure
+      .input(z.object({ url: z.string().url().max(600) }))
+      .mutation(async ({ input }) => {
+        let parsed: URL;
+        try { parsed = new URL(input.url); } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid URL" }); }
+        if (!isTv5Host(parsed)) throw new TRPCError({ code: "BAD_REQUEST", message: "That doesn't look like a TV5Monde TCF test URL." });
+        const lotId = parsed.searchParams.get("tcf_lot_id");
+        if (!lotId || !/^\d+$/.test(lotId)) throw new TRPCError({ code: "BAD_REQUEST", message: "Couldn't find tcf_lot_id in that URL." });
+
+        const clips: { index: number; audioUrl: string }[] = [];
+        const seen = new Set<string>();
+        let misses = 0;
+        for (let q = 1; q <= 30 && misses < 4; q++) {
+          const frameUrl = `https://apprendre.tv5monde.com/fr/tcf/entrainement-frame?question=${q}&tcf_lot_id=${lotId}&competence=`;
+          let html = "";
+          try {
+            const r = await fetch(frameUrl, { redirect: "follow" });
+            if (r.ok) html = await r.text();
+          } catch { /* skip */ }
+          // The audio path lives in a JSON blob with escaped slashes (\/), so
+          // unescape before matching, then build the canonical file URL.
+          const unescaped = html.replace(/\\\//g, "/");
+          const m = unescaped.match(/tcf_question\/([\w.-]+\.mp3)/i);
+          if (m) {
+            const audioUrl = `https://apprendre.tv5monde.com/sites/apprendre.tv5monde.com/files/tcf_question/${m[1]}`;
+            if (!seen.has(audioUrl)) { seen.add(audioUrl); clips.push({ index: q, audioUrl }); misses = 0; }
+          } else {
+            misses++;
+          }
+        }
+        return { clips };
+      }),
+
+    /** Translate a transcript to English and pull out B1 vocabulary. */
+    analyze: protectedProcedure
+      .input(z.object({ transcript: z.string().min(1).max(8000) }))
+      .mutation(async ({ input }) => {
+        const resp = await invokeLLM({
+          messages: [{
+            role: "user",
+            content: `Below is the transcript of a French listening exercise (TCF, ~B1 level). Return ONLY JSON:
+{"translation":"a fluent English translation of the whole transcript","vocab":[{"term":"French word or expression in its base/dictionary form","translation":"concise English meaning"}]}
+Choose 6-15 vocabulary items that a B1 learner is most likely NOT to know (useful words, idioms, connectors) — base forms, no duplicates.
+
+Transcript:
+${input.transcript}`,
+          }],
+          response_format: { type: "json_object" } as any,
+        });
+        const raw = resp.choices[0].message.content ?? "{}";
+        const str = typeof raw === "string" ? raw : JSON.stringify(raw);
+        try {
+          const parsed = JSON.parse(str) as { translation?: string; vocab?: { term?: string; translation?: string }[] };
+          const vocab = (parsed.vocab ?? [])
+            .map((v) => ({ term: (v.term ?? "").trim(), translation: (v.translation ?? "").trim() }))
+            .filter((v) => v.term && v.translation);
+          return { translation: (parsed.translation ?? "").trim(), vocab };
+        } catch {
+          return { translation: "", vocab: [] as { term: string; translation: string }[] };
+        }
+      }),
   }),
 });
 
