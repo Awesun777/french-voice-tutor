@@ -212,13 +212,16 @@ const normalizeToolChoice = (
 /**
  * Pick the LLM backend based on which key is configured.
  *
+ * - DeepSeek (DEEPSEEK_API_KEY): preferred provider on self-hosted (Railway).
+ *   deepseek-v4-flash has ample quota, so it keeps grading/dictionary/etc.
+ *   working when the OpenAI account hits its daily request cap. It's a
+ *   reasoning model — the reasoning chain counts against max_tokens, so it
+ *   needs the full 32k budget or the JSON answer truncates.
  * - Manus platform: BUILT_IN_FORGE_API_KEY is set → use the Forge gateway
  *   (gemini-2.5-flash) exactly as before.
- * - Self-hosted (e.g. Railway): Forge isn't available, so fall back to calling
- *   OpenAI directly with OPENAI_API_KEY — the same key the voice agent uses.
- *
- * The Forge-only "thinking" param and 32k token budget are dropped for OpenAI,
- * whose chat models reject unknown params and cap output lower.
+ * - OpenAI (OPENAI_API_KEY): last-resort fallback — the same key the voice
+ *   agent uses. Its chat models reject the Forge "thinking" param and cap
+ *   output lower, so both are dropped here.
  */
 function resolveProvider(): {
   url: string;
@@ -227,6 +230,9 @@ function resolveProvider(): {
   maxTokens: number;
   thinking?: Record<string, unknown>;
 } {
+  if (ENV.deepseekApiKey) {
+    return { url: "https://api.deepseek.com/chat/completions", key: ENV.deepseekApiKey, model: "deepseek-v4-flash", maxTokens: 32768 };
+  }
   if (ENV.forgeApiKey) {
     const url = ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
       ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
@@ -237,7 +243,7 @@ function resolveProvider(): {
     return { url: "https://api.openai.com/v1/chat/completions", key: ENV.openAiApiKey, model: "gpt-4o-mini", maxTokens: 16384 };
   }
   throw new Error(
-    "No LLM provider configured: set OPENAI_API_KEY (self-hosted) or BUILT_IN_FORGE_API_KEY (Manus)."
+    "No LLM provider configured: set DEEPSEEK_API_KEY / OPENAI_API_KEY (self-hosted) or BUILT_IN_FORGE_API_KEY (Manus)."
   );
 }
 
