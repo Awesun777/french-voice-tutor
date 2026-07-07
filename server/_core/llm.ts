@@ -209,21 +209,8 @@ const normalizeToolChoice = (
   return toolChoice;
 };
 
-/**
- * Pick the LLM backend based on which key is configured.
- *
- * - DeepSeek (DEEPSEEK_API_KEY): preferred provider on self-hosted (Railway).
- *   deepseek-v4-flash has ample quota, so it keeps grading/dictionary/etc.
- *   working when the OpenAI account hits its daily request cap. It's a
- *   reasoning model — the reasoning chain counts against max_tokens, so it
- *   needs the full 32k budget or the JSON answer truncates.
- * - Manus platform: BUILT_IN_FORGE_API_KEY is set → use the Forge gateway
- *   (gemini-2.5-flash) exactly as before.
- * - OpenAI (OPENAI_API_KEY): last-resort fallback — the same key the voice
- *   agent uses. Its chat models reject the Forge "thinking" param and cap
- *   output lower, so both are dropped here.
- */
-function resolveProvider(): {
+type ResolvedProvider = {
+  name: string;
   url: string;
   key: string;
   model: string;
@@ -234,22 +221,42 @@ function resolveProvider(): {
   // ask for json_schema get downgraded to json_object with the schema inlined
   // into the prompt when this is false.
   supportsJsonSchema: boolean;
-} {
+};
+
+/**
+ * Build the ordered list of LLM backends to try, based on which keys are
+ * configured. invokeLLM attempts them in order and falls back to the next one
+ * whenever a provider errors out (429 daily cap, 5xx, network failure, …).
+ *
+ * Priority:
+ * 1. OpenAI (OPENAI_API_KEY) — gpt-4o-mini. Fast and cheap; primary provider.
+ *    Rejects the Forge "thinking" param and caps output lower, so both differ.
+ * 2. DeepSeek (DEEPSEEK_API_KEY) — deepseek-v4-flash. The fallback that keeps
+ *    the app working when OpenAI hits its daily request cap. It's a reasoning
+ *    model, so the reasoning chain counts against max_tokens — it needs the
+ *    full 32k budget or the JSON answer truncates. Doesn't support json_schema.
+ * 3. Forge (BUILT_IN_FORGE_API_KEY) — gemini-2.5-flash, the Manus gateway.
+ */
+function resolveProviders(): ResolvedProvider[] {
+  const providers: ResolvedProvider[] = [];
+  if (ENV.openAiApiKey) {
+    providers.push({ name: "openai", url: "https://api.openai.com/v1/chat/completions", key: ENV.openAiApiKey, model: "gpt-4o-mini", maxTokens: 16384, supportsJsonSchema: true });
+  }
   if (ENV.deepseekApiKey) {
-    return { url: "https://api.deepseek.com/chat/completions", key: ENV.deepseekApiKey, model: "deepseek-v4-flash", maxTokens: 32768, supportsJsonSchema: false };
+    providers.push({ name: "deepseek", url: "https://api.deepseek.com/chat/completions", key: ENV.deepseekApiKey, model: "deepseek-v4-flash", maxTokens: 32768, supportsJsonSchema: false });
   }
   if (ENV.forgeApiKey) {
     const url = ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
       ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
       : "https://forge.manus.im/v1/chat/completions";
-    return { url, key: ENV.forgeApiKey, model: "gemini-2.5-flash", maxTokens: 32768, thinking: { budget_tokens: 128 }, supportsJsonSchema: true };
+    providers.push({ name: "forge", url, key: ENV.forgeApiKey, model: "gemini-2.5-flash", maxTokens: 32768, thinking: { budget_tokens: 128 }, supportsJsonSchema: true });
   }
-  if (ENV.openAiApiKey) {
-    return { url: "https://api.openai.com/v1/chat/completions", key: ENV.openAiApiKey, model: "gpt-4o-mini", maxTokens: 16384, supportsJsonSchema: true };
+  if (providers.length === 0) {
+    throw new Error(
+      "No LLM provider configured: set OPENAI_API_KEY / DEEPSEEK_API_KEY (self-hosted) or BUILT_IN_FORGE_API_KEY (Manus)."
+    );
   }
-  throw new Error(
-    "No LLM provider configured: set DEEPSEEK_API_KEY / OPENAI_API_KEY (self-hosted) or BUILT_IN_FORGE_API_KEY (Manus)."
-  );
+  return providers;
 }
 
 const normalizeResponseFormat = ({
@@ -297,9 +304,12 @@ const normalizeResponseFormat = ({
   };
 };
 
-export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  const provider = resolveProvider();
-
+/**
+ * Build the provider-specific request body. Kept per-provider (not shared)
+ * because response_format and the max_tokens cap differ between backends — e.g.
+ * DeepSeek needs json_schema downgraded to json_object, OpenAI does not.
+ */
+function buildPayload(provider: ResolvedProvider, params: InvokeParams): Record<string, unknown> {
   const {
     messages,
     tools,
@@ -368,21 +378,60 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     }
   }
 
+  return payload;
+}
+
+/** Fire a single provider request; throws (with the provider name) on any non-OK response. */
+async function callProvider(provider: ResolvedProvider, params: InvokeParams): Promise<InvokeResult> {
   const response = await fetch(provider.url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${provider.key}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(buildPayload(provider, params)),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(
-      `LLM invoke failed: ${response.status} ${response.statusText} – ${errorText}`
+      `${provider.name} invoke failed: ${response.status} ${response.statusText} – ${errorText}`
     );
   }
 
   return (await response.json()) as InvokeResult;
+}
+
+/**
+ * Invoke the LLM, trying each configured provider in priority order and
+ * falling back to the next whenever one errors out (daily-cap 429, 5xx,
+ * network failure, etc.). Returns the first successful response; throws only
+ * when every provider has failed.
+ */
+export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
+  const providers = resolveProviders();
+  let lastError: unknown;
+
+  for (let i = 0; i < providers.length; i++) {
+    const provider = providers[i];
+    try {
+      return await callProvider(provider, params);
+    } catch (err) {
+      lastError = err;
+      const next = providers[i + 1];
+      if (next) {
+        console.warn(
+          `[LLM] ${provider.name} failed, falling back to ${next.name}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    }
+  }
+
+  throw new Error(
+    `All LLM providers failed. Last error: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`
+  );
 }
