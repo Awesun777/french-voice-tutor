@@ -229,18 +229,23 @@ function resolveProvider(): {
   model: string;
   maxTokens: number;
   thinking?: Record<string, unknown>;
+  // Strict `json_schema` response_format is an OpenAI/Gemini feature. DeepSeek
+  // rejects it ("This response_format type is unavailable now"), so callers that
+  // ask for json_schema get downgraded to json_object with the schema inlined
+  // into the prompt when this is false.
+  supportsJsonSchema: boolean;
 } {
   if (ENV.deepseekApiKey) {
-    return { url: "https://api.deepseek.com/chat/completions", key: ENV.deepseekApiKey, model: "deepseek-v4-flash", maxTokens: 32768 };
+    return { url: "https://api.deepseek.com/chat/completions", key: ENV.deepseekApiKey, model: "deepseek-v4-flash", maxTokens: 32768, supportsJsonSchema: false };
   }
   if (ENV.forgeApiKey) {
     const url = ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
       ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
       : "https://forge.manus.im/v1/chat/completions";
-    return { url, key: ENV.forgeApiKey, model: "gemini-2.5-flash", maxTokens: 32768, thinking: { budget_tokens: 128 } };
+    return { url, key: ENV.forgeApiKey, model: "gemini-2.5-flash", maxTokens: 32768, thinking: { budget_tokens: 128 }, supportsJsonSchema: true };
   }
   if (ENV.openAiApiKey) {
-    return { url: "https://api.openai.com/v1/chat/completions", key: ENV.openAiApiKey, model: "gpt-4o-mini", maxTokens: 16384 };
+    return { url: "https://api.openai.com/v1/chat/completions", key: ENV.openAiApiKey, model: "gpt-4o-mini", maxTokens: 16384, supportsJsonSchema: true };
   }
   throw new Error(
     "No LLM provider configured: set DEEPSEEK_API_KEY / OPENAI_API_KEY (self-hosted) or BUILT_IN_FORGE_API_KEY (Manus)."
@@ -340,7 +345,27 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   });
 
   if (normalizedResponseFormat) {
-    payload.response_format = normalizedResponseFormat;
+    if (
+      normalizedResponseFormat.type === "json_schema" &&
+      !provider.supportsJsonSchema
+    ) {
+      // Provider (e.g. DeepSeek) can't enforce a strict schema. Fall back to
+      // json_object mode — which still guarantees syntactically valid JSON —
+      // and inline the schema into the prompt so the model returns the exact
+      // shape the caller expects. json_object mode also requires the literal
+      // word "json" to appear in the messages, which the instruction below
+      // satisfies.
+      payload.response_format = { type: "json_object" };
+      (payload.messages as Array<Record<string, unknown>>).push({
+        role: "system",
+        content:
+          "Return ONLY a valid JSON object that conforms exactly to this JSON schema " +
+          "(identical field names and types, include every required field, no extra fields):\n" +
+          JSON.stringify(normalizedResponseFormat.json_schema.schema),
+      });
+    } else {
+      payload.response_format = normalizedResponseFormat;
+    }
   }
 
   const response = await fetch(provider.url, {
