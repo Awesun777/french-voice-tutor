@@ -1,10 +1,11 @@
 /**
  * ListeningTab ("Listening Lab") — turn a TCF listening clip into a study sheet.
  *
- * Two inputs:
+ * Three inputs:
  *  1. Paste a TV5Monde TCF test URL → the app discovers each listening clip and
  *     transcribes them on demand.
- *  2. Upload an audio file → transcribe directly.
+ *  2. Record from the mic (e.g. audio played out loud) → transcribe directly.
+ *  3. Upload an audio file → transcribe directly.
  *
  * Each clip gives: an audio player, the French transcript, and (on request) an
  * English translation + B1 vocabulary you can save to your library.
@@ -14,13 +15,13 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  Headphones, Link2, Upload, Loader2, Plus, Check, Languages, ListPlus,
+  Headphones, Link2, Upload, Loader2, Plus, Check, Languages, ListPlus, Mic, Square,
 } from "lucide-react";
 
 type Vocab = { term: string; translation: string };
 
 export default function ListeningTab() {
-  const [mode, setMode] = useState<"url" | "upload">("url");
+  const [mode, setMode] = useState<"url" | "record" | "upload">("url");
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
@@ -32,8 +33,8 @@ export default function ListeningTab() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          {([["url", "TCF test URL", Link2], ["upload", "Upload audio", Upload]] as const).map(([id, label, Icon]) => (
+        <div className="grid grid-cols-3 gap-2">
+          {([["url", "TCF test URL", Link2], ["record", "Record", Mic], ["upload", "Upload audio", Upload]] as const).map(([id, label, Icon]) => (
             <button
               key={id}
               onClick={() => setMode(id)}
@@ -47,7 +48,7 @@ export default function ListeningTab() {
           ))}
         </div>
 
-        {mode === "url" ? <UrlMode /> : <UploadMode />}
+        {mode === "url" ? <UrlMode /> : mode === "record" ? <RecordMode /> : <UploadMode />}
       </div>
     </div>
   );
@@ -142,6 +143,117 @@ function ClipCard({ index, audioUrl }: { index: number; audioUrl: string }) {
       </div>
       {/* Native player — plays the TV5Monde clip directly (no CORS needed for playback) */}
       <audio controls preload="none" src={audioUrl} className="w-full h-10" />
+      {transcript && <TranscriptPanel transcript={transcript} />}
+    </div>
+  );
+}
+
+// ─── Record mode ──────────────────────────────────────────────────────────────
+// Capture the mic (e.g. audio you play out loud from another device/speaker),
+// then transcribe it through the same endpoint the file upload uses.
+function RecordMode() {
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const transcribe = trpc.listening.transcribeUpload.useMutation();
+
+  // Pick a container the browser can actually record (Chrome→webm, Safari→mp4).
+  const pickMimeType = () => {
+    const prefs = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
+    if (typeof MediaRecorder === "undefined") return "";
+    return prefs.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  };
+
+  const finish = async () => {
+    const type = recorderRef.current?.mimeType || "audio/webm";
+    const blob = new Blob(chunksRef.current, { type });
+    if (!blob.size) { toast.error("No audio was captured — try again."); return; }
+    if (audioSrc) URL.revokeObjectURL(audioSrc);
+    setAudioSrc(URL.createObjectURL(blob));
+    const ext = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "mp4" : "webm";
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    try {
+      const { transcript } = await transcribe.mutateAsync({ base64, mimeType: type, filename: `recording.${ext}` });
+      setTranscript(transcript || "(no speech detected)");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Transcription failed");
+    }
+  };
+
+  const start = async () => {
+    setTranscript(null);
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      toast.error("Microphone access was blocked. Allow mic access in your browser and try again.");
+      return;
+    }
+    streamRef.current = stream;
+    const mimeType = pickMimeType();
+    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    chunksRef.current = [];
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    rec.onstop = () => void finish();
+    recorderRef.current = rec;
+    rec.start();
+    setRecording(true);
+    setElapsed(0);
+    timerRef.current = setInterval(() => setElapsed((s) => s + 1), 1000);
+  };
+
+  const stop = () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    recorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setRecording(false);
+  };
+
+  const mmss = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col items-center justify-center gap-3 py-8 rounded-2xl border-2 border-dashed border-border">
+        {!recording ? (
+          <button
+            onClick={start}
+            disabled={transcribe.isPending}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-semibold text-sm transition-colors"
+          >
+            {transcribe.isPending
+              ? <><Loader2 className="w-5 h-5 animate-spin" /> Transcribing…</>
+              : <><Mic className="w-5 h-5" /> Start recording</>}
+          </button>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 text-red-400 font-semibold text-sm">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" /> Recording {mmss}
+            </div>
+            <button
+              onClick={stop}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors"
+            >
+              <Square className="w-4 h-4" /> Stop &amp; transcribe
+            </button>
+          </>
+        )}
+        <p className="text-xs text-muted-foreground text-center max-w-xs">
+          Play the French audio out loud near your microphone, then stop — the recording is transcribed automatically.
+        </p>
+      </div>
+
+      {audioSrc && <audio controls src={audioSrc} className="w-full h-10" />}
       {transcript && <TranscriptPanel transcript={transcript} />}
     </div>
   );
