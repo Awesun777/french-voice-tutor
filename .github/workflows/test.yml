@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 20
+          # We install pnpm via corepack in the next step, so disable
+          # setup-node's auto pnpm cache (it runs too early and can't find pnpm).
+          package-manager-cache: false
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: pnpm test

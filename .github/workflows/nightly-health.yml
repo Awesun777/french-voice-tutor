@@ -29,6 +29,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 20
+          # corepack enable runs inside the step below, so disable the early
+          # auto pnpm cache (it can't find pnpm yet and would fail the job).
+          package-manager-cache: false
       - name: Run live API checks (skips if RAILWAY_TOKEN unset)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
