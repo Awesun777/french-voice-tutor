@@ -6,10 +6,10 @@ name: nightly-health
 on:
   workflow_dispatch: {} # manual "Run workflow" button for on-demand checks
   schedule:
-    # NOTE: cron is UTC. Placeholder ~= late evening US. Adjust to your
-    # real midnight once your timezone is confirmed. Off the top-of-hour
-    # on purpose (GitHub delays :00 scheduled runs).
-    - cron: "17 7 * * *"
+    # 00:12 EST (midnight Eastern, UTC-5). GitHub cron is fixed UTC and does
+    # NOT shift for DST, so during EDT (summer) this actually fires ~01:12
+    # local. Minute is off :00 on purpose (GitHub delays top-of-hour runs).
+    - cron: "12 5 * * *"
 
 jobs:
   # Catches the Railway-migration / crash class of outage. No secrets.
