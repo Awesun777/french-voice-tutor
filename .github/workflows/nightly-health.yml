@@ -1,0 +1,43 @@
+name: nightly-health
+
+# Unattended nightly check that romaintalk.com is actually working.
+# On failure, GitHub emails the repo owner. Two independent jobs so an
+# outage (site down) is distinguishable from an expired API key.
+on:
+  workflow_dispatch: {} # manual "Run workflow" button for on-demand checks
+  schedule:
+    # NOTE: cron is UTC. Placeholder ~= late evening US. Adjust to your
+    # real midnight once your timezone is confirmed. Off the top-of-hour
+    # on purpose (GitHub delays :00 scheduled runs).
+    - cron: "17 7 * * *"
+
+jobs:
+  # Catches the Railway-migration / crash class of outage. No secrets.
+  uptime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Site health endpoint returns 200
+        run: curl -fsS --max-time 20 https://romaintalk.com/api/health
+
+  # Catches expired/invalid DeepSeek & Gemini keys by running the live tier
+  # with Railway-injected secrets. Skips cleanly (green) until RAILWAY_TOKEN
+  # is configured, so it never emails a false alarm before setup is done.
+  live-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run live API checks (skips if RAILWAY_TOKEN unset)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::notice::RAILWAY_TOKEN not configured — skipping live API check."
+            exit 0
+          fi
+          corepack enable
+          pnpm install --frozen-lockfile
+          npm i -g @railway/cli
+          railway run --service french-voice-tutor -- pnpm exec vitest run --config vitest.live.config.ts

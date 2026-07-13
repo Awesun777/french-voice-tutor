@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, configDefaults } from "vitest/config";
 import path from "path";
 
 const templateRoot = path.resolve(import.meta.dirname);
@@ -15,5 +15,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
+    // Live-API tests (*.live.test.ts) hit real DeepSeek/Gemini endpoints and
+    // need Railway secrets. Excluded from the default run so `pnpm test` is
+    // always green locally; run them via `pnpm test:live` (railway run).
+    exclude: [...configDefaults.exclude, "**/*.live.test.ts"],
   },
 });
