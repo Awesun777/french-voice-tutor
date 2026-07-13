@@ -885,7 +885,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
   };
 
   const manualSave = () => {
-    toast(`To save a word, say "save that" or "ajoute ça" during the conversation.`);
+    toast(`To save a word, say "save the word" or "ajoute ça" during the conversation.`);
   };
 
   const isSessionLive = sessionState === "active" || sessionState === "paused";
@@ -955,7 +955,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
             <div>
               <h2 className="text-xl font-bold text-foreground mb-2">Talk to Romain</h2>
               <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
-                Your personal French tutor. Have a natural conversation in French, ask questions, and say <span className="text-primary font-medium">&ldquo;save that&rdquo;</span> to add any word or phrase to your library.
+                Your personal French tutor. Have a natural conversation in French, ask questions, and say <span className="text-primary font-medium">&ldquo;save the word&rdquo;</span> to add any word or phrase to your library.
               </p>
             </div>
 
@@ -1033,13 +1033,6 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
               )}
             </div>
 
-            <div className="bg-card border border-border rounded-xl p-4 text-left max-w-sm w-full space-y-2">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tips</p>
-              <p className="text-xs text-muted-foreground">• Speak naturally — Romain will match your B1 level</p>
-              <p className="text-xs text-muted-foreground">• Take your time — Romain won't interrupt you</p>
-              <p className="text-xs text-muted-foreground">• Say <span className="text-primary">&ldquo;save that&rdquo;</span> or <span className="text-primary">&ldquo;ajoute ça&rdquo;</span> to save a word</p>
-              <p className="text-xs text-muted-foreground">• End the session to get an AI summary</p>
-            </div>
             <button
               onClick={startSession}
               className="px-8 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl font-semibold text-base transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30"
@@ -1155,7 +1148,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                   title="Save last word to dictionary"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
-                  Say &ldquo;save that&rdquo; to save a word
+                  Say &ldquo;save the word&rdquo; to save a word
                 </button>
                 <div className="flex items-center gap-2 px-4 py-2 bg-primary/5 border border-primary/20 rounded-xl text-xs text-muted-foreground">
                   <MessageSquare className="w-3.5 h-3.5 text-primary flex-shrink-0" />

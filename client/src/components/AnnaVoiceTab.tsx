@@ -627,7 +627,7 @@ export function AnnaVoiceTab() {
   };
 
   const manualSave = () => {
-    toast(`To save a word, say "save that" or "ajoute ça" during the conversation.`);
+    toast(`To save a word, say "save the word" or "ajoute ça" during the conversation.`);
   };
 
   // Handle session state transition to "ending" triggered by onDisconnect
@@ -710,7 +710,7 @@ export function AnnaVoiceTab() {
               <h2 className="text-xl font-bold text-foreground mb-2">Talk to Anna</h2>
               <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
                 Your French tutor with a natural ElevenLabs voice. Have a conversation in French and say{" "}
-                <span className="text-pink-400 font-medium">&ldquo;save that&rdquo;</span> to add words to your library.
+                <span className="text-pink-400 font-medium">&ldquo;save the word&rdquo;</span> to add words to your library.
               </p>
             </div>
 
@@ -720,13 +720,6 @@ export function AnnaVoiceTab() {
               onChange={(s) => updateVoiceSettings(s)}
             />
 
-            <div className="bg-card border border-border rounded-xl p-4 text-left max-w-sm w-full space-y-2">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tips</p>
-              <p className="text-xs text-muted-foreground">• Speak naturally — Anna will match your B1 level</p>
-              <p className="text-xs text-muted-foreground">• Take your time — Anna won't interrupt you</p>
-              <p className="text-xs text-muted-foreground">• Say <span className="text-pink-400">&ldquo;save that&rdquo;</span> or <span className="text-pink-400">&ldquo;ajoute ça&rdquo;</span> to save a word</p>
-              <p className="text-xs text-muted-foreground">• Powered by ElevenLabs — natural, expressive voice</p>
-            </div>
             <button
               onClick={startSession}
               className="px-8 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-2xl font-semibold text-base transition-all shadow-lg shadow-pink-500/20 hover:shadow-pink-500/30"
@@ -829,7 +822,7 @@ export function AnnaVoiceTab() {
                   className="flex items-center gap-2 px-4 py-2 bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground rounded-xl text-xs font-medium transition-colors"
                 >
                   <BookmarkPlus className="w-3.5 h-3.5" />
-                  Say &ldquo;save that&rdquo; to save a word
+                  Say &ldquo;save the word&rdquo; to save a word
                 </button>
                 <div className="flex items-center gap-2 px-4 py-2 bg-pink-500/5 border border-pink-500/20 rounded-xl text-xs text-muted-foreground">
                   <MessageSquare className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
