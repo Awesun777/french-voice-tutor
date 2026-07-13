@@ -724,14 +724,42 @@ function SuggestionsBanner({
   );
 }
 
+// ─── Persisted search state ───────────────────────────────────────────────────
+// DictionaryTab unmounts when the user switches sidebar tabs (Home renders it as
+// `activeTab === "dictionary" && <DictionaryTab />`), which would otherwise wipe
+// the current search. Snapshot the working set to sessionStorage so returning to
+// the tab restores exactly what was there. Scoped to the browser-tab session so
+// results don't linger stale across days.
+const DICT_STATE_KEY = "dict-tab-state-v1";
+
+interface PersistedDictState {
+  searchTerm: string;
+  results: DictResult[];
+  history: string[];
+  suggestions: { term: string; translation: string; confidence: string }[];
+  lastNotFoundTerm: string;
+  selectedIdx: number | null;
+  addedMap: Record<number, { id: number; term: string }>;
+}
+
+function loadPersistedDictState(): Partial<PersistedDictState> {
+  try {
+    const raw = sessionStorage.getItem(DICT_STATE_KEY);
+    return raw ? (JSON.parse(raw) as Partial<PersistedDictState>) : {};
+  } catch {
+    return {};
+  }
+}
+
 // ─── Main DictionaryTab ───────────────────────────────────────────────────────
 export default function DictionaryTab() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [results, setResults] = useState<DictResult[]>([]);
-  const [history, setHistory] = useState<string[]>([]);
-  const [suggestions, setSuggestions] = useState<{ term: string; translation: string; confidence: string }[]>([]);
-  const [lastNotFoundTerm, setLastNotFoundTerm] = useState("");
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const persisted = useRef(loadPersistedDictState()).current;
+  const [searchTerm, setSearchTerm] = useState(persisted.searchTerm ?? "");
+  const [results, setResults] = useState<DictResult[]>(persisted.results ?? []);
+  const [history, setHistory] = useState<string[]>(persisted.history ?? []);
+  const [suggestions, setSuggestions] = useState<{ term: string; translation: string; confidence: string }[]>(persisted.suggestions ?? []);
+  const [lastNotFoundTerm, setLastNotFoundTerm] = useState(persisted.lastNotFoundTerm ?? "");
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(persisted.selectedIdx ?? null);
   const inputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
   const { speak, preload, state: pronounceState, activeText } = usePronounce();
@@ -785,8 +813,23 @@ export default function DictionaryTab() {
     onError: (err) => toast.error(err.message),
   });
 
-  // Map: result index → { id, term } for entries that have been added to the library
-  const [addedMap, setAddedMap] = useState<Record<number, { id: number; term: string }>>({});
+  // Map: result index → { id, term } for entries that have been added to the library.
+  // Restored alongside `results` so the auto-add effect sees results[0] as already
+  // added and doesn't re-add it on remount.
+  const [addedMap, setAddedMap] = useState<Record<number, { id: number; term: string }>>(persisted.addedMap ?? {});
+
+  // Persist the working set whenever it changes, so switching sidebar tabs (which
+  // unmounts this component) and returning restores the current search.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        DICT_STATE_KEY,
+        JSON.stringify({ searchTerm, results, history, suggestions, lastNotFoundTerm, selectedIdx, addedMap })
+      );
+    } catch {
+      // sessionStorage unavailable or over quota — non-fatal, just skip persisting.
+    }
+  }, [searchTerm, results, history, suggestions, lastNotFoundTerm, selectedIdx, addedMap]);
 
   const addMutation = trpc.vocab.add.useMutation({
     onSuccess: () => utils.vocab.list.invalidate(),
