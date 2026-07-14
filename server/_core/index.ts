@@ -203,10 +203,14 @@ async function startServer() {
         type: "realtime",
         model: "gpt-realtime-2",
         instructions: buildVoiceSystemPrompt(userMemory),
+        // Voice must be set here at call creation — the GA realtime interface
+        // does not reliably honor a voice sent later via session.update over the
+        // data channel (it falls back to a default voice). "cedar" is the
+        // masculine voice for Romain. input_audio_transcription and
+        // turn_detection are still sent via session.update after connection.
+        voice: "cedar",
         tools: VOICE_TOOLS,
         tool_choice: "auto",
-        // Note: voice, input_audio_transcription and turn_detection must be sent
-        // as a session.update event over the data channel after connection.
       });
 
       const formData = new FormData();
