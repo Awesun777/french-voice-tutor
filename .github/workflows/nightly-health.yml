@@ -2,7 +2,9 @@ name: nightly-health
 
 # Unattended nightly check that romaintalk.com is actually working.
 # On failure, GitHub emails the repo owner. Two independent jobs so an
-# outage (site down) is distinguishable from an expired API key.
+# outage (site down) is distinguishable from an expired API key. A third
+# `notify` job emails the pass/fail result of EVERY run (success included)
+# once the mail secrets are configured (see that job's comment).
 on:
   workflow_dispatch: {} # manual "Run workflow" button for on-demand checks
   schedule:
@@ -44,3 +46,41 @@ jobs:
           pnpm install --frozen-lockfile
           npm i -g @railway/cli
           railway run --service french-voice-tutor -- pnpm exec vitest run --config vitest.live.config.ts
+
+  # Emails the result of every nightly run (pass OR fail). Runs after the two
+  # checks regardless of their outcome (if: always()). Self-skips cleanly
+  # (green) until the mail secrets are set, so it never fails the run before
+  # setup. Configure these three repo secrets (Settings → Secrets → Actions):
+  #   MAIL_USERNAME — the Gmail address that sends (e.g. you@gmail.com)
+  #   MAIL_PASSWORD — a Gmail *App Password* (NOT your normal password;
+  #                   create at https://myaccount.google.com/apppasswords)
+  #   MAIL_TO       — where to deliver the result (can be the same address)
+  notify:
+    runs-on: ubuntu-latest
+    needs: [uptime, live-api]
+    if: always()
+    env:
+      MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+      MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+      MAIL_TO: ${{ secrets.MAIL_TO }}
+    steps:
+      - name: Email nightly result (skips if mail secrets unset)
+        if: env.MAIL_PASSWORD != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ env.MAIL_USERNAME }}
+          password: ${{ env.MAIL_PASSWORD }}
+          from: romaintalk nightly <${{ env.MAIL_USERNAME }}>
+          to: ${{ env.MAIL_TO }}
+          subject: "[romaintalk nightly] uptime=${{ needs.uptime.result }} live-api=${{ needs.live-api.result }}"
+          body: |
+            Nightly health check for romaintalk.com
+
+            uptime job:   ${{ needs.uptime.result }}
+            live-api job: ${{ needs.live-api.result }}
+
+            Commit: ${{ github.sha }}
+            Full logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
