@@ -12,10 +12,13 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { Conversation, type VoiceConversation } from "@elevenlabs/client";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { AvatarVideo, avatarLayoutId } from "@/components/AvatarVideo";
+import { idleContainer, idleItem } from "@/components/idleReveal";
 import {
   VoiceSessionSettings,
   useVoiceSettings,
@@ -703,29 +706,46 @@ export function AnnaVoiceTab() {
         {/* Idle state */}
         {sessionState === "idle" && (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-6 text-center gap-5">
-            <div className="w-20 h-20 rounded-full bg-pink-500/10 border-2 border-pink-500/30 flex items-center justify-center">
-              <Mic className="w-8 h-8 text-pink-400" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-foreground mb-2">Talk to Anna</h2>
-              <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
-                Your French tutor with a natural ElevenLabs voice. Have a conversation in French and say{" "}
-                <span className="text-pink-400 font-medium">&ldquo;save the word&rdquo;</span> to add words to your library.
-              </p>
-            </div>
-
-            {/* Session settings */}
-            <VoiceSessionSettings
-              agent="anna"
-              onChange={(s) => updateVoiceSettings(s)}
-            />
-
-            <button
-              onClick={startSession}
-              className="px-8 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-2xl font-semibold text-base transition-all shadow-lg shadow-pink-500/20 hover:shadow-pink-500/30"
+            {/* Avatar morphs in from the chooser via its shared layoutId. */}
+            <motion.div
+              layoutId={avatarLayoutId("anna")}
+              className="w-20 h-20 rounded-full overflow-hidden border-2 border-pink-500/30"
             >
-              Start Conversation
-            </button>
+              <AvatarVideo src="/avatars/anna.mp4" />
+            </motion.div>
+
+            {/* Everything below fades/rises in, staggered, after the morph. */}
+            <motion.div
+              variants={idleContainer}
+              initial="hidden"
+              animate="show"
+              className="flex flex-col items-center gap-5 w-full"
+            >
+              <motion.div variants={idleItem}>
+                <h2 className="text-xl font-bold text-foreground mb-2">Talk to Anna</h2>
+                <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
+                  Your French tutor with a natural ElevenLabs voice. Have a conversation in French and say{" "}
+                  <span className="text-pink-400 font-medium">&ldquo;save the word&rdquo;</span> to add words to your library.
+                </p>
+              </motion.div>
+
+              {/* Session settings */}
+              <motion.div variants={idleItem}>
+                <VoiceSessionSettings
+                  agent="anna"
+                  onChange={(s) => updateVoiceSettings(s)}
+                />
+              </motion.div>
+
+              <motion.div variants={idleItem}>
+                <button
+                  onClick={startSession}
+                  className="px-8 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-2xl font-semibold text-base transition-all shadow-lg shadow-pink-500/20 hover:shadow-pink-500/30"
+                >
+                  Start Conversation
+                </button>
+              </motion.div>
+            </motion.div>
           </div>
         )}
 

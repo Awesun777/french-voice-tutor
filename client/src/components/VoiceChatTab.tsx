@@ -17,9 +17,12 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { AvatarVideo, avatarLayoutId } from "@/components/AvatarVideo";
+import { idleContainer, idleItem } from "@/components/idleReveal";
 import {
   VoiceSessionSettings,
   useVoiceSettings,
@@ -774,7 +777,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
         dc.send(JSON.stringify({
           type: "session.update",
           session: {
-            voice: "marin",
+            voice: "cedar",
             input_audio_transcription: { model: "whisper-1" },
             turn_detection: {
               type: "semantic_vad",
@@ -949,24 +952,38 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
         {/* Idle state */}
         {sessionState === "idle" && (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-6 text-center gap-5">
-            <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/30 flex items-center justify-center">
-              <Mic className="w-8 h-8 text-primary" />
-            </div>
-            <div>
+            {/* Avatar morphs in from the chooser via its shared layoutId. */}
+            <motion.div
+              layoutId={avatarLayoutId("romain")}
+              className="w-20 h-20 rounded-full overflow-hidden border-2 border-primary/30"
+            >
+              <AvatarVideo src="/avatars/romain.mp4" />
+            </motion.div>
+
+            {/* Everything below fades/rises in, staggered, after the morph. */}
+            <motion.div
+              variants={idleContainer}
+              initial="hidden"
+              animate="show"
+              className="flex flex-col items-center gap-5 w-full"
+            >
+            <motion.div variants={idleItem}>
               <h2 className="text-xl font-bold text-foreground mb-2">Talk to Romain</h2>
               <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
                 Your personal French tutor. Have a natural conversation in French, ask questions, and say <span className="text-primary font-medium">&ldquo;save the word&rdquo;</span> to add any word or phrase to your library.
               </p>
-            </div>
+            </motion.div>
 
             {/* Session settings */}
-            <VoiceSessionSettings
-              agent="romain"
-              onChange={(s) => updateVoiceSettings(s)}
-            />
+            <motion.div variants={idleItem}>
+              <VoiceSessionSettings
+                agent="romain"
+                onChange={(s) => updateVoiceSettings(s)}
+              />
+            </motion.div>
 
             {/* Memory viewer panel */}
-            <div className="max-w-sm w-full">
+            <motion.div variants={idleItem} className="max-w-sm w-full">
               <button
                 onClick={() => {
                   setShowMemoryPanel((v) => !v);
@@ -1031,14 +1048,17 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                   )}
                 </div>
               )}
-            </div>
+            </motion.div>
 
-            <button
-              onClick={startSession}
-              className="px-8 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl font-semibold text-base transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30"
-            >
-              Start Conversation
-            </button>
+            <motion.div variants={idleItem}>
+              <button
+                onClick={startSession}
+                className="px-8 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl font-semibold text-base transition-all shadow-lg shadow-primary/20 hover:shadow-primary/30"
+              >
+                Start Conversation
+              </button>
+            </motion.div>
+            </motion.div>
           </div>
         )}
 
