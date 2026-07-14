@@ -53,7 +53,7 @@ const AGENTS: AgentConfig[] = [
     id: "anna",
     name: "Anna",
     tag: "ElevenLabs",
-    video: null,
+    video: "/avatars/anna.mp4",
     ring: "ring-pink-500",
     glow: "shadow-[0_0_60px_-12px] shadow-pink-500/50",
     tint: "from-pink-500/10",
