@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { DictResult, DictWordResult, DictPhraseResult, DictQuestionResult, DictWordDetails } from "@/types";
 import {
-  Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp,
+  Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp, ChevronRight,
   MessageCircle, Send, Sparkles, RefreshCw, ArrowLeftRight,
   BookmarkCheck, BookmarkX, MousePointerClick, X,
 } from "lucide-react";
@@ -12,6 +12,7 @@ import { Streamdown } from "streamdown";
 
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
+import { AccentKeyboard } from "@/components/AccentKeyboard";
 
 function classifyKind(term: string): "word" | "phrase" {
   return term.trim().split(/\s+/).length >= 3 ? "phrase" : "word";
@@ -760,6 +761,7 @@ export default function DictionaryTab() {
   const [suggestions, setSuggestions] = useState<{ term: string; translation: string; confidence: string }[]>(persisted.suggestions ?? []);
   const [lastNotFoundTerm, setLastNotFoundTerm] = useState(persisted.lastNotFoundTerm ?? "");
   const [selectedIdx, setSelectedIdx] = useState<number | null>(persisted.selectedIdx ?? null);
+  const [accentsOpen, setAccentsOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
   const { speak, preload, state: pronounceState, activeText } = usePronounce();
@@ -971,6 +973,20 @@ export default function DictionaryTab() {
       <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3">
         <div className="max-w-full">
           <div className="flex gap-2">
+            <button
+              onClick={() => setAccentsOpen((o) => !o)}
+              aria-label={accentsOpen ? "Hide French accent keyboard" : "Show French accent keyboard"}
+              aria-expanded={accentsOpen}
+              title="French accents (é è à ç …)"
+              className={cn(
+                "flex-shrink-0 px-2 flex items-center justify-center border rounded-xl transition-colors",
+                accentsOpen
+                  ? "bg-primary/10 border-primary/50 text-primary"
+                  : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              {accentsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               <input
@@ -990,6 +1006,15 @@ export default function DictionaryTab() {
               {searchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Search"}
             </button>
           </div>
+          {/* French accent keyboard */}
+          {accentsOpen && (
+            <AccentKeyboard
+              inputRef={inputRef}
+              value={searchTerm}
+              onChange={setSearchTerm}
+              className="mt-2 pb-1"
+            />
+          )}
           {/* History pills */}
           {history.length > 0 && (
             <div className="flex gap-2 mt-2 overflow-x-auto pb-1 scrollbar-none">
