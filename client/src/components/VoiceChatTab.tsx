@@ -722,22 +722,30 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       completedTurnsRef.current = [];
       isSummarizingRef.current = false;
       if (summarizeTimerRef.current) { clearTimeout(summarizeTimerRef.current); summarizeTimerRef.current = null; }
-      // 1. Create a session record in our DB
-      const { id } = await createSessionMutation.mutateAsync();
-      setSessionId(id);
 
-      // 2. Set up WebRTC
-      const pc = new RTCPeerConnection();
-      pcRef.current = pc;
-
-      // Hidden audio element to play AI voice
+      // Audio element + AudioContext must be created synchronously inside the
+      // tap's transient activation, and the mic must be requested before any
+      // network await — iOS Safari otherwise rejects getUserMedia with
+      // NotAllowedError and keeps the AudioContext suspended.
       const audioEl = document.createElement("audio");
       audioEl.autoplay = true;
       audioRef.current = audioEl;
 
-      // Set up AudioContext for waveform visualizers
       const audioCtx = new AudioContext();
       audioCtxRef.current = audioCtx;
+      if (audioCtx.state === "suspended") void audioCtx.resume();
+
+      // Capture microphone
+      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current = localStream;
+
+      // 1. Create a session record in our DB
+      const { id } = await createSessionMutation.mutateAsync();
+      setSessionId(id);
+
+      // 2. Set up WebRTC — STUN is required for NAT traversal on cellular networks
+      const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+      pcRef.current = pc;
 
       // AI audio analyser
       pc.ontrack = (e) => {
@@ -750,9 +758,6 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
         aiAnalyserRef.current = analyser;
       };
 
-      // Capture microphone
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = localStream;
       localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
       // User audio analyser
@@ -826,7 +831,11 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
 
       setSessionState("active");
     } catch (e: any) {
-      toast.error(e.message ?? "Failed to start voice session");
+      toast.error(
+        e?.name === "NotAllowedError"
+          ? "Microphone access was blocked. Allow mic access in your browser and try again."
+          : e?.message ?? "Failed to start voice session"
+      );
       setSessionState("idle");
       cleanupWebRTC();
     }

@@ -258,20 +258,35 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     else setConfirmDeleteId(currentWord.id);
   };
 
+  // Pick a container the browser can actually record (Chrome→webm, Safari→mp4).
+  const pickMimeType = () => {
+    const prefs = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/ogg", "audio/mp4"];
+    if (typeof MediaRecorder === "undefined") return "";
+    return prefs.find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+  };
+
   const startRecording = async () => {
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch { toast.error("Microphone access denied"); return; }
+    try {
+      const mimeType = pickMimeType();
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       chunksRef.current = [];
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        await uploadAndTranscribe(new Blob(chunksRef.current, { type: "audio/webm" }));
+        const type = (mr.mimeType || mimeType || "audio/webm").split(";")[0];
+        await uploadAndTranscribe(new Blob(chunksRef.current, { type }));
       };
       mr.start();
       mediaRecorderRef.current = mr;
       setRecording(true);
-    } catch { toast.error("Microphone access denied"); }
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      toast.error("Recording isn't supported in this browser");
+    }
   };
   const stopRecording = () => { mediaRecorderRef.current?.stop(); setRecording(false); };
   const uploadAndTranscribe = async (blob: Blob) => {
@@ -280,7 +295,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     try {
       const arrayBuffer = await blob.arrayBuffer();
       const base64 = btoa(Array.from(new Uint8Array(arrayBuffer)).map((b) => String.fromCharCode(b)).join(""));
-      const result = await storagePutMutation.mutateAsync({ base64, mimeType: "audio/webm" });
+      const result = await storagePutMutation.mutateAsync({ base64, mimeType: blob.type || "audio/webm" });
       transcribeMutation.mutate({ audioUrl: result.url, targetTerm: deck[idx].term });
     } catch { toast.error("Upload failed"); setTranscribing(false); }
   };
