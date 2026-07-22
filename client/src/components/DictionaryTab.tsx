@@ -13,6 +13,7 @@ import { Streamdown } from "streamdown";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
 import { AccentKeyboard } from "@/components/AccentKeyboard";
+import { useIsMobile } from "@/hooks/useMobile";
 
 function classifyKind(term: string): "word" | "phrase" {
   return term.trim().split(/\s+/).length >= 3 ? "phrase" : "word";
@@ -762,6 +763,10 @@ export default function DictionaryTab() {
   const [lastNotFoundTerm, setLastNotFoundTerm] = useState(persisted.lastNotFoundTerm ?? "");
   const [selectedIdx, setSelectedIdx] = useState<number | null>(persisted.selectedIdx ?? null);
   const [accentsOpen, setAccentsOpen] = useState(false);
+  // On narrow (mobile) screens the "Ask your tutor" panel is folded away by
+  // default to give results the full width; tapping the bar unfolds it.
+  const [tutorOpen, setTutorOpen] = useState(false);
+  const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
   const { speak, preload, state: pronounceState, activeText } = usePronounce();
@@ -1146,8 +1151,8 @@ export default function DictionaryTab() {
           </div>
         </div>
 
-        {/* Right: Context chat panel — shown when there are results */}
-        {hasResults && (
+        {/* Right: Context chat panel — side panel on wide screens (unchanged). */}
+        {hasResults && !isMobile && (
           <div className="w-80 flex-shrink-0 border-l border-border p-3 flex flex-col min-h-0">
             <ContextChatPanel
               vocabContext={selectedVocabContext}
@@ -1156,6 +1161,40 @@ export default function DictionaryTab() {
           </div>
         )}
       </div>
+
+      {/* Narrow screens: "Ask your tutor" folded away by default; tap to unfold. */}
+      {hasResults && isMobile && (
+        <div className="flex-shrink-0 border-t border-border">
+          <button
+            onClick={() => setTutorOpen((o) => !o)}
+            aria-expanded={tutorOpen}
+            className="w-full flex items-center justify-between px-4 py-2.5 bg-muted/20 hover:bg-muted/30 transition-colors"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-foreground min-w-0">
+              <MessageCircle className="w-4 h-4 text-primary flex-shrink-0" />
+              Ask your tutor
+              {selectedVocabContext && (
+                <span className="text-xs font-normal text-muted-foreground truncate">
+                  · {selectedVocabContext.term}
+                </span>
+              )}
+            </span>
+            {tutorOpen ? (
+              <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            ) : (
+              <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            )}
+          </button>
+          {tutorOpen && (
+            <div className="h-[55vh] p-3 flex flex-col min-h-0 border-t border-border">
+              <ContextChatPanel
+                vocabContext={selectedVocabContext}
+                onClearContext={() => setSelectedIdx(null)}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
