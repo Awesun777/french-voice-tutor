@@ -35,6 +35,9 @@ export interface DictWordResult {
   translation: string;
   pronunciation: string;
   wordType: string;
+  // For nouns: "masculine" | "feminine" | "both"; "" for non-nouns (or older
+  // cached entries created before gender was tracked).
+  gender: string;
   isReflexive: boolean;
   reflexiveType: string | null;
   reflexiveExplanation: string | null;

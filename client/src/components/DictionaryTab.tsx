@@ -74,6 +74,18 @@ function WordResult({
     subjonctif: "Subjonctif",
   };
 
+  // Prominent gender indicator for nouns (shown at the top of the card).
+  const isNoun = (result.wordType ?? "").toLowerCase().match(/noun|nom/) !== null;
+  const genderMeta = isNoun
+    ? result.gender === "masculine"
+      ? { label: "masculine · le / un", cls: "bg-sky-500/20 text-sky-300" }
+      : result.gender === "feminine"
+        ? { label: "feminine · la / une", cls: "bg-pink-500/20 text-pink-300" }
+        : result.gender === "both"
+          ? { label: "masculine or feminine", cls: "bg-violet-500/20 text-violet-300" }
+          : null
+    : null;
+
   return (
     <div
       className={cn(
@@ -104,6 +116,11 @@ function WordResult({
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {genderMeta && (
+              <span className={cn("text-xs px-2.5 py-1 rounded-full font-semibold", genderMeta.cls)}>
+                {genderMeta.label}
+              </span>
+            )}
             {result.wordType && (
               <span className="text-xs px-2.5 py-1 rounded-full bg-primary/15 text-primary font-semibold capitalize">
                 {result.wordType}

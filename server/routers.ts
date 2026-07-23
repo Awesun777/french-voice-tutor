@@ -389,7 +389,9 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         parts: z.enum(["quick", "full"]).default("full"),
       }))
       .mutation(async ({ input }) => {
-        const key = input.term.toLowerCase().trim() + (input.parts === "quick" ? "::q" : "");
+        // "v2" cache generation — bumped when the word schema gained noun gender,
+        // so previously-cached entries re-fetch and pick up the gender field.
+        const key = "v2::" + input.term.toLowerCase().trim() + (input.parts === "quick" ? "::q" : "");
         const cached = await getCached(key);
         if (cached) return enforceLemmaHeadword(cached);
 
@@ -488,6 +490,8 @@ GOVERNED PREPOSITION (for verbs): set "governedPreposition" to the preposition t
 
 ADJECTIVE / STATE AUXILIARY: if the word is an adjective or expresses a personal state, set "adjectiveAuxiliary" to the verb used to express that state about a person — "être" for normal adjectives (e.g. "je suis content", "elle est fatiguée") or "avoir" for the sensation/state set (e.g. "j'ai faim", "j'ai froid", "j'ai peur", "j'ai raison", "j'ai sommeil"). Set "" if it is not an adjective or state word (e.g. a plain verb or concrete noun). In "adjectiveAuxiliaryExplanation" give a short example in French with its English gloss (e.g. "j'ai froid = I'm cold (uses avoir, not être)"). Leave empty when adjectiveAuxiliary is "".
 
+NOUN GENDER: if the word is a noun, set "gender" to "masculine" or "feminine" (its grammatical gender — e.g. chien→masculine, maison→feminine), or "both" if it is genuinely used as either gender (e.g. après-midi, enfant). For anything that is NOT a noun (verb, adjective, adverb, preposition, etc.) set "gender" to "".
+
 Provide 2 example sentences. ${detailsInstruction} If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.` },
           ];
           const wordProps: Record<string, unknown> = {
@@ -501,6 +505,7 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
             translation: { type: "string" },
             pronunciation: { type: "string" },
             wordType: { type: "string" },
+            gender: { type: "string", enum: ["masculine", "feminine", "both", ""] },
             isReflexive: { type: "boolean" },
             reflexiveType: { type: "string" },
             reflexiveExplanation: { type: "string" },
@@ -524,7 +529,7 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
           };
           const wordRequired = [
             "type", "found", "word", "isConjugated", "conjugationInfo", "baseForm",
-            "formExplanation", "translation", "pronunciation", "wordType",
+            "formExplanation", "translation", "pronunciation", "wordType", "gender",
             "isReflexive", "reflexiveType", "reflexiveExplanation", "hasReflexiveForm",
             "governedPreposition", "prepositionExplanation",
             "adjectiveAuxiliary", "adjectiveAuxiliaryExplanation",
