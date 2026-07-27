@@ -132,14 +132,19 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
   });
 
   const deleteMutation = trpc.vocab.delete.useMutation({
-    onSuccess: () => {
+    // Filter by the deleted id from the mutation's own variables, not
+    // confirmDeleteId — that state is cleared before onSuccess runs. Removing
+    // the current card shifts the next one into the same index, so the deck
+    // naturally advances to the following card.
+    onSuccess: (_d, vars) => {
       setDeck((d) => {
-        const next = d.filter((w) => w.id !== confirmDeleteId);
+        const next = d.filter((w) => w.id !== vars.id);
         setIdx((i) => Math.min(i, Math.max(0, next.length - 1)));
         return next;
       });
       setFlipped(false);
       setTranscription(null);
+      setConfirmDeleteId(null);
       toast.success("Word removed from library");
     },
     onError: () => toast.error("Failed to delete"),
@@ -248,6 +253,23 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     }
     advance();
   }, [currentWord, idx, submitReviewMutation, advance]);
+
+  // Keyboard shortcuts to rate faster: 1 = Again, 2 = Good, 3 = Easy.
+  // Maps by GRADES index so the keys stay in sync if the grades change.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (editing || sessionDone || !currentWord) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const gradeIdx = { "1": 0, "2": 1, "3": 2 }[e.key];
+      if (gradeIdx === undefined) return;
+      e.preventDefault();
+      handleGrade(GRADES[gradeIdx].grade);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, sessionDone, currentWord, handleGrade]);
 
   const handlePrev = () => { setIdx((i) => Math.max(0, i - 1)); setFlipped(false); setTranscription(null); setConfirmDeleteId(null); };
   const handleNext = () => { if (idx < deck.length - 1) { setIdx((i) => i + 1); setFlipped(false); setTranscription(null); setConfirmDeleteId(null); } };
@@ -486,9 +508,10 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
 
             {/* 3 grade buttons — always visible, rate from recall before or after flip */}
             <div className="flex-1 flex gap-1.5">
-              {GRADES.map(({ grade, label, color }) => (
-                <button key={grade} onClick={() => handleGrade(grade)} className={cn("flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors", color)}>
+              {GRADES.map(({ grade, label, color }, i) => (
+                <button key={grade} onClick={() => handleGrade(grade)} className={cn("flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors flex items-center justify-center gap-1.5", color)}>
                   {label}
+                  <kbd className="text-[10px] font-mono opacity-60 border border-current rounded px-1 leading-tight">{i + 1}</kbd>
                 </button>
               ))}
             </div>
