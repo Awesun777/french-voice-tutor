@@ -255,6 +255,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
   }, [currentWord, idx, submitReviewMutation, advance]);
 
   // Keyboard shortcuts to rate faster: 1 = Again, 2 = Good, 3 = Easy.
+  // Space flips the card (same as tapping it).
   // Maps by GRADES index so the keys stay in sync if the grades change.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -262,6 +263,12 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === " ") {
+        // preventDefault also stops space from scrolling or re-triggering a focused button
+        e.preventDefault();
+        setFlipped((f) => !f);
+        return;
+      }
       const gradeIdx = { "1": 0, "2": 1, "3": 2 }[e.key];
       if (gradeIdx === undefined) return;
       e.preventDefault();
@@ -489,11 +496,11 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
                   </span>
                 )}
                 <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.term : currentWord.translation}</p>
-                <p className="text-xs text-muted-foreground mt-2">Tap to reveal</p>
+                <p className="text-xs text-muted-foreground mt-2">Tap or press <kbd className="font-mono border border-current rounded px-1 leading-tight">space</kbd> to reveal</p>
               </div>
               <div className="flip-card-back absolute inset-0 bg-gradient-to-br from-primary/10 to-card border border-primary/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
                 <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.translation : currentWord.term}</p>
-                <p className="text-xs text-muted-foreground mt-2">Tap to flip back</p>
+                <p className="text-xs text-muted-foreground mt-2">Tap or press <kbd className="font-mono border border-current rounded px-1 leading-tight">space</kbd> to flip back</p>
               </div>
             </div>
           </div>
