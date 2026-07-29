@@ -855,6 +855,23 @@ export default function DictionaryTab() {
     }
   }, [searchTerm, results, history, suggestions, lastNotFoundTerm, selectedIdx, addedMap]);
 
+  // Ctrl/Cmd+A anywhere on the dictionary tab selects the search text, even when
+  // the box isn't focused. Only this tab is affected — the component unmounts on
+  // tab switch. When focus is already in a field we let the browser handle it.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "a" && e.key !== "A") return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const addMutation = trpc.vocab.add.useMutation({
     onSuccess: () => utils.vocab.list.invalidate(),
     onError: () => toast.error("Failed to add to library"),
@@ -1017,8 +1034,18 @@ export default function DictionaryTab() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 placeholder="Search French words, phrases, or ask a question…"
-                className="w-full pl-9 pr-4 py-2.5 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                className="w-full pl-9 pr-10 py-2.5 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
               />
+              {searchTerm && (
+                <button
+                  onClick={() => { setSearchTerm(""); inputRef.current?.focus(); }}
+                  aria-label="Clear search"
+                  title="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
             <button
               onClick={() => handleSearch()}
