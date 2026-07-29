@@ -90,7 +90,12 @@ export default function Home() {
             </svg>
             Continue with Google
           </a>
-          <p className="text-xs text-muted-foreground">Free to use · Your data stays private</p>
+          <p className="text-xs text-muted-foreground">
+            Free to use · Your data stays private ·{" "}
+            <a href="/privacy" className="underline underline-offset-2 hover:text-foreground transition-colors">
+              Privacy Policy
+            </a>
+          </p>
         </div>
       </div>
     );
