@@ -638,7 +638,8 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
       )}
 
       {/* Direction toggle */}
-      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center justify-center gap-2">
+      {/* h-14 matches the sidebar header, so this divider continues that line. */}
+      <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center justify-center gap-2">
         {[
           { id: "fr2en" as const, label: "FR → EN" },
           { id: "en2fr" as const, label: "EN → FR" },

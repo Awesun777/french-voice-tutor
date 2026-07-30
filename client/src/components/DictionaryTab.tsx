@@ -1009,9 +1009,14 @@ export default function DictionaryTab() {
   return (
     <div className="flex flex-col h-full">
       {/* Search header */}
-      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3">
+      {/* The search row is h-14 to match the sidebar header, so the divider
+          continues that line. Padding sits on the row rather than the bordered
+          container, so the accent keyboard can expand below without shifting it. */}
+      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4">
         <div className="max-w-full">
-          <div className="flex gap-2">
+          {/* 3.5rem minus the container's 1px bottom border, so the total lands
+              on the sidebar's 56px rather than 57. */}
+          <div className="h-[calc(3.5rem-1px)] flex items-center gap-2">
             <button
               onClick={() => setAccentsOpen((o) => !o)}
               aria-label={accentsOpen ? "Hide French accent keyboard" : "Show French accent keyboard"}
@@ -1061,7 +1066,7 @@ export default function DictionaryTab() {
               inputRef={inputRef}
               value={searchTerm}
               onChange={setSearchTerm}
-              className="mt-2 pb-1"
+              className="pb-3"
             />
           )}
           {/* History pills */}

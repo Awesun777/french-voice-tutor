@@ -73,7 +73,8 @@ export default function TutorTab() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center justify-between">
+      {/* h-14 matches the sidebar header, so this divider continues that line. */}
+      <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center justify-between">
         <div>
           <p className="font-bold text-foreground">French Tutor</p>
           <p className="text-xs text-muted-foreground">Ask anything about French grammar, vocabulary, or usage</p>

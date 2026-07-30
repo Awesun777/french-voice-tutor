@@ -379,8 +379,10 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3">
-        <div className="flex items-center gap-3 flex-wrap">
+      {/* min-h-14 matches the sidebar header so the divider continues that line;
+          min- rather than fixed because these controls wrap on narrow screens. */}
+      <div className="flex-shrink-0 min-h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-2 flex items-center">
+        <div className="w-full flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input

@@ -55,9 +55,7 @@ export default function Home() {
               <span className="text-4xl">🇫🇷</span>
             </div>
             <div>
-              {/* opsz pushed high — Fraunces is drawn per optical size, so a display
-                  heading needs the large-size cut rather than a scaled-up text cut. */}
-              <h1 className="font-display text-4xl font-semibold text-foreground" style={{ fontVariationSettings: "'opsz' 128" }}>
+              <h1 className="font-display text-4xl font-bold tracking-tight text-foreground">
                 Le Dictionnaire
               </h1>
               <p className="text-muted-foreground mt-2 text-lg">Your personal French learning companion</p>
