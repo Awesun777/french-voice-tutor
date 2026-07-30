@@ -176,21 +176,21 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
   ];
 
   const CorrectionsBar = () => corrections.length > 0 ? (
-    <div className="border-b border-amber-800/40 bg-amber-950/30 flex-shrink-0">
+    <div className="border-b border-amber-300/40 bg-amber-100/30 flex-shrink-0">
       <button
         onClick={() => setShowCorrections(!showCorrections)}
-        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-amber-950/50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-amber-100/50 transition-colors"
       >
-        <span className="text-xs font-semibold text-amber-300">✏️ {corrections.length} correction{corrections.length !== 1 ? "s" : ""} applied</span>
-        <span className="text-amber-500 text-xs">{showCorrections ? "▲" : "▼"}</span>
+        <span className="text-xs font-semibold text-amber-800">✏️ {corrections.length} correction{corrections.length !== 1 ? "s" : ""} applied</span>
+        <span className="text-amber-700 text-xs">{showCorrections ? "▲" : "▼"}</span>
       </button>
       {showCorrections && (
         <div className="px-4 pb-3 space-y-1">
           {corrections.map((c, i) => (
             <div key={i} className="flex items-center gap-2 text-xs">
-              <span className="text-red-400 line-through font-mono">{c.original}</span>
+              <span className="text-red-700 line-through font-mono">{c.original}</span>
               <span className="text-muted-foreground">→</span>
-              <span className="text-emerald-400 font-mono font-semibold">{c.fixed}</span>
+              <span className="text-emerald-700 font-mono font-semibold">{c.fixed}</span>
               {c.note && <span className="text-muted-foreground italic">({c.note})</span>}
             </div>
           ))}
@@ -206,7 +206,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
-            <h2 className="text-base font-bold text-foreground">Import Vocabulary</h2>
+            <h2 className="font-display text-base font-bold text-foreground">Import Vocabulary</h2>
             {(phase === "save-choice" || phase === "review" || phase === "done") && (
               <p className="text-xs text-muted-foreground mt-0.5">{items.length} words extracted</p>
             )}
@@ -352,9 +352,9 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
             {/* ── Google Docs mode ── */}
             {inputMode === "gdoc" && (
               <div className="space-y-3">
-                <div className="bg-blue-950/30 border border-blue-800/40 rounded-xl p-3 text-xs text-blue-300 space-y-1">
-                  <p className="font-semibold text-blue-200">How to share your Google Doc:</p>
-                  <ol className="list-decimal list-inside space-y-0.5 text-blue-300/80">
+                <div className="bg-blue-100/30 border border-blue-300/40 rounded-xl p-3 text-xs text-blue-800 space-y-1">
+                  <p className="font-semibold text-blue-900">How to share your Google Doc:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-blue-800/80">
                     <li>Open your Google Doc</li>
                     <li>Click <strong>Share</strong> → <strong>Change to anyone with the link</strong></li>
                     <li>Set permission to <strong>Viewer</strong></li>
@@ -441,7 +441,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
               {/* Doc preview for Google Docs */}
               {gdocPreview && (
                 <div className="bg-muted/30 border border-border rounded-xl p-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Document preview</p>
+                  <p className="font-display text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Document preview</p>
                   <p className="text-xs text-muted-foreground font-mono leading-relaxed line-clamp-3">{gdocPreview}</p>
                 </div>
               )}
@@ -464,16 +464,16 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
                 if (uniqueDates.length <= 1) return null;
                 return (
                   <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3">
-                    <p className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">📅 Date groups detected</p>
+                    <p className="font-display text-xs font-bold text-amber-800 uppercase tracking-wider mb-2">📅 Date groups detected</p>
                     <div className="space-y-1">
                       {uniqueDates.sort().map((dk) => (
                         <div key={dk} className="flex items-center justify-between text-xs">
-                          <span className="text-amber-200 font-medium">{dk}</span>
-                          <span className="text-amber-400">{dateGroups[dk]} word{dateGroups[dk] !== 1 ? "s" : ""}</span>
+                          <span className="text-amber-900 font-medium">{dk}</span>
+                          <span className="text-amber-700">{dateGroups[dk]} word{dateGroups[dk] !== 1 ? "s" : ""}</span>
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-amber-300/70 mt-2 italic">Words will be saved into their respective date groups in your library.</p>
+                    <p className="text-xs text-amber-800/70 mt-2 italic">Words will be saved into their respective date groups in your library.</p>
                   </div>
                 );
               })()}
@@ -485,7 +485,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
                     <span className="font-medium text-foreground">{item.term}</span>
                     <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                       {item.dateKey && item.dateKey !== new Date().toISOString().slice(0, 10) && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-mono">{item.dateKey}</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 font-mono">{item.dateKey}</span>
                       )}
                       <span className="text-muted-foreground text-xs truncate max-w-[120px]">{item.translation}</span>
                     </div>
@@ -546,7 +546,7 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
                   <span className="text-sm text-muted-foreground">{reviewIdx + 1} / {items.length}</span>
                 </div>
                 <div className="flex items-center gap-3 text-xs">
-                  <span className="text-emerald-400 font-semibold">{kept.length} kept</span>
+                  <span className="text-emerald-700 font-semibold">{kept.length} kept</span>
                   <span className="text-muted-foreground">{skipped} skipped</span>
                 </div>
               </div>
@@ -559,12 +559,12 @@ export default function ImportModal({ onClose, onImport }: ImportModalProps) {
                 <div className="flex items-center justify-center gap-2 mb-3">
                   <span className={cn(
                     "inline-block text-xs px-2.5 py-1 rounded-full font-bold",
-                    currentItem.kind === "phrase" ? "bg-violet-500/15 text-violet-400" : "bg-primary/15 text-primary"
+                    currentItem.kind === "phrase" ? "bg-violet-500/15 text-violet-700" : "bg-primary/15 text-primary"
                   )}>
                     {currentItem.kind === "phrase" ? "📝 Phrase" : "📖 Word"}
                   </span>
                   {currentItem.dateKey && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-400 font-mono">
+                    <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-700 font-mono">
                       📅 {currentItem.dateKey}
                     </span>
                   )}

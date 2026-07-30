@@ -78,11 +78,11 @@ function WordResult({
   const isNoun = (result.wordType ?? "").toLowerCase().match(/noun|nom/) !== null;
   const genderMeta = isNoun
     ? result.gender === "masculine"
-      ? { label: "masculine · le / un", cls: "bg-sky-500/20 text-sky-300" }
+      ? { label: "masculine · le / un", cls: "bg-sky-500/20 text-sky-800" }
       : result.gender === "feminine"
-        ? { label: "feminine · la / une", cls: "bg-pink-500/20 text-pink-300" }
+        ? { label: "feminine · la / une", cls: "bg-pink-500/20 text-pink-800" }
         : result.gender === "both"
-          ? { label: "masculine or feminine", cls: "bg-violet-500/20 text-violet-300" }
+          ? { label: "masculine or feminine", cls: "bg-violet-500/20 text-violet-800" }
           : null
     : null;
 
@@ -101,7 +101,7 @@ function WordResult({
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-2xl font-bold text-foreground">{result.word}</h2>
+              <h2 className="font-display text-2xl font-bold text-foreground">{result.word}</h2>
               <PronounceButton
                 text={result.word}
                 speak={speak}
@@ -127,7 +127,7 @@ function WordResult({
               </span>
             )}
             {(result.isReflexive || result.hasReflexiveForm) && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-1">
+              <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-800 font-semibold flex items-center gap-1">
                 <RefreshCw className="w-3 h-3" />
                 {result.isReflexive ? "reflexive" : "has reflexive"}
               </span>
@@ -135,7 +135,7 @@ function WordResult({
             {isAdded ? (
               <button
                 onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-red-500/20 text-emerald-400 hover:text-red-400 rounded-lg text-xs font-semibold transition-colors group"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-red-500/20 text-emerald-700 hover:text-red-700 rounded-lg text-xs font-semibold transition-colors group"
                 title="Remove from library"
               >
                 <BookmarkCheck className="w-3.5 h-3.5 group-hover:hidden" />
@@ -182,12 +182,12 @@ function WordResult({
         {(result.isReflexive || result.hasReflexiveForm) && (
           <div className="border border-amber-500/40 bg-amber-500/10 rounded-xl p-4 mb-3 space-y-2">
             <div className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 text-amber-400 flex-shrink-0" />
-              <span className="text-sm font-bold text-amber-300 uppercase tracking-wide">
+              <RefreshCw className="w-4 h-4 text-amber-700 flex-shrink-0" />
+              <span className="font-display text-sm font-bold text-amber-800 uppercase tracking-wide">
                 {result.isReflexive ? "Reflexive Verb (verbe pronominal)" : "Has Reflexive Form"}
               </span>
               {result.reflexiveType && (
-                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold capitalize">
+                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 font-semibold capitalize">
                   {result.reflexiveType}
                 </span>
               )}
@@ -207,27 +207,27 @@ function WordResult({
                   </div>
                 )}
                 {result.reflexiveForm && result.nonReflexiveForm && (
-                  <ArrowLeftRight className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />
                 )}
                 {result.reflexiveForm && (
                   <div className="flex items-center gap-1.5">
                     <span className="text-muted-foreground text-xs">Reflexive:</span>
                     <button
                       onClick={(e) => { e.stopPropagation(); speak(result.reflexiveForm!); }}
-                      className="font-bold text-amber-300 hover:text-amber-200 transition-colors"
+                      className="font-bold text-amber-800 hover:text-amber-900 transition-colors"
                     >
                       {result.reflexiveForm}
                     </button>
-                    <PronounceButton text={result.reflexiveForm!} speak={speak} state={pronounceState} activeText={activeText} className="text-muted-foreground hover:text-amber-300" iconSize="w-3 h-3" />
+                    <PronounceButton text={result.reflexiveForm!} speak={speak} state={pronounceState} activeText={activeText} className="text-muted-foreground hover:text-amber-800" iconSize="w-3 h-3" />
                   </div>
                 )}
               </div>
             )}
             {result.reflexiveExplanation && (
-              <p className="text-sm text-amber-100/80 leading-relaxed">{result.reflexiveExplanation}</p>
+              <p className="text-sm text-amber-900/80 leading-relaxed">{result.reflexiveExplanation}</p>
             )}
             {result.isReflexive && result.reflexiveForm && result.nonReflexiveForm && (
-              <p className="text-xs text-amber-300/70 italic">
+              <p className="text-xs text-amber-800/70 italic">
                 Note: <span className="font-medium">{result.nonReflexiveForm}</span> (transitive) vs{" "}
                 <span className="font-medium">{result.reflexiveForm}</span> (intransitive/reflexive) — these often have different meanings.
               </p>
@@ -239,15 +239,15 @@ function WordResult({
         {result.governedPreposition && (
           <div className="border border-sky-500/40 bg-sky-500/10 rounded-xl p-3 mb-3 space-y-1">
             <div className="flex items-center gap-2 flex-wrap text-sm">
-              <span className="text-xs font-bold text-sky-300 uppercase tracking-wide">Preposition</span>
+              <span className="font-display text-xs font-bold text-sky-800 uppercase tracking-wide">Preposition</span>
               <span className="font-semibold text-foreground">{result.word}</span>
-              <span className="px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-200 font-bold">
+              <span className="px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-900 font-bold">
                 {result.governedPreposition}
               </span>
               <span className="text-muted-foreground">+ complement</span>
             </div>
             {result.prepositionExplanation && (
-              <p className="text-sm text-sky-100/80 leading-relaxed">{result.prepositionExplanation}</p>
+              <p className="text-sm text-sky-900/80 leading-relaxed">{result.prepositionExplanation}</p>
             )}
           </div>
         )}
@@ -256,12 +256,12 @@ function WordResult({
         {result.adjectiveAuxiliary && (
           <div className="border border-violet-500/40 bg-violet-500/10 rounded-xl p-3 mb-3 space-y-1">
             <div className="flex items-center gap-2 flex-wrap text-sm">
-              <span className="text-xs font-bold text-violet-300 uppercase tracking-wide">Auxiliary</span>
-              <span className="px-2 py-0.5 rounded-full bg-violet-500/25 text-violet-200 font-bold">{result.adjectiveAuxiliary}</span>
+              <span className="font-display text-xs font-bold text-violet-800 uppercase tracking-wide">Auxiliary</span>
+              <span className="px-2 py-0.5 rounded-full bg-violet-500/25 text-violet-900 font-bold">{result.adjectiveAuxiliary}</span>
               <span className="text-muted-foreground">+ {result.word}</span>
             </div>
             {result.adjectiveAuxiliaryExplanation && (
-              <p className="text-sm text-violet-100/80 leading-relaxed">{result.adjectiveAuxiliaryExplanation}</p>
+              <p className="text-sm text-violet-900/80 leading-relaxed">{result.adjectiveAuxiliaryExplanation}</p>
             )}
           </div>
         )}
@@ -272,7 +272,7 @@ function WordResult({
 
         {result.examples?.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Examples</p>
+            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Examples</p>
             {result.examples.map((ex, i) => (
               <div key={i} className="bg-muted/40 rounded-xl p-3">
                 <div className="flex items-start gap-2">
@@ -309,7 +309,7 @@ function WordResult({
             <div className="px-5 pb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Object.entries(result.conjugations).map(([tense, forms]) => (
                 <div key={tense}>
-                  <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2">{TENSE_LABELS[tense] ?? tense}</p>
+                  <p className="font-display text-xs font-bold text-primary uppercase tracking-wider mb-2">{TENSE_LABELS[tense] ?? tense}</p>
                   <div className="space-y-1">
                     {(forms as string[]).map((f, i) => (
                       <div key={i} className="flex items-center gap-2 text-sm">
@@ -412,7 +412,7 @@ function PhraseResult({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-xl font-bold text-foreground">{result.phrase}</h2>
+            <h2 className="font-display text-xl font-bold text-foreground">{result.phrase}</h2>
             <PronounceButton
               text={result.phrase}
               speak={speak}
@@ -430,7 +430,7 @@ function PhraseResult({
           {isAdded ? (
             <button
               onClick={(e) => { e.stopPropagation(); onRemove?.(); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-red-500/20 text-emerald-400 hover:text-red-400 rounded-lg text-xs font-semibold transition-colors group"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-red-500/20 text-emerald-700 hover:text-red-700 rounded-lg text-xs font-semibold transition-colors group"
               title="Remove from library"
             >
               <BookmarkCheck className="w-3.5 h-3.5 group-hover:hidden" />
@@ -463,7 +463,7 @@ function PhraseResult({
       {result.usage && <p className="text-sm text-muted-foreground">{result.usage}</p>}
       {result.examples?.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Examples</p>
+          <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Examples</p>
           {result.examples.map((ex, i) => (
             <div key={i} className="bg-muted/40 rounded-xl p-3">
               <div className="flex items-start gap-2">
@@ -505,7 +505,7 @@ function QuestionResult({
       onClick={onSelect}
     >
       <div>
-        <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1">Question</p>
+        <p className="font-display text-xs font-bold text-primary uppercase tracking-wider mb-1">Question</p>
         <p className="text-lg font-semibold text-foreground">{result.question}</p>
       </div>
       {isSelected && (
@@ -519,7 +519,7 @@ function QuestionResult({
       </div>
       {result.options?.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Related expressions</p>
+          <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Related expressions</p>
           {result.options.map((opt, i) => (
             <div key={i} className="flex items-start gap-3 bg-muted/30 rounded-xl p-3">
               <PronounceButton text={opt.french} speak={speak} state={pronounceState} activeText={activeText} className="mt-0.5 p-1 hover:bg-primary/15 text-muted-foreground hover:text-primary flex-shrink-0" iconSize="w-3 h-3" />
@@ -708,10 +708,10 @@ function SuggestionsBanner({
 }) {
   if (!suggestions.length) return null;
   return (
-    <div className="bg-amber-950/40 border border-amber-700/40 rounded-2xl p-4">
+    <div className="bg-amber-100/40 border border-amber-300/40 rounded-2xl p-4">
       <div className="flex items-start gap-2 mb-3">
-        <Sparkles className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-        <p className="text-sm font-semibold text-amber-300">
+        <Sparkles className="w-4 h-4 text-amber-700 mt-0.5 flex-shrink-0" />
+        <p className="text-sm font-semibold text-amber-800">
           "{term}" wasn't found — did you mean:
         </p>
       </div>
@@ -720,18 +720,18 @@ function SuggestionsBanner({
           <button
             key={s.term}
             onClick={() => onSearch(s.term)}
-            className="flex items-center gap-2 px-3 py-2 bg-amber-900/40 hover:bg-amber-800/50 border border-amber-700/40 rounded-xl transition-colors group"
+            className="flex items-center gap-2 px-3 py-2 bg-amber-100/40 hover:bg-amber-200/50 border border-amber-300/40 rounded-xl transition-colors group"
           >
             <div className="text-left">
-              <p className="text-sm font-bold text-amber-200 group-hover:text-amber-100">{s.term}</p>
-              <p className="text-xs text-amber-400/80">{s.translation}</p>
+              <p className="text-sm font-bold text-amber-900 group-hover:text-amber-900">{s.term}</p>
+              <p className="text-xs text-amber-700/80">{s.translation}</p>
             </div>
             <div
               className={cn(
                 "text-xs px-1.5 py-0.5 rounded-full font-semibold ml-1",
                 s.confidence === "high"
-                  ? "bg-emerald-900/60 text-emerald-400"
-                  : "bg-amber-900/60 text-amber-400"
+                  ? "bg-emerald-100/60 text-emerald-700"
+                  : "bg-amber-100/60 text-amber-700"
               )}
             >
               {s.confidence}

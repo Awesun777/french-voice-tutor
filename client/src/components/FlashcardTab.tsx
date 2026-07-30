@@ -10,17 +10,17 @@ import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
 
 const SM2_STATUS_LABELS: Record<string, string> = { new: "New", learning: "Learning", review: "Review", mastered: "Mastered" };
 const SM2_STATUS_COLORS: Record<string, string> = {
-  new: "bg-blue-500/20 text-blue-300",
-  learning: "bg-amber-500/20 text-amber-300",
-  review: "bg-violet-500/20 text-violet-300",
-  mastered: "bg-emerald-500/20 text-emerald-300",
+  new: "bg-blue-500/20 text-blue-800",
+  learning: "bg-amber-500/20 text-amber-800",
+  review: "bg-violet-500/20 text-violet-800",
+  mastered: "bg-emerald-500/20 text-emerald-800",
 };
 
 // 3-button self-rating → SM-2 grade. Again=1, Good=3, Easy=5.
 const GRADES = [
-  { grade: 1 as const, key: "again" as const, label: "Again", color: "bg-red-500/20 hover:bg-red-500/40 text-red-300 border-red-500/30" },
-  { grade: 3 as const, key: "good" as const, label: "Good", color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 border-blue-500/30" },
-  { grade: 5 as const, key: "easy" as const, label: "Easy", color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border-emerald-500/30" },
+  { grade: 1 as const, key: "again" as const, label: "Again", color: "bg-red-500/20 hover:bg-red-500/40 text-red-800 border-red-500/30" },
+  { grade: 3 as const, key: "good" as const, label: "Good", color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-800 border-blue-500/30" },
+  { grade: 5 as const, key: "easy" as const, label: "Easy", color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-800 border-emerald-500/30" },
 ];
 
 interface SessionResult { total: number; again: number; good: number; easy: number; }
@@ -422,7 +422,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
             </button>
             <button
               onClick={() => starMutation.mutate({ id: currentWord.id })}
-              className={cn("p-2.5 rounded-xl border transition-colors", currentWord.starred ? "bg-accent/20 border-accent/50 text-accent" : "bg-card border-border text-muted-foreground hover:text-accent hover:border-accent/50")}
+              className={cn("p-2.5 rounded-xl border transition-colors", currentWord.starred ? "bg-star/20 border-star/50 text-star" : "bg-card border-border text-muted-foreground hover:text-star hover:border-star/50")}
               title="Star this word"
             >
               <Star className={cn("w-4.5 h-4.5", currentWord.starred && "fill-current")} />
@@ -440,7 +440,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
               onMouseUp={stopRecording}
               onTouchStart={startRecording}
               onTouchEnd={stopRecording}
-              className={cn("p-2.5 rounded-xl border transition-all", recording ? "bg-red-500/20 border-red-500 text-red-400 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50")}
+              className={cn("p-2.5 rounded-xl border transition-all", recording ? "bg-red-500/20 border-red-500 text-red-700 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50")}
               title="Hold to record your pronunciation"
             >
               {recording ? <MicOff className="w-4.5 h-4.5" /> : <Mic className="w-4.5 h-4.5" />}
@@ -460,7 +460,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
           {/* Edit panel (replaces the card while editing) */}
           {editing ? (
             <div className="w-full rounded-2xl border border-primary/30 bg-card p-4 space-y-3" style={{ minHeight: "220px" }}>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Edit card</p>
+              <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Edit card</p>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">French</label>
                 <input
@@ -532,7 +532,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
           {/* Pronunciation feedback */}
           {recording && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-center">
-              <p className="text-sm text-red-300 font-semibold animate-pulse">🎙 Recording… release to stop</p>
+              <p className="text-sm text-red-800 font-semibold animate-pulse">🎙 Recording… release to stop</p>
             </div>
           )}
           {transcribing && (
@@ -542,14 +542,14 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
             </div>
           )}
           {transcription && !transcribing && (
-            <div className={cn("rounded-xl p-4 border", matchScore !== null && matchScore >= 0.8 ? "bg-emerald-500/10 border-emerald-700" : "bg-amber-500/10 border-amber-700")}>
+            <div className={cn("rounded-xl p-4 border", matchScore !== null && matchScore >= 0.8 ? "bg-emerald-500/10 border-emerald-300" : "bg-amber-500/10 border-amber-300")}>
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">You said:</p>
+                  <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">You said:</p>
                   <p className="text-sm font-semibold text-foreground">"{transcription}"</p>
                 </div>
                 {matchScore !== null && (
-                  <span className={cn("text-xs px-2 py-1 rounded-full font-bold flex-shrink-0", matchScore >= 0.8 ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-300")}>
+                  <span className={cn("text-xs px-2 py-1 rounded-full font-bold flex-shrink-0", matchScore >= 0.8 ? "bg-emerald-500/20 text-emerald-800" : "bg-amber-500/20 text-amber-800")}>
                     {matchScore >= 0.8 ? "✓ Good!" : "Try again"}
                   </span>
                 )}

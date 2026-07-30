@@ -186,13 +186,13 @@ function PastSessionCard({ session }: { session: any }) {
         <div className="px-4 pb-4 space-y-3 border-t border-border">
           {session.summary && (
             <div className="mt-3">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
+              <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Summary</p>
               <p className="text-sm text-foreground leading-relaxed">{session.summary}</p>
             </div>
           )}
           {session.savedWords?.length > 0 && (
             <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Words Saved</p>
+              <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Words Saved</p>
               <div className="flex flex-wrap gap-1.5">
                 {session.savedWords.map((w: SavedWord, i: number) => (
                   <span key={i} className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs font-medium">
@@ -204,7 +204,7 @@ function PastSessionCard({ session }: { session: any }) {
           )}
           {session.transcript?.length > 0 && (
             <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript</p>
+              <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript</p>
               <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
                 {session.transcript.map((line: TranscriptLine, i: number) => (
                   <div key={i} className={cn("text-xs", line.role === "user" ? "text-foreground" : "text-primary")}>
@@ -901,27 +901,27 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
           <Mic className="w-4 h-4 text-primary" />
           <span className="font-semibold text-sm text-foreground">Voice Chat with Romain</span>
           {sessionState === "active" && (
-            <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
+            <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Live
             </span>
           )}
           {sessionState === "paused" && (
-            <span className="flex items-center gap-1 text-xs text-amber-400 font-medium">
+            <span className="flex items-center gap-1 text-xs text-amber-700 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               Paused
             </span>
           )}
           {summarizing && (
-            <span className="flex items-center gap-1 text-xs text-violet-400 font-medium animate-pulse">
+            <span className="flex items-center gap-1 text-xs text-violet-700 font-medium animate-pulse">
               <Sparkles className="w-3 h-3" />
               Compressing…
             </span>
           )}
           {!summarizing && summarizeCount > 0 && isSessionLive && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground" title={`Context has been summarized ${summarizeCount} time${summarizeCount > 1 ? "s" : ""} to keep responses fast`}>
-              <Sparkles className="w-3 h-3 text-violet-400" />
-              <span className="text-violet-400">{summarizeCount}×</span>
+              <Sparkles className="w-3 h-3 text-violet-700" />
+              <span className="text-violet-700">{summarizeCount}×</span>
             </span>
           )}
         </div>
@@ -938,7 +938,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
         {/* Past sessions panel */}
         {showPastSessions && (
           <div className="border-b border-border bg-muted/20 p-4 space-y-2">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Past Sessions</p>
+            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Past Sessions</p>
             {pastSessions.length === 0 ? (
               <p className="text-sm text-muted-foreground">No past sessions yet.</p>
             ) : (
@@ -968,7 +968,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
               className="flex flex-col items-center gap-5 w-full"
             >
             <motion.div variants={idleItem}>
-              <h2 className="text-xl font-bold text-foreground mb-2">Talk to Romain</h2>
+              <h2 className="font-display text-xl font-bold text-foreground mb-2">Talk to Romain</h2>
               <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
                 Your personal French tutor. Have a natural conversation in French, ask questions, and say <span className="text-primary font-medium">&ldquo;save the word&rdquo;</span> to add any word or phrase to your library.
               </p>
@@ -1078,17 +1078,17 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
               <div className="grid grid-cols-2 gap-3">
                 <div className={cn("bg-card border rounded-xl p-3 transition-colors", userSpeaking && sessionState === "active" ? "border-primary/60 bg-primary/5" : "border-border")}>
                   <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                    {sessionState === "paused" ? <MicOff className="w-3 h-3 text-amber-400" /> : <Mic className="w-3 h-3" />}
-                    You {sessionState === "paused" && <span className="text-amber-400">(paused)</span>}
+                    {sessionState === "paused" ? <MicOff className="w-3 h-3 text-amber-700" /> : <Mic className="w-3 h-3" />}
+                    You {sessionState === "paused" && <span className="text-amber-700">(paused)</span>}
                   </p>
-                  <Waveform analyser={userAnalyserRef.current} active={userSpeaking && sessionState === "active"} color="#a78bfa" />
+                  <Waveform analyser={userAnalyserRef.current} active={userSpeaking && sessionState === "active"} color="#173F6B" />
                 </div>
                 <div className={cn("bg-card border rounded-xl p-3 transition-colors", aiSpeaking ? "border-emerald-500/60 bg-emerald-500/5" : "border-border")}>
                   <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
                     <Volume2 className="w-3 h-3" />
-                    Romain {aiSpeaking && <span className="text-emerald-400 animate-pulse">speaking…</span>}
+                    Romain {aiSpeaking && <span className="text-emerald-700 animate-pulse">speaking…</span>}
                   </p>
-                  <Waveform analyser={aiAnalyserRef.current} active={aiSpeaking} color="#34d399" />
+                  <Waveform analyser={aiAnalyserRef.current} active={aiSpeaking} color="#A63D4A" />
                 </div>
               </div>
 
@@ -1118,7 +1118,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                   return (
                     <div key={line.id ?? i} className="flex items-center gap-2 py-1">
                       <div className="flex-1 h-px bg-border" />
-                      <span className="flex items-center gap-1 text-[10px] text-violet-400 font-medium whitespace-nowrap">
+                      <span className="flex items-center gap-1 text-[10px] text-violet-700 font-medium whitespace-nowrap">
                         <Sparkles className="w-3 h-3" />
                         {line.text.replace("✦ ", "")}
                       </span>
@@ -1184,7 +1184,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                   className={cn(
                     "flex flex-col items-center gap-1.5 px-6 py-3 rounded-2xl border font-semibold text-sm transition-all",
                     sessionState === "paused"
-                      ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30"
+                      ? "bg-amber-500/20 border-amber-500/50 text-amber-700 hover:bg-amber-500/30"
                       : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
                   title={sessionState === "paused" ? "Resume" : "Pause"}
@@ -1222,13 +1222,13 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
         {sessionState === "ended" && (
           <div className="flex flex-col items-center p-6 gap-5 max-w-lg mx-auto w-full">
             <div className="w-14 h-14 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
-              <MessageSquare className="w-6 h-6 text-emerald-400" />
+              <MessageSquare className="w-6 h-6 text-emerald-700" />
             </div>
-            <h2 className="text-lg font-bold text-foreground">Session Complete</h2>
+            <h2 className="font-display text-lg font-bold text-foreground">Session Complete</h2>
 
             {endedSummary && (
               <div className="w-full bg-card border border-border rounded-xl p-4">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Session Summary</p>
+                <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Session Summary</p>
                 <p className="text-sm text-foreground leading-relaxed">{endedSummary}</p>
               </div>
             )}
@@ -1236,7 +1236,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
             {savedWords.length > 0 && (
               <div className="w-full bg-primary/5 border border-primary/20 rounded-xl p-4">
                 <div className="flex items-center justify-between mb-2 gap-2">
-                  <p className="text-xs font-bold text-primary uppercase tracking-wider">Words Saved ({savedWords.length})</p>
+                  <p className="font-display text-xs font-bold text-primary uppercase tracking-wider">Words Saved ({savedWords.length})</p>
                   {onStartReview && (
                     <button
                       onClick={() => onStartReview(new Date().toISOString().split("T")[0])}
@@ -1258,7 +1258,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
 
             {transcript.length > 0 && (
               <div className="w-full bg-card border border-border rounded-xl p-4">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript ({transcript.filter(l => !l.id?.startsWith("summary-note-")).length} lines)</p>
+                <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript ({transcript.filter(l => !l.id?.startsWith("summary-note-")).length} lines)</p>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {transcript
                     .filter((line) => !line.id?.startsWith("summary-note-"))

@@ -397,19 +397,19 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
           </div>
           {wrongAnswers.length > 0 && (
             <div className="mb-8">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Review Mistakes</p>
+              <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Review Mistakes</p>
               <div className="space-y-2">
                 {wrongAnswers.map((wa, i) => (
                   <div key={i} className="bg-card border border-border rounded-xl p-3.5 flex items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground">{wa.word.term}</p>
-                      <p className="text-xs text-emerald-400">✓ {wa.word.translation}</p>
+                      <p className="text-xs text-emerald-700">✓ {wa.word.translation}</p>
                       {wa.chosenDisplay
-                        ? <p className="text-xs text-red-400 mt-0.5">✗ You wrote: "{wa.chosenDisplay}"</p>
-                        : <p className="text-xs text-amber-400 mt-0.5">✗ Didn't know</p>
+                        ? <p className="text-xs text-red-700 mt-0.5">✗ You wrote: "{wa.chosenDisplay}"</p>
+                        : <p className="text-xs text-amber-700 mt-0.5">✗ Didn't know</p>
                       }
                     </div>
-                    <button onClick={() => starMutation.mutate({ id: wa.word.id })} className={cn("p-1.5 rounded-lg transition-colors", wa.word.starred ? "text-accent" : "text-muted-foreground hover:text-accent")}>
+                    <button onClick={() => starMutation.mutate({ id: wa.word.id })} className={cn("p-1.5 rounded-lg transition-colors", wa.word.starred ? "text-star" : "text-muted-foreground hover:text-star")}>
                       <Star className={cn("w-3.5 h-3.5", wa.word.starred && "fill-current")} />
                     </button>
                   </div>
@@ -440,17 +440,17 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
             <button onClick={() => { setChoice(null); setPhase("select"); }} className="text-xs text-muted-foreground hover:text-foreground transition-colors">← Back</button>
             <div className="flex items-center gap-2">
               <span className={cn("text-xs px-2 py-0.5 rounded-full font-semibold",
-                direction === "fr2en" ? "bg-primary/15 text-primary" : "bg-violet-500/15 text-violet-400"
+                direction === "fr2en" ? "bg-primary/15 text-primary" : "bg-violet-500/15 text-violet-700"
               )}>
                 {direction === "fr2en" ? "FR → EN" : "EN → FR"}
               </span>
-              {priorityTier(q.word) === 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-semibold">New</span>}
-              {priorityTier(q.word) === 1 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 font-semibold">Review</span>}
-              {priorityTier(q.word) === 2 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 font-semibold">Starred</span>}
+              {priorityTier(q.word) === 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-800 font-semibold">New</span>}
+              {priorityTier(q.word) === 1 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-800 font-semibold">Review</span>}
+              {priorityTier(q.word) === 2 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-amber-800 font-semibold">Starred</span>}
               <p className="text-sm font-mono text-muted-foreground">{qIndex + 1} / {questions.length}</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => starMutation.mutate({ id: q.word.id })} className={cn("p-1.5 rounded-lg transition-colors", q.word.starred ? "text-accent" : "text-muted-foreground hover:text-accent")} title="Star this word">
+              <button onClick={() => starMutation.mutate({ id: q.word.id })} className={cn("p-1.5 rounded-lg transition-colors", q.word.starred ? "text-star" : "text-muted-foreground hover:text-star")} title="Star this word">
                 <Star className={cn("w-3.5 h-3.5", q.word.starred && "fill-current")} />
               </button>
               {confirmDeleteId === q.word.id ? (
@@ -477,12 +477,12 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
-              <p className="text-sm font-semibold text-emerald-400">{score} pts</p>
+              <p className="text-sm font-semibold text-emerald-700">{score} pts</p>
             </div>
           </div>
 
           <div className="bg-gradient-to-br from-card to-muted/30 rounded-2xl p-6 sm:p-8 text-center border border-border shadow-lg">
-            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-4">
+            <p className="font-display text-xs uppercase tracking-widest text-muted-foreground mb-4">
               {isTypingMode ? "Write in French:" : "What does this mean?"}
             </p>
             <div className="flex items-center justify-center gap-3">
@@ -514,19 +514,19 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
                 autoFocus
                 className={cn(
                   "w-full px-4 py-3 rounded-xl border text-sm transition focus:outline-none",
-                  fillResult?.correct ? "bg-emerald-500/10 border-emerald-500 text-emerald-200"
-                    : fillResult && !fillResult.correct ? "bg-red-500/10 border-red-500 text-red-200"
+                  fillResult?.correct ? "bg-emerald-500/10 border-emerald-500 text-emerald-900"
+                    : fillResult && !fillResult.correct ? "bg-red-500/10 border-red-500 text-red-900"
                     : "bg-card border-border text-foreground placeholder-muted-foreground focus:border-primary"
                 )}
               />
               {fillResult && (
-                <div className={cn("rounded-xl p-4 border space-y-2", fillResult.correct ? "bg-emerald-500/10 border-emerald-700" : "bg-red-500/10 border-red-700")}>
+                <div className={cn("rounded-xl p-4 border space-y-2", fillResult.correct ? "bg-emerald-500/10 border-emerald-300" : "bg-red-500/10 border-red-300")}>
                   {fillResult.correct ? (
-                    <p className="text-emerald-300 font-semibold text-sm">✓ Correct!</p>
+                    <p className="text-emerald-800 font-semibold text-sm">✓ Correct!</p>
                   ) : (
                     <>
                       <div className="flex items-center gap-2">
-                        <p className="text-red-300 font-semibold text-sm">✗ Incorrect — correct answer:</p>
+                        <p className="text-red-800 font-semibold text-sm">✗ Incorrect — correct answer:</p>
                         <p className="text-foreground font-bold">{q.word.term}</p>
                         <PronounceButton
                           text={q.word.term}
@@ -538,12 +538,12 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
                         />
                       </div>
                       {fillResult.note && (
-                        <p className="text-xs text-red-300">{fillResult.note}</p>
+                        <p className="text-xs text-red-800">{fillResult.note}</p>
                       )}
                       {fillResult.grammarNote && (
-                        <div className="mt-1 p-3 rounded-lg bg-amber-500/10 border border-amber-700/50">
-                          <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">📚 Grammar note</p>
-                          <p className="text-sm text-amber-200 leading-relaxed">{fillResult.grammarNote}</p>
+                        <div className="mt-1 p-3 rounded-lg bg-amber-500/10 border border-amber-300/50">
+                          <p className="font-display text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">📚 Grammar note</p>
+                          <p className="text-sm text-amber-900 leading-relaxed">{fillResult.grammarNote}</p>
                         </div>
                       )}
                     </>
@@ -581,8 +581,8 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
                   const isRevealed = revealedDontKnow;
                   let cls = "relative p-4 rounded-xl border text-sm font-semibold transition-all duration-200 text-left ";
                   if (selected || isRevealed) {
-                    if (isCorrect) cls += "bg-emerald-500/15 border-emerald-500 text-emerald-300";
-                    else if (isChosen) cls += "bg-red-500/15 border-red-500 text-red-300";
+                    if (isCorrect) cls += "bg-emerald-500/15 border-emerald-500 text-emerald-800";
+                    else if (isChosen) cls += "bg-red-500/15 border-red-500 text-red-800";
                     else cls += "bg-muted/30 border-border text-muted-foreground opacity-50";
                   } else {
                     cls += "bg-card border-border text-foreground hover:bg-muted/50 hover:border-primary/50 cursor-pointer";
@@ -590,8 +590,8 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
                   return (
                     <button key={i} onClick={() => handleSelect(c)} disabled={!!selected || isRevealed} className={cls}>
                       {c.display}
-                      {(selected || isRevealed) && isCorrect && <span className="absolute top-2 right-2 text-emerald-400">✓</span>}
-                      {selected && isChosen && !isCorrect && <span className="absolute top-2 right-2 text-red-400">✗</span>}
+                      {(selected || isRevealed) && isCorrect && <span className="absolute top-2 right-2 text-emerald-700">✓</span>}
+                      {selected && isChosen && !isCorrect && <span className="absolute top-2 right-2 text-red-700">✗</span>}
                     </button>
                   );
                 })}

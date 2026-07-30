@@ -187,7 +187,7 @@ export function VoiceSessionSettings({ agent, onChange, compact }: Props) {
   if (compact) {
     return (
       <div className="bg-card border border-border rounded-xl p-3 space-y-3">
-        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Session Settings</p>
+        <p className="font-display text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Session Settings</p>
         <div className="space-y-1">
           <p className="text-[10px] text-muted-foreground">Speaking speed</p>
           <ThreeStepSlider
@@ -214,7 +214,7 @@ export function VoiceSessionSettings({ agent, onChange, compact }: Props) {
 
   return (
     <div className="bg-card border border-border rounded-xl p-4 text-left max-w-sm w-full space-y-4">
-      <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Session Settings</p>
+      <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Session Settings</p>
 
       {/* Speed */}
       <div className="space-y-2">

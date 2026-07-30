@@ -15,9 +15,9 @@ function SM2StatsPanel() {
   const total = (sm2Stats.new + sm2Stats.learning + sm2Stats.review + sm2Stats.mastered) || 1;
   const bars = [
     { label: "New", count: sm2Stats.new, color: "bg-muted", text: "text-muted-foreground" },
-    { label: "Learning", count: sm2Stats.learning, color: "bg-yellow-500", text: "text-yellow-400" },
-    { label: "Review", count: sm2Stats.review, color: "bg-blue-500", text: "text-blue-400" },
-    { label: "Mastered", count: sm2Stats.mastered, color: "bg-green-500", text: "text-green-400" },
+    { label: "Learning", count: sm2Stats.learning, color: "bg-yellow-500", text: "text-amber-700" },
+    { label: "Review", count: sm2Stats.review, color: "bg-blue-500", text: "text-blue-700" },
+    { label: "Mastered", count: sm2Stats.mastered, color: "bg-green-500", text: "text-green-700" },
   ];
   return (
     <div className="bg-card border border-border rounded-2xl p-5">
@@ -36,7 +36,7 @@ function SM2StatsPanel() {
         ))}
       </div>
       {sm2Stats.dueToday > 0 && (
-        <p className="text-xs text-accent font-semibold mt-3 text-center">{sm2Stats.dueToday} words due for review today</p>
+        <p className="text-xs text-accent-strong font-semibold mt-3 text-center">{sm2Stats.dueToday} words due for review today</p>
       )}
     </div>
   );
@@ -151,7 +151,7 @@ export default function ProgressTab() {
       icon: <Flame className="w-5 h-5" />,
       label: "Day Streak",
       value: stats.currentStreak,
-      color: "text-orange-400",
+      color: "text-orange-700",
       bg: "bg-orange-500/10",
     },
     {
@@ -165,14 +165,14 @@ export default function ProgressTab() {
       icon: <Star className="w-5 h-5" />,
       label: "Due for Review",
       value: stats.dueCount,
-      color: "text-accent",
+      color: "text-accent-strong",
       bg: "bg-accent/10",
     },
     {
       icon: <Brain className="w-5 h-5" />,
       label: "Quizzes Taken",
       value: sessions.length,
-      color: "text-violet-400",
+      color: "text-violet-700",
       bg: "bg-violet-500/10",
     },
   ];
@@ -181,7 +181,7 @@ export default function ProgressTab() {
     <div className="flex-1 overflow-y-auto px-4 py-6">
       <div className="max-w-2xl mx-auto space-y-6">
         <div>
-          <h2 className="text-xl font-bold text-foreground mb-1">Your Progress</h2>
+          <h2 className="font-display text-xl font-bold text-foreground mb-1">Your Progress</h2>
           <p className="text-sm text-muted-foreground">Track your French learning journey</p>
         </div>
 
@@ -205,14 +205,14 @@ export default function ProgressTab() {
             {vocabGrowth.length > 1 ? (
               <ResponsiveContainer width="100%" height={140}>
                 <BarChart data={vocabGrowth} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "oklch(0.58 0.02 255)" }} />
-                  <YAxis tick={{ fontSize: 10, fill: "oklch(0.58 0.02 255)" }} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6F6A64" }} />
+                  <YAxis tick={{ fontSize: 10, fill: "#6F6A64" }} />
                   <Tooltip
-                    contentStyle={{ background: "oklch(0.16 0.018 255)", border: "1px solid oklch(0.25 0.02 255)", borderRadius: "8px", fontSize: "12px" }}
-                    labelStyle={{ color: "oklch(0.94 0.01 255)" }}
-                    itemStyle={{ color: "oklch(0.60 0.20 265)" }}
+                    contentStyle={{ background: "#FFFFFF", border: "1px solid #CBD9E6", borderRadius: "8px", fontSize: "12px" }}
+                    labelStyle={{ color: "#252321" }}
+                    itemStyle={{ color: "#173F6B" }}
                   />
-                  <Bar dataKey="words" fill="oklch(0.60 0.20 265)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="words" fill="#173F6B" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -227,15 +227,15 @@ export default function ProgressTab() {
             <p className="text-sm font-bold text-foreground mb-4">Vocabulary Growth (Last 14 Days)</p>
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={cumulativeData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.25 0.02 255)" />
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "oklch(0.58 0.02 255)" }} />
-                <YAxis tick={{ fontSize: 10, fill: "oklch(0.58 0.02 255)" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#CBD9E6" />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6F6A64" }} />
+                <YAxis tick={{ fontSize: 10, fill: "#6F6A64" }} />
                 <Tooltip
-                  contentStyle={{ background: "oklch(0.16 0.018 255)", border: "1px solid oklch(0.25 0.02 255)", borderRadius: "8px", fontSize: "12px" }}
-                  labelStyle={{ color: "oklch(0.94 0.01 255)" }}
-                  itemStyle={{ color: "oklch(0.72 0.15 85)" }}
+                  contentStyle={{ background: "#FFFFFF", border: "1px solid #CBD9E6", borderRadius: "8px", fontSize: "12px" }}
+                  labelStyle={{ color: "#252321" }}
+                  itemStyle={{ color: "#A63D4A" }}
                 />
-                <Line type="monotone" dataKey="total" stroke="oklch(0.72 0.15 85)" strokeWidth={2} dot={{ r: 3, fill: "oklch(0.72 0.15 85)" }} />
+                <Line type="monotone" dataKey="total" stroke="#A63D4A" strokeWidth={2} dot={{ r: 3, fill: "#A63D4A" }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -247,15 +247,15 @@ export default function ProgressTab() {
             <p className="text-sm font-bold text-foreground mb-4">Quiz Scores (%)</p>
             <ResponsiveContainer width="100%" height={140}>
               <BarChart data={quizChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "oklch(0.58 0.02 255)" }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "oklch(0.58 0.02 255)" }} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#6F6A64" }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "#6F6A64" }} />
                 <Tooltip
-                  contentStyle={{ background: "oklch(0.16 0.018 255)", border: "1px solid oklch(0.25 0.02 255)", borderRadius: "8px", fontSize: "12px" }}
-                  labelStyle={{ color: "oklch(0.94 0.01 255)" }}
-                  itemStyle={{ color: "oklch(0.62 0.18 155)" }}
+                  contentStyle={{ background: "#FFFFFF", border: "1px solid #CBD9E6", borderRadius: "8px", fontSize: "12px" }}
+                  labelStyle={{ color: "#252321" }}
+                  itemStyle={{ color: "#4A7C59" }}
                   formatter={(v: number) => [`${v}%`, "Score"]}
                 />
-                <Bar dataKey="score" fill="oklch(0.62 0.18 155)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="score" fill="#4A7C59" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -274,7 +274,7 @@ export default function ProgressTab() {
                   <div key={s.id} className="flex items-center gap-3 px-5 py-3">
                     <div className={cn(
                       "w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold flex-shrink-0",
-                      pct >= 80 ? "bg-emerald-500/15 text-emerald-400" : pct >= 60 ? "bg-amber-500/15 text-amber-400" : "bg-red-500/15 text-red-400"
+                      pct >= 80 ? "bg-emerald-500/15 text-emerald-700" : pct >= 60 ? "bg-amber-500/15 text-amber-700" : "bg-red-500/15 text-red-700"
                     )}>
                       {pct}%
                     </div>

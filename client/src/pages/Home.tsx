@@ -51,11 +51,13 @@ export default function Home() {
         <div className="max-w-md w-full text-center space-y-8">
           {/* Logo */}
           <div className="flex flex-col items-center gap-4">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary/30 to-primary/10 border border-primary/30 flex items-center justify-center shadow-lg shadow-primary/10">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-accent/40 to-accent/15 border border-accent/50 flex items-center justify-center shadow-lg shadow-primary/10">
               <span className="text-4xl">🇫🇷</span>
             </div>
             <div>
-              <h1 className="text-4xl font-bold text-foreground" style={{ fontFamily: "'Playfair Display', serif" }}>
+              {/* opsz pushed high — Fraunces is drawn per optical size, so a display
+                  heading needs the large-size cut rather than a scaled-up text cut. */}
+              <h1 className="font-display text-4xl font-semibold text-foreground" style={{ fontVariationSettings: "'opsz' 128" }}>
                 Le Dictionnaire
               </h1>
               <p className="text-muted-foreground mt-2 text-lg">Your personal French learning companion</p>

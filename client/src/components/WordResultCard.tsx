@@ -69,7 +69,7 @@ export function WordResultCard({
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-2xl font-bold text-foreground">{result.word}</h2>
+              <h2 className="font-display text-2xl font-bold text-foreground">{result.word}</h2>
               <PronounceButton text={result.word} speak={speak} state={pronounceState} activeText={activeText} className="p-1.5 bg-primary/15 hover:bg-primary/25 text-primary" iconSize="w-4 h-4" />
             </div>
             {result.pronunciation && <p className="text-sm text-muted-foreground font-mono">[{result.pronunciation}]</p>}
@@ -79,7 +79,7 @@ export function WordResultCard({
               <span className="text-xs px-2.5 py-1 rounded-full bg-primary/15 text-primary font-semibold capitalize">{result.wordType}</span>
             )}
             {(result.isReflexive || result.hasReflexiveForm) && (
-              <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-semibold flex items-center gap-1">
+              <span className="text-xs px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-800 font-semibold flex items-center gap-1">
                 <RefreshCw className="w-3 h-3" />
                 {result.isReflexive ? "reflexive" : "has reflexive"}
               </span>
@@ -90,7 +90,7 @@ export function WordResultCard({
                 disabled={isAdded || adding}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
-                  isAdded ? "bg-emerald-500/15 text-emerald-400 cursor-default" : "bg-primary/15 hover:bg-primary/25 text-primary"
+                  isAdded ? "bg-emerald-500/15 text-emerald-700 cursor-default" : "bg-primary/15 hover:bg-primary/25 text-primary"
                 )}
               >
                 {isAdded ? <><BookmarkCheck className="w-3.5 h-3.5" /> Saved</> : adding ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</> : <><Plus className="w-3.5 h-3.5" /> Add</>}
@@ -113,8 +113,8 @@ export function WordResultCard({
         {(result.isReflexive || result.hasReflexiveForm) && (
           <div className="border border-amber-500/40 bg-amber-500/10 rounded-xl p-3 mb-3 space-y-1.5">
             <div className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-sm font-bold text-amber-300">
+              <RefreshCw className="w-4 h-4 text-amber-700 shrink-0" />
+              <span className="text-sm font-bold text-amber-800">
                 {result.isReflexive ? "Reflexive verb (pronominal)" : "Has a reflexive form"}
               </span>
             </div>
@@ -122,10 +122,10 @@ export function WordResultCard({
               <p className="text-sm text-foreground">
                 {result.nonReflexiveForm && <span className="font-semibold">{result.nonReflexiveForm}</span>}
                 {result.reflexiveForm && result.nonReflexiveForm && <span className="text-muted-foreground"> → </span>}
-                {result.reflexiveForm && <span className="font-bold text-amber-300">{result.reflexiveForm}</span>}
+                {result.reflexiveForm && <span className="font-bold text-amber-800">{result.reflexiveForm}</span>}
               </p>
             )}
-            {result.reflexiveExplanation && <p className="text-sm text-amber-100/80 leading-relaxed">{result.reflexiveExplanation}</p>}
+            {result.reflexiveExplanation && <p className="text-sm text-amber-900/80 leading-relaxed">{result.reflexiveExplanation}</p>}
           </div>
         )}
 
@@ -133,12 +133,12 @@ export function WordResultCard({
         {result.governedPreposition && (
           <div className="border border-sky-500/40 bg-sky-500/10 rounded-xl p-3 mb-3 space-y-1">
             <div className="flex items-center gap-2 flex-wrap text-sm">
-              <span className="text-xs font-bold text-sky-300 uppercase tracking-wide">Preposition</span>
+              <span className="font-display text-xs font-bold text-sky-800 uppercase tracking-wide">Preposition</span>
               <span className="font-semibold text-foreground">{result.word}</span>
-              <span className="px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-200 font-bold">{result.governedPreposition}</span>
+              <span className="px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-900 font-bold">{result.governedPreposition}</span>
               <span className="text-muted-foreground">+ complement</span>
             </div>
-            {result.prepositionExplanation && <p className="text-sm text-sky-100/80 leading-relaxed">{result.prepositionExplanation}</p>}
+            {result.prepositionExplanation && <p className="text-sm text-sky-900/80 leading-relaxed">{result.prepositionExplanation}</p>}
           </div>
         )}
 
@@ -146,11 +146,11 @@ export function WordResultCard({
         {result.adjectiveAuxiliary && (
           <div className="border border-violet-500/40 bg-violet-500/10 rounded-xl p-3 mb-3 space-y-1">
             <div className="flex items-center gap-2 flex-wrap text-sm">
-              <span className="text-xs font-bold text-violet-300 uppercase tracking-wide">Auxiliary</span>
-              <span className="px-2 py-0.5 rounded-full bg-violet-500/25 text-violet-200 font-bold">{result.adjectiveAuxiliary}</span>
+              <span className="font-display text-xs font-bold text-violet-800 uppercase tracking-wide">Auxiliary</span>
+              <span className="px-2 py-0.5 rounded-full bg-violet-500/25 text-violet-900 font-bold">{result.adjectiveAuxiliary}</span>
               <span className="text-muted-foreground">+ {result.word}</span>
             </div>
-            {result.adjectiveAuxiliaryExplanation && <p className="text-sm text-violet-100/80 leading-relaxed">{result.adjectiveAuxiliaryExplanation}</p>}
+            {result.adjectiveAuxiliaryExplanation && <p className="text-sm text-violet-900/80 leading-relaxed">{result.adjectiveAuxiliaryExplanation}</p>}
           </div>
         )}
 
@@ -158,7 +158,7 @@ export function WordResultCard({
 
         {result.examples?.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Examples</p>
+            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Examples</p>
             {result.examples.map((ex, i) => (
               <div key={i} className="bg-muted/40 rounded-xl p-3 flex items-start gap-2">
                 <PronounceButton text={ex.fr} speak={speak} state={pronounceState} activeText={activeText} className="mt-0.5 p-1 hover:bg-primary/15 text-muted-foreground hover:text-primary shrink-0" iconSize="w-3 h-3" />
@@ -183,7 +183,7 @@ export function WordResultCard({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {Object.entries(result.conjugations).filter(([, forms]) => (forms as string[])?.length).map(([tense, forms]) => (
               <div key={tense}>
-                <p className="text-xs font-bold text-primary uppercase tracking-wider mb-2">{TENSE_LABELS[tense] ?? tense}</p>
+                <p className="font-display text-xs font-bold text-primary uppercase tracking-wider mb-2">{TENSE_LABELS[tense] ?? tense}</p>
                 <div className="space-y-1">
                   {(forms as string[]).map((f, i) => (
                     <div key={i} className="flex items-center gap-2 text-sm">

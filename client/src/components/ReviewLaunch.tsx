@@ -90,8 +90,8 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
             <ChevronLeft className="w-3.5 h-3.5 inline -mt-0.5" /> Back
           </button>
           <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{verb}</p>
-            <h2 className="text-lg font-bold text-foreground mt-1">{label}</h2>
+            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">{verb}</p>
+            <h2 className="font-display text-lg font-bold text-foreground mt-1">{label}</h2>
             <p className="text-sm text-muted-foreground mt-1">{available} word{available === 1 ? "" : "s"} available</p>
           </div>
 
@@ -131,8 +131,8 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
     <div className="flex-1 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-5">
         <div className="text-center">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{verb}</p>
-          <h2 className="text-lg font-bold text-foreground mt-1">What do you want to review?</h2>
+          <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">{verb}</p>
+          <h2 className="font-display text-lg font-bold text-foreground mt-1">What do you want to review?</h2>
         </div>
 
         <div className="flex items-stretch gap-2">

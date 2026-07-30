@@ -58,7 +58,7 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
         </div>
         {open && (
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-foreground truncate" style={{ fontFamily: "'Playfair Display', serif" }}>
+            <p className="font-display text-base font-semibold text-foreground truncate">
               Le Dictionnaire
             </p>
           </div>

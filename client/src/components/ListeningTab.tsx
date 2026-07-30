@@ -28,7 +28,7 @@ export default function ListeningTab() {
         <div className="flex items-center gap-2">
           <Headphones className="w-5 h-5 text-primary" />
           <div>
-            <h2 className="text-xl font-bold text-foreground">Listening Lab</h2>
+            <h2 className="font-display text-xl font-bold text-foreground">Listening Lab</h2>
             <p className="text-sm text-muted-foreground">Get the transcript, translation & vocab for a listening exercise</p>
           </div>
         </div>
@@ -98,7 +98,7 @@ function UrlMode() {
 
       {loaded && clips.length > 0 && (
         <div className="space-y-4">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{clips.length} clip{clips.length > 1 ? "s" : ""} found</p>
+          <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">{clips.length} clip{clips.length > 1 ? "s" : ""} found</p>
           {clips.map((c) => (
             <ClipCard key={c.audioUrl} index={c.index} audioUrl={c.audioUrl} />
           ))}
@@ -237,7 +237,7 @@ function RecordMode() {
           </button>
         ) : (
           <>
-            <div className="flex items-center gap-2 text-red-400 font-semibold text-sm">
+            <div className="flex items-center gap-2 text-red-700 font-semibold text-sm">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" /> Recording {mmss}
             </div>
             <button
@@ -351,7 +351,7 @@ function TranscriptPanel({ transcript }: { transcript: string }) {
   return (
     <div className="space-y-3 pt-1">
       <div>
-        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Transcript</p>
+        <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Transcript</p>
         <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap bg-muted/30 rounded-xl p-3">{transcript}</p>
       </div>
 
@@ -367,14 +367,14 @@ function TranscriptPanel({ transcript }: { transcript: string }) {
         <>
           {analysis.translation && (
             <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5">English translation</p>
+              <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5">English translation</p>
               <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap bg-muted/20 rounded-xl p-3">{analysis.translation}</p>
             </div>
           )}
           {analysis.vocab.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Vocabulary</p>
+                <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Vocabulary</p>
                 <button
                   onClick={saveAll}
                   disabled={bulkAdd.isPending}
@@ -397,7 +397,7 @@ function TranscriptPanel({ transcript }: { transcript: string }) {
                         disabled={isSaved || addVocab.isPending}
                         className={cn(
                           "p-1.5 rounded-lg transition-colors shrink-0",
-                          isSaved ? "text-emerald-400 cursor-default" : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          isSaved ? "text-emerald-700 cursor-default" : "text-muted-foreground hover:text-primary hover:bg-primary/10"
                         )}
                         title={isSaved ? "Saved" : "Save to library"}
                       >

@@ -4,6 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: 'Nunito Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -40,54 +42,91 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-speaking: var(--speaking);
+  --color-speaking-foreground: var(--speaking-foreground);
+  --color-speaking-surface: var(--speaking-surface);
+  --color-star: var(--star);
+  --color-accent-strong: var(--accent-strong);
 }
 
 :root {
   --radius: 0.75rem;
-  /* Dark French-inspired palette */
-  --background: oklch(0.12 0.015 255);
-  --foreground: oklch(0.94 0.01 255);
-  --card: oklch(0.16 0.018 255);
-  --card-foreground: oklch(0.94 0.01 255);
-  --popover: oklch(0.16 0.018 255);
-  --popover-foreground: oklch(0.94 0.01 255);
-  --primary: oklch(0.60 0.20 265);
-  --primary-foreground: oklch(0.98 0.005 255);
-  --secondary: oklch(0.22 0.025 255);
-  --secondary-foreground: oklch(0.85 0.01 255);
-  --muted: oklch(0.20 0.02 255);
-  --muted-foreground: oklch(0.58 0.02 255);
-  --accent: oklch(0.72 0.15 85);
-  --accent-foreground: oklch(0.12 0.015 255);
-  --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.98 0.005 255);
-  --border: oklch(0.25 0.02 255);
-  --input: oklch(0.20 0.02 255);
-  --ring: oklch(0.60 0.20 265);
-  --chart-1: oklch(0.60 0.20 265);
-  --chart-2: oklch(0.72 0.15 85);
-  --chart-3: oklch(0.62 0.18 155);
-  --chart-4: oklch(0.62 0.2 15);
-  --chart-5: oklch(0.60 0.2 295);
-  --sidebar: oklch(0.14 0.018 255);
-  --sidebar-foreground: oklch(0.94 0.01 255);
-  --sidebar-primary: oklch(0.60 0.20 265);
-  --sidebar-primary-foreground: oklch(0.98 0.005 255);
-  --sidebar-accent: oklch(0.20 0.02 255);
-  --sidebar-accent-foreground: oklch(0.94 0.01 255);
-  --sidebar-border: oklch(0.22 0.02 255);
-  --sidebar-ring: oklch(0.60 0.20 265);
+  color-scheme: light;
+
+  /* ─── Warm cream French palette ─────────────────────────────────────────────
+   * Eight named roles, used verbatim as supplied:
+   *   navy #173F6B · burgundy #A63D4A · friendly blue #5CA8D6 · pale blue #DCECF8
+   *   rose mist #F4E0E3 · warm cream #FFF8ED · charcoal #252321 · muted gray #6F6A64
+   * Everything else here is derived from those, or is a role the palette
+   * doesn't cover (destructive, star) — see the notes below.
+   */
+  --background: #FFF8ED;          /* warm cream */
+  --foreground: #252321;          /* charcoal */
+  --card: #FFFFFF;                /* white, so pale blue stays reserved for practice cards */
+  --card-foreground: #252321;
+  --popover: #FFFFFF;
+  --popover-foreground: #252321;
+  --primary: #173F6B;             /* navy */
+  --primary-foreground: #FFF8ED;
+  --secondary: #DCECF8;           /* pale blue */
+  --secondary-foreground: #173F6B;
+  --muted: #DCECF8;               /* pale blue — also drives hover surfaces */
+  --muted-foreground: #6F6A64;    /* muted gray */
+  --accent: #5CA8D6;              /* friendly blue — selected states, illustrations */
+  --accent-foreground: #17384F;   /* white on friendly blue fails contrast; use deep navy */
+  /* Friendly blue is a fill colour: as text on cream it measures 2.48:1 and fails
+   * AA. This is the same hue darkened to 6.1:1, for badges and labels that need
+   * to read as "blue" but carry actual text. */
+  --accent-strong: #22648C;
+
+  /* Deliberately NOT burgundy. Burgundy is the speaking colour, and if delete and
+   * mic shared a hue they'd read as the same affordance. This leans orange-red to
+   * stay clearly distinct from #A63D4A. */
+  --destructive: #C0392B;
+  --destructive-foreground: #FFF8ED;
+
+  --border: #CBD9E6;              /* pale blue, darkened ~12% */
+  --input: #CBD9E6;
+  --ring: #173F6B;
+
+  /* Charts: navy, burgundy, darkened friendly blue, then two derived hues.
+   * Friendly blue is lightened for surfaces but darkened here — #5CA8D6 as a
+   * chart fill on cream is too low-contrast to read. */
+  --chart-1: #173F6B;
+  --chart-2: #A63D4A;
+  --chart-3: #3E8CBC;
+  --chart-4: #C08A2E;
+  --chart-5: #4A7C59;
+
+  --sidebar: #FBF2E4;             /* a shade deeper than the page, so it separates */
+  --sidebar-foreground: #252321;
+  --sidebar-primary: #173F6B;
+  --sidebar-primary-foreground: #FFF8ED;
+  --sidebar-accent: #DCECF8;
+  --sidebar-accent-foreground: #173F6B;
+  --sidebar-border: #EFE2CE;
+  --sidebar-ring: #173F6B;
+
+  /* Roles the shadcn token set has no slot for. */
+  --speaking: #A63D4A;            /* burgundy — mic, waveforms, pronunciation */
+  --speaking-foreground: #FFF8ED;
+  --speaking-surface: #F4E0E3;    /* rose mist — speaking prompts, accent surfaces */
+
+  /* Starred words used to ride on --accent, which was gold in the dark theme.
+   * --accent is now blue, and a blue star reads wrong, so stars get their own
+   * warm ochre. Deepened from #C08A2E, which only reached 2.88:1 on cream —
+   * below the 3:1 minimum for icons. This is 3.9:1 and still reads as gold. */
+  --star: #A6741A;
 }
 
-/* Dark is the only theme - no .dark override needed */
+/* Light is the only theme - no .dark override needed */
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: 'Inter', sans-serif;
+    @apply bg-background text-foreground font-sans;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -161,5 +200,5 @@
 /* ─── Scrollbar ───────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: oklch(0.28 0.02 255); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: oklch(0.38 0.03 255); }
+::-webkit-scrollbar-thumb { background: #D3CBBD; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #B5AC9C; }

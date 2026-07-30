@@ -168,7 +168,7 @@ function PhraseCard({ result, speak, pronounceState, activeText }: {
   return (
     <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
       <div className="flex items-center gap-2">
-        <h2 className="text-xl font-bold text-foreground">{result.phrase}</h2>
+        <h2 className="font-display text-xl font-bold text-foreground">{result.phrase}</h2>
         <PronounceButton text={result.phrase} speak={speak} state={pronounceState} activeText={activeText} className="p-1.5 bg-primary/15 hover:bg-primary/25 text-primary" iconSize="w-4 h-4" />
       </div>
       {result.pronunciation && <p className="text-sm text-muted-foreground font-mono">[{result.pronunciation}]</p>}

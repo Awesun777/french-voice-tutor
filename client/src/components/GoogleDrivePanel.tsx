@@ -640,7 +640,7 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
                           {labelList.map((label) => (
                             <span
                               key={label}
-                              className="text-xs text-blue-400/80 bg-blue-500/10 px-2 py-0.5 rounded-full"
+                              className="text-xs text-blue-700/80 bg-blue-500/10 px-2 py-0.5 rounded-full"
                             >
                               {label}
                             </span>
@@ -688,14 +688,14 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
                               <p className="text-sm font-medium text-foreground truncate">{item.term}</p>
                               <p className="text-xs text-muted-foreground truncate">{item.translation}</p>
                               {item.groupLabel && (
-                                <p className="text-xs text-blue-400/70 truncate mt-0.5">🏷 {item.groupLabel}</p>
+                                <p className="text-xs text-blue-700/70 truncate mt-0.5">🏷 {item.groupLabel}</p>
                               )}
                             </div>
                             <div className="flex gap-1.5 shrink-0">
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-7 w-7 text-green-500 hover:text-green-600 hover:bg-green-500/10"
+                                className="h-7 w-7 text-green-700 hover:text-green-600 hover:bg-green-500/10"
                                 onClick={() => acceptMutation.mutate({ id: item.id })}
                                 disabled={acceptMutation.isPending}
                                 title="Add this word"

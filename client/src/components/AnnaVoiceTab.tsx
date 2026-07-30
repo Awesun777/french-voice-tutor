@@ -649,33 +649,33 @@ export function AnnaVoiceTab() {
       {/* Header */}
       <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Mic className="w-4 h-4 text-pink-400" />
+          <Mic className="w-4 h-4 text-speaking" />
           <span className="font-semibold text-sm text-foreground">Voice Chat with Anna</span>
           {sessionState === "active" && (
-            <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
+            <span className="flex items-center gap-1 text-xs text-emerald-700 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Live
             </span>
           )}
           {sessionState === "paused" && (
-            <span className="flex items-center gap-1 text-xs text-amber-400 font-medium">
+            <span className="flex items-center gap-1 text-xs text-amber-700 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               Paused
             </span>
           )}
           {summarizing && (
-            <span className="flex items-center gap-1 text-xs text-violet-400 font-medium animate-pulse">
+            <span className="flex items-center gap-1 text-xs text-violet-700 font-medium animate-pulse">
               <Loader2 className="w-3 h-3 animate-spin" />
               Compressing…
             </span>
           )}
           {!summarizing && summarizeCount > 0 && isSessionLive && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground" title={`Context summarized ${summarizeCount} time${summarizeCount > 1 ? "s" : ""}`}>
-              <Sparkles className="w-3 h-3 text-violet-400" />
-              <span className="text-violet-400">{summarizeCount}×</span>
+              <Sparkles className="w-3 h-3 text-violet-700" />
+              <span className="text-violet-700">{summarizeCount}×</span>
             </span>
           )}
-          <span className="text-xs text-muted-foreground bg-pink-500/10 text-pink-400 border border-pink-500/20 rounded-full px-2 py-0.5">
+          <span className="text-xs text-muted-foreground bg-speaking/10 text-speaking border border-speaking/20 rounded-full px-2 py-0.5">
             ElevenLabs
           </span>
         </div>
@@ -692,7 +692,7 @@ export function AnnaVoiceTab() {
         {/* Past sessions panel */}
         {showPastSessions && (
           <div className="border-b border-border bg-muted/20 p-4 space-y-2">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Past Sessions</p>
+            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Past Sessions</p>
             {pastSessions.length === 0 ? (
               <p className="text-sm text-muted-foreground">No past sessions yet.</p>
             ) : (
@@ -709,7 +709,7 @@ export function AnnaVoiceTab() {
             {/* Avatar morphs in from the chooser via its shared layoutId. */}
             <motion.div
               layoutId={avatarLayoutId("anna")}
-              className="w-20 h-20 rounded-full overflow-hidden border-2 border-pink-500/30"
+              className="w-20 h-20 rounded-full overflow-hidden border-2 border-speaking/30"
             >
               <AvatarVideo src="/avatars/anna.mp4" />
             </motion.div>
@@ -722,10 +722,10 @@ export function AnnaVoiceTab() {
               className="flex flex-col items-center gap-5 w-full"
             >
               <motion.div variants={idleItem}>
-                <h2 className="text-xl font-bold text-foreground mb-2">Talk to Anna</h2>
+                <h2 className="font-display text-xl font-bold text-foreground mb-2">Talk to Anna</h2>
                 <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
                   Your French tutor with a natural ElevenLabs voice. Have a conversation in French and say{" "}
-                  <span className="text-pink-400 font-medium">&ldquo;save the word&rdquo;</span> to add words to your library.
+                  <span className="text-speaking font-medium">&ldquo;save the word&rdquo;</span> to add words to your library.
                 </p>
               </motion.div>
 
@@ -740,7 +740,7 @@ export function AnnaVoiceTab() {
               <motion.div variants={idleItem}>
                 <button
                   onClick={startSession}
-                  className="px-8 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-2xl font-semibold text-base transition-all shadow-lg shadow-pink-500/20 hover:shadow-pink-500/30"
+                  className="px-8 py-3 bg-speaking hover:bg-speaking/90 text-speaking-foreground rounded-2xl font-semibold text-base transition-all shadow-lg shadow-pink-500/20 hover:shadow-pink-500/30"
                 >
                   Start Conversation
                 </button>
@@ -752,7 +752,7 @@ export function AnnaVoiceTab() {
         {/* Connecting state (initial only — resume shows transcript instead) */}
         {sessionState === "connecting" && !isResuming && (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4">
-            <Loader2 className="w-10 h-10 text-pink-400 animate-spin" />
+            <Loader2 className="w-10 h-10 text-speaking animate-spin" />
             <p className="text-sm text-muted-foreground">Connecting to Anna…</p>
           </div>
         )}
@@ -764,35 +764,35 @@ export function AnnaVoiceTab() {
             <div className="flex-shrink-0 px-4 py-4 space-y-3">
               {isResuming ? (
                 <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 text-pink-400 animate-spin" />
+                  <Loader2 className="w-4 h-4 text-speaking animate-spin" />
                   Reconnecting to Anna…
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
-                  <div className={cn("bg-card border rounded-xl p-3 transition-colors", userSpeaking && sessionState === "active" ? "border-pink-500/60 bg-pink-500/5" : "border-border")}>
+                  <div className={cn("bg-card border rounded-xl p-3 transition-colors", userSpeaking && sessionState === "active" ? "border-speaking/60 bg-speaking-surface/70" : "border-border")}>
                     <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                      {sessionState === "paused" ? <MicOff className="w-3 h-3 text-amber-400" /> : <Mic className="w-3 h-3" />}
-                      You {sessionState === "paused" && <span className="text-amber-400">(paused)</span>}
+                      {sessionState === "paused" ? <MicOff className="w-3 h-3 text-amber-700" /> : <Mic className="w-3 h-3" />}
+                      You {sessionState === "paused" && <span className="text-amber-700">(paused)</span>}
                     </p>
-                    <Waveform active={userSpeaking && sessionState === "active"} color="#f472b6" />
+                    <Waveform active={userSpeaking && sessionState === "active"} color="#173F6B" />
                   </div>
-                  <div className={cn("bg-card border rounded-xl p-3 transition-colors", aiSpeaking ? "border-pink-500/60 bg-pink-500/5" : "border-border")}>
+                  <div className={cn("bg-card border rounded-xl p-3 transition-colors", aiSpeaking ? "border-speaking/60 bg-speaking-surface/70" : "border-border")}>
                     <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
                       <Volume2 className="w-3 h-3" />
-                      Anna {aiSpeaking && <span className="text-pink-400 animate-pulse">speaking…</span>}
+                      Anna {aiSpeaking && <span className="text-speaking animate-pulse">speaking…</span>}
                     </p>
-                    <Waveform active={aiSpeaking} color="#f472b6" />
+                    <Waveform active={aiSpeaking} color="#A63D4A" />
                   </div>
                 </div>
               )}
 
               {/* Saved words this session */}
               {savedWords.length > 0 && (
-                <div className="bg-pink-500/5 border border-pink-500/20 rounded-xl px-3 py-2">
-                  <p className="text-xs font-bold text-pink-400 mb-1.5">Saved this session:</p>
+                <div className="bg-speaking-surface/70 border border-speaking/20 rounded-xl px-3 py-2">
+                  <p className="text-xs font-bold text-speaking mb-1.5">Saved this session:</p>
                   <div className="flex flex-wrap gap-1.5">
                     {savedWords.map((w, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-pink-500/15 text-pink-400 rounded-full text-xs font-medium">
+                      <span key={i} className="px-2 py-0.5 bg-speaking/15 text-speaking rounded-full text-xs font-medium">
                         {w.term}
                       </span>
                     ))}
@@ -816,7 +816,7 @@ export function AnnaVoiceTab() {
                 >
                   <div className={cn(
                     "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5",
-                    line.role === "user" ? "bg-secondary text-foreground" : "bg-pink-500/20 text-pink-400"
+                    line.role === "user" ? "bg-secondary text-foreground" : "bg-speaking/20 text-speaking"
                   )}>
                     {line.role === "user" ? "Me" : "A"}
                   </div>
@@ -844,8 +844,8 @@ export function AnnaVoiceTab() {
                   <BookmarkPlus className="w-3.5 h-3.5" />
                   Say &ldquo;save the word&rdquo; to save a word
                 </button>
-                <div className="flex items-center gap-2 px-4 py-2 bg-pink-500/5 border border-pink-500/20 rounded-xl text-xs text-muted-foreground">
-                  <MessageSquare className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
+                <div className="flex items-center gap-2 px-4 py-2 bg-speaking-surface/70 border border-speaking/20 rounded-xl text-xs text-muted-foreground">
+                  <MessageSquare className="w-3.5 h-3.5 text-speaking flex-shrink-0" />
                   Say &ldquo;On commence une conversation&rdquo; to chat
                 </div>
               </div>
@@ -858,7 +858,7 @@ export function AnnaVoiceTab() {
                     isResuming
                       ? "opacity-50 cursor-not-allowed bg-card border-border text-muted-foreground"
                       : isPaused
-                        ? "bg-amber-500/20 border-amber-500/50 text-amber-400 hover:bg-amber-500/30"
+                        ? "bg-amber-500/20 border-amber-500/50 text-amber-700 hover:bg-amber-500/30"
                         : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
                   )}
                 >
@@ -880,7 +880,7 @@ export function AnnaVoiceTab() {
         {/* Ending state */}
         {sessionState === "ending" && (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] gap-4">
-            <Loader2 className="w-10 h-10 text-pink-400 animate-spin" />
+            <Loader2 className="w-10 h-10 text-speaking animate-spin" />
             <p className="text-sm text-muted-foreground">Saving session and generating summary…</p>
           </div>
         )}
@@ -888,24 +888,24 @@ export function AnnaVoiceTab() {
         {/* Ended state */}
         {sessionState === "ended" && (
           <div className="flex flex-col items-center p-6 gap-5 max-w-lg mx-auto w-full">
-            <div className="w-14 h-14 rounded-full bg-pink-500/10 border-2 border-pink-500/30 flex items-center justify-center">
-              <MessageSquare className="w-6 h-6 text-pink-400" />
+            <div className="w-14 h-14 rounded-full bg-speaking/10 border-2 border-speaking/30 flex items-center justify-center">
+              <MessageSquare className="w-6 h-6 text-speaking" />
             </div>
-            <h2 className="text-lg font-bold text-foreground">Session Complete</h2>
+            <h2 className="font-display text-lg font-bold text-foreground">Session Complete</h2>
 
             {endedSummary && (
               <div className="w-full bg-card border border-border rounded-xl p-4">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Session Summary</p>
+                <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Session Summary</p>
                 <p className="text-sm text-foreground leading-relaxed">{endedSummary}</p>
               </div>
             )}
 
             {savedWords.length > 0 && (
-              <div className="w-full bg-pink-500/5 border border-pink-500/20 rounded-xl p-4">
-                <p className="text-xs font-bold text-pink-400 uppercase tracking-wider mb-2">Words Saved ({savedWords.length})</p>
+              <div className="w-full bg-speaking-surface/70 border border-speaking/20 rounded-xl p-4">
+                <p className="font-display text-xs font-bold text-speaking uppercase tracking-wider mb-2">Words Saved ({savedWords.length})</p>
                 <div className="flex flex-wrap gap-2">
                   {savedWords.map((w, i) => (
-                    <span key={i} className="px-2.5 py-1 bg-pink-500/15 text-pink-400 rounded-full text-xs font-medium">
+                    <span key={i} className="px-2.5 py-1 bg-speaking/15 text-speaking rounded-full text-xs font-medium">
                       {w.term} — {w.translation}
                     </span>
                   ))}
@@ -915,10 +915,10 @@ export function AnnaVoiceTab() {
 
             {transcript.length > 0 && (
               <div className="w-full bg-card border border-border rounded-xl p-4">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript ({transcript.length} lines)</p>
+                <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript ({transcript.length} lines)</p>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {transcript.map((line, i) => (
-                    <p key={i} className={cn("text-xs", line.role === "user" ? "text-foreground" : "text-pink-400")}>
+                    <p key={i} className={cn("text-xs", line.role === "user" ? "text-foreground" : "text-speaking")}>
                       <span className="font-semibold">{line.role === "user" ? "You" : "Anna"}: </span>
                       {line.text}
                     </p>
@@ -938,7 +938,7 @@ export function AnnaVoiceTab() {
                 userStreamIdRef.current = null;
                 aiStreamIdRef.current = null;
               }}
-              className="px-8 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-2xl font-semibold transition-all"
+              className="px-8 py-3 bg-speaking hover:bg-speaking/90 text-speaking-foreground rounded-2xl font-semibold transition-all"
             >
               New Conversation
             </button>

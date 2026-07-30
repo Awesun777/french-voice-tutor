@@ -139,8 +139,8 @@ function GrammarNotesPanel({ speak, pronounceState, activeText }: {
   const [openVerb, setOpenVerb] = useState<string>(MODEL_VERBS[0].infinitive);
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-amber-700/40 bg-amber-500/10 p-3 text-xs text-amber-100/90 leading-relaxed">
-        <p className="font-bold text-amber-300 mb-1">Passé composé</p>
+      <div className="rounded-xl border border-amber-300/40 bg-amber-500/10 p-3 text-xs text-amber-900/90 leading-relaxed">
+        <p className="font-bold text-amber-800 mb-1">Passé composé</p>
         <p>auxiliary (<span className="italic">avoir</span> / <span className="italic">être</span>) in the présent + past participle
         (-ER → <span className="italic">-é</span>, -IR → <span className="italic">-i</span>, -RE → <span className="italic">-u</span>).
         Verbs of motion (aller, venir, partir…) and all pronominal verbs use <span className="italic">être</span>, and the
@@ -161,7 +161,7 @@ function GrammarNotesPanel({ speak, pronounceState, activeText }: {
               <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {TENSE_ORDER.map((tk) => (
                   <div key={tk}>
-                    <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
+                    <p className="font-display text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
                     <div className="space-y-0.5">
                       {mv.tenses[tk].map((form, i) => {
                         const full = withPronoun(PERSON_LABELS[i], form);
@@ -219,7 +219,7 @@ function InfinitiveLookupPanel({ visible, loading, result, speak, pronounceState
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
               {TENSE_ORDER.filter((tk) => result.conjugations[tk as keyof typeof result.conjugations]?.length).map((tk) => (
                 <div key={tk}>
-                  <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
+                  <p className="font-display text-xs font-bold text-primary uppercase tracking-wider mb-1.5">{TENSE_LABELS[tk]}</p>
                   <div className="space-y-0.5">
                     {result.conjugations[tk as keyof typeof result.conjugations].map((f, i) => (
                       <div key={i} className="flex items-center gap-1.5 text-sm">
@@ -412,7 +412,7 @@ export default function GrammarTestTab() {
           </div>
           {wrong.length > 0 && (
             <div className="mb-8">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Review Mistakes</p>
+              <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Review Mistakes</p>
               <div className="space-y-2">
                 {wrong.map((w, i) => (
                   <div key={i} className="bg-card border border-border rounded-xl p-3.5">
@@ -449,21 +449,21 @@ export default function GrammarTestTab() {
             onClick={() => setShowNotes((s) => !s)}
             className={cn(
               "self-center flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors",
-              showNotes ? "bg-amber-500/15 border-amber-600/50 text-amber-300" : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+              showNotes ? "bg-amber-500/15 border-amber-400/50 text-amber-800" : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
             )}
           >
             <BookOpen className="w-3.5 h-3.5" />
             {showNotes ? "Hide grammar notes" : "Grammar notes"}
           </button>
 
-          <p className="text-xs uppercase tracking-widest text-muted-foreground text-center">
+          <p className="font-display text-xs uppercase tracking-widest text-muted-foreground text-center">
             Complete with the correct form in the <span className="text-foreground font-semibold">{q.tenseLabel}</span>
           </p>
 
           <div className="bg-gradient-to-br from-card to-muted/30 rounded-2xl p-6 sm:p-8 border border-border shadow-lg">
             <SentenceWithBlank sentence={q.sentence}>
               {result ? (
-                <span className={cn("font-bold px-1", result.correct ? "text-emerald-400" : "text-red-400")}>{q.answer}</span>
+                <span className={cn("font-bold px-1", result.correct ? "text-emerald-700" : "text-red-700")}>{q.answer}</span>
               ) : (
                 <span className="font-bold text-primary px-1">____</span>
               )}
@@ -499,10 +499,10 @@ export default function GrammarTestTab() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <div className={cn("rounded-xl p-4 border flex items-start gap-3", result.correct ? "bg-emerald-500/10 border-emerald-700" : "bg-red-500/10 border-red-700")}>
-                {result.correct ? <Check className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" /> : <X className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />}
+              <div className={cn("rounded-xl p-4 border flex items-start gap-3", result.correct ? "bg-emerald-500/10 border-emerald-300" : "bg-red-500/10 border-red-300")}>
+                {result.correct ? <Check className="w-5 h-5 text-emerald-700 shrink-0 mt-0.5" /> : <X className="w-5 h-5 text-red-700 shrink-0 mt-0.5" />}
                 <div className="min-w-0">
-                  <p className={cn("text-sm font-semibold", result.correct ? "text-emerald-300" : "text-red-300")}>
+                  <p className={cn("text-sm font-semibold", result.correct ? "text-emerald-800" : "text-red-800")}>
                     {result.correct ? "Correct!" : <>Answer: <span className="text-foreground font-bold">{q.answer}</span></>}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
@@ -521,7 +521,7 @@ export default function GrammarTestTab() {
                 className={cn(
                   "py-2.5 rounded-xl font-semibold text-sm border transition flex items-center justify-center gap-2",
                   justSaved
-                    ? "bg-emerald-500/10 border-emerald-700 text-emerald-300 cursor-default"
+                    ? "bg-emerald-500/10 border-emerald-300 text-emerald-800 cursor-default"
                     : "bg-card border-border text-foreground hover:bg-muted/40 disabled:opacity-50"
                 )}
                 title={`Save “${q.infinitive}” to your vocabulary library`}
@@ -558,7 +558,7 @@ export default function GrammarTestTab() {
             <aside className="fixed inset-y-0 right-0 z-50 w-[92%] max-w-md bg-background border-l border-border shadow-2xl flex flex-col">
               <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
                 <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-amber-400" />
+                  <BookOpen className="w-4 h-4 text-amber-700" />
                   <span className="text-sm font-bold text-foreground">Grammar notes</span>
                 </div>
                 <button
@@ -587,13 +587,13 @@ export default function GrammarTestTab() {
           <div className="flex items-center gap-2">
             <GraduationCap className="w-5 h-5 text-primary" />
             <div>
-              <h2 className="text-xl font-bold text-foreground">Grammar Test</h2>
+              <h2 className="font-display text-xl font-bold text-foreground">Grammar Test</h2>
               <p className="text-sm text-muted-foreground">Conjugate verbs to fill the blank</p>
             </div>
           </div>
 
           <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Tenses to test</p>
+            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Tenses to test</p>
             <div className="grid grid-cols-2 gap-2">
               {TENSES.map((t) => {
                 const on = selectedTenses.has(t.key);
@@ -617,7 +617,7 @@ export default function GrammarTestTab() {
           </div>
 
           <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Number of questions</p>
+            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Number of questions</p>
             <div className="flex gap-2">
               {COUNTS.map((n) => (
                 <button

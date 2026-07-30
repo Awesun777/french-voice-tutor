@@ -58,11 +58,11 @@ const AGENTS: AgentConfig[] = [
     name: "Anna",
     tag: "ElevenLabs",
     video: "/avatars/anna.mp4",
-    ring: "ring-pink-500",
-    glow: "shadow-[0_0_60px_-12px] shadow-pink-500/50",
-    tint: "from-pink-500/10",
-    button: "bg-pink-500 text-white hover:bg-pink-500/90",
-    placeholder: "from-pink-500/30 to-pink-500/5",
+    ring: "ring-speaking",
+    glow: "shadow-[0_0_60px_-12px] shadow-speaking/40",
+    tint: "from-speaking/10",
+    button: "bg-speaking text-speaking-foreground hover:bg-speaking/90",
+    placeholder: "from-speaking/30 to-speaking/5",
   },
 ];
 
@@ -82,11 +82,11 @@ function AgentAvatar({ agent, active }: { agent: AgentConfig; active: boolean })
         // Placeholder until a video is provided.
         <div className={cn("absolute inset-0 bg-gradient-to-br", agent.placeholder)}>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-5xl md:text-7xl font-bold text-pink-400/70 animate-pulse select-none">
+            <span className="text-5xl md:text-7xl font-bold text-speaking/70 animate-pulse select-none">
               {agent.name[0]}
             </span>
           </div>
-          <span className="absolute bottom-3 left-0 right-0 text-center text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="absolute bottom-3 left-0 right-0 text-center font-display text-[10px] uppercase tracking-wide text-muted-foreground">
             video coming soon
           </span>
         </div>
@@ -151,7 +151,7 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 </div>
                 <span
                   className={cn(
-                    "text-[11px] uppercase tracking-widest transition-opacity",
+                    "font-display text-[11px] uppercase tracking-widest transition-opacity",
                     isSelected ? "opacity-0" : "opacity-0 group-hover:opacity-60",
                   )}
                 >

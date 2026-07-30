@@ -139,10 +139,10 @@ function GroupHeader({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel(); }}
-            className="flex-1 text-xs font-bold uppercase tracking-wider bg-muted/60 border border-primary/50 rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1 font-display text-xs font-bold uppercase tracking-wider bg-muted/60 border border-primary/50 rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Group name or YYYY-MM-DD"
           />
-          <button onClick={commit} className="p-1 rounded-md text-emerald-400 hover:bg-emerald-500/10 transition-colors flex-shrink-0">
+          <button onClick={commit} className="p-1 rounded-md text-emerald-700 hover:bg-emerald-500/10 transition-colors flex-shrink-0">
             <Check className="w-3.5 h-3.5" />
           </button>
           <button onClick={cancel} className="p-1 rounded-md text-muted-foreground hover:bg-muted transition-colors flex-shrink-0">
@@ -151,7 +151,7 @@ function GroupHeader({
         </div>
       ) : (
         <>
-          <p className="flex-1 text-xs font-bold text-muted-foreground uppercase tracking-wider cursor-pointer select-none">
+          <p className="flex-1 font-display text-xs font-bold text-muted-foreground uppercase tracking-wider cursor-pointer select-none">
             {fmtDateLabel(dateKey)}
           </p>
           <button
@@ -166,7 +166,7 @@ function GroupHeader({
 
       <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
         {dueCount > 0 && (
-          <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-semibold">{dueCount} due</span>
+          <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent-strong font-semibold">{dueCount} due</span>
         )}
         <p className="text-xs text-muted-foreground">{wordCount} items</p>
 
@@ -395,10 +395,12 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
               onClick={() => setFilterStarred(!filterStarred)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
-                filterStarred ? "bg-accent/20 text-accent" : "bg-card border border-border text-muted-foreground hover:text-foreground"
+                // Gold is bright enough for a 3:1 icon but not for a 4.5:1 text
+                // label, so the label takes foreground and only the star is gold.
+                filterStarred ? "bg-star/20 text-foreground" : "bg-card border border-border text-muted-foreground hover:text-foreground"
               )}
             >
-              <Star className="w-3.5 h-3.5" /> Starred
+              <Star className={cn("w-3.5 h-3.5", filterStarred && "text-star")} /> Starred
             </button>
             {dueCount > 0 && (
               <span className="px-2.5 py-1 rounded-full bg-primary/15 text-primary text-xs font-bold">
@@ -423,7 +425,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
               className={cn(
                 "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
                 showDrivePanel
-                  ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                  ? "bg-blue-500/20 text-blue-700 border border-blue-500/30"
                   : "bg-card border border-border text-muted-foreground hover:text-foreground"
               )}
               title="Google Drive Sync"
@@ -510,7 +512,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                           <span className={cn(
                             "text-xs px-2 py-0.5 rounded-full font-bold flex-shrink-0",
                             w.entryKind === "phrase"
-                              ? "bg-violet-500/15 text-violet-400"
+                              ? "bg-violet-500/15 text-violet-700"
                               : "bg-primary/15 text-primary"
                           )}>
                             {w.entryKind === "phrase" ? "📝" : "📖"}
@@ -538,7 +540,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                               <p className="text-sm font-semibold text-foreground truncate">{w.term}</p>
                               <p className="text-xs text-muted-foreground truncate">{w.translation}</p>
                               {w.groupLabel && (
-                                <p className="text-xs text-blue-400/80 truncate mt-0.5">🏷 {w.groupLabel}</p>
+                                <p className="text-xs text-blue-700/80 truncate mt-0.5">🏷 {w.groupLabel}</p>
                               )}
                               {w.lessonSource && (
                                 <p className="text-xs text-primary/70 truncate mt-0.5">📌 {w.lessonSource}</p>
@@ -549,16 +551,16 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                           {w.sm2Status && w.sm2Status !== "new" && (
                             <span className={cn(
                               "text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0",
-                              w.sm2Status === "mastered" && "bg-green-500/15 text-green-400",
-                              w.sm2Status === "review" && "bg-blue-500/15 text-blue-400",
-                              w.sm2Status === "learning" && "bg-yellow-500/15 text-yellow-400",
+                              w.sm2Status === "mastered" && "bg-green-500/15 text-green-700",
+                              w.sm2Status === "review" && "bg-blue-500/15 text-blue-700",
+                              w.sm2Status === "learning" && "bg-yellow-500/15 text-amber-700",
                             )}>
                               {w.sm2Status === "mastered" ? "✓ mastered" : w.sm2Status === "review" ? "review" : "learning"}
                             </span>
                           )}
                           {/* Due indicator: show if nextReviewAt is in the past */}
                           {w.sm2NextReviewAt && w.sm2NextReviewAt <= Date.now() && w.sm2Status !== "mastered" && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent font-semibold flex-shrink-0">
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent-strong font-semibold flex-shrink-0">
                               due
                             </span>
                           )}
@@ -567,7 +569,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                               <button
                                 onClick={() => saveEdit(w.id)}
                                 disabled={updateMutation.isPending}
-                                className="p-1.5 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                                className="p-1.5 rounded-lg text-emerald-700 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
                                 title="Save"
                               >
                                 {updateMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -594,8 +596,8 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                                 className={cn(
                                   "p-1.5 rounded-lg transition-colors",
                                   w.starred
-                                    ? "text-accent"
-                                    : "text-muted-foreground hover:text-accent sm:opacity-0 sm:group-hover:opacity-100"
+                                    ? "text-star"
+                                    : "text-muted-foreground hover:text-star sm:opacity-0 sm:group-hover:opacity-100"
                                 )}
                               >
                                 <Star className={cn("w-3.5 h-3.5", w.starred && "fill-current")} />
