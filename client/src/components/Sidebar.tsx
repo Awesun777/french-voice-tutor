@@ -53,14 +53,16 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
     >
       {/* Header */}
       <div className={cn("flex items-center h-14 px-3 border-b border-sidebar-border gap-2.5 flex-shrink-0", !open && "justify-center")}>
-        <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
-          <span className="text-lg">🇫🇷</span>
-        </div>
+        {/* The wordmark carries the brand name, so alt text is the app name.
+            Collapsed the rail is w-14 — 32px of usable width — which the toggle
+            already needs, so the logo is dropped rather than clipped. */}
         {open && (
           <div className="flex-1 min-w-0">
-            <p className="font-display text-base font-bold tracking-tight text-foreground truncate">
-              Le Dictionnaire
-            </p>
+            <img
+              src="/brand/romaintalk-wordmark.png"
+              alt="RomainTalk"
+              className="h-8 w-auto max-w-full object-contain object-left"
+            />
           </div>
         )}
         <button
