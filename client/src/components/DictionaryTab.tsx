@@ -750,6 +750,9 @@ function SuggestionsBanner({
 // the tab restores exactly what was there. Scoped to the browser-tab session so
 // results don't linger stale across days.
 const DICT_STATE_KEY = "dict-tab-state-v1";
+// Tutor panel width persists across sessions (localStorage, not session, so it
+// survives a browser restart the way a layout preference should).
+const TUTOR_WIDTH_KEY = "dict-tutor-width-v1";
 
 interface PersistedDictState {
   searchTerm: string;
@@ -785,6 +788,62 @@ export default function DictionaryTab() {
   const [tutorOpen, setTutorOpen] = useState(false);
   const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ─── Resizable tutor panel ──────────────────────────────────────────────────
+  // Width is dragged from the divider and remembered across sessions. Clamped so
+  // the panel stays usable and can never crowd out the results column.
+  const TUTOR_MIN = 280;
+  const TUTOR_MAX_FRACTION = 0.6;
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [tutorWidth, setTutorWidth] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(TUTOR_WIDTH_KEY));
+    return Number.isFinite(saved) && saved >= TUTOR_MIN ? saved : 384;
+  });
+  const [dragging, setDragging] = useState(false);
+
+  const clampTutorWidth = useCallback((px: number) => {
+    const total = splitRef.current?.getBoundingClientRect().width ?? window.innerWidth;
+    return Math.max(TUTOR_MIN, Math.min(px, Math.round(total * TUTOR_MAX_FRACTION)));
+  }, []);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      const box = splitRef.current?.getBoundingClientRect();
+      if (!box) return;
+      setTutorWidth(clampTutorWidth(box.right - e.clientX));
+    };
+    const stop = () => setDragging(false);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    // Kill text selection and cursor flicker while the pointer is down.
+    const prevUserSelect = document.body.style.userSelect;
+    const prevCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.cursor = prevCursor;
+    };
+  }, [dragging, clampTutorWidth]);
+
+  useEffect(() => {
+    localStorage.setItem(TUTOR_WIDTH_KEY, String(tutorWidth));
+  }, [tutorWidth]);
+
+  // Re-clamp on viewport resize, and once on mount: the initial state can only
+  // enforce the minimum because splitRef isn't measurable yet, so a width saved
+  // on a wide screen would otherwise render unclamped on a narrow one.
+  useEffect(() => {
+    const onResize = () => setTutorWidth((w) => clampTutorWidth(w));
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [clampTutorWidth]);
   const utils = trpc.useUtils();
   const { speak, preload, state: pronounceState, activeText } = usePronounce();
 
@@ -1087,15 +1146,19 @@ export default function DictionaryTab() {
       </div>
 
       {/* Body: two-column layout when results exist */}
-      <div className="flex-1 overflow-hidden flex gap-0">
+      <div ref={splitRef} className="flex-1 overflow-hidden flex gap-0">
         {/* Left: Results column */}
         <div
           className={cn(
-            "overflow-y-auto px-4 py-4 transition-all",
-            hasResults ? "flex-1 min-w-0" : "w-full"
+            "overflow-y-auto px-4 py-4",
+            hasResults ? "flex-1 min-w-0" : "w-full",
+            // No width transition while dragging, or the column lags the handle.
+            !dragging && "transition-all"
           )}
         >
-          <div className="max-w-2xl mx-auto space-y-4">
+          {/* Results fill the column; only the empty/placeholder state stays
+              centred and narrow, where a full-width block would look stranded. */}
+          <div className={cn("space-y-4", hasResults ? "w-full" : "max-w-2xl mx-auto")}>
             {/* Empty state */}
             {!hasResults && !searchMutation.isPending && (
               <div className="text-center py-12">
@@ -1200,14 +1263,31 @@ export default function DictionaryTab() {
           </div>
         </div>
 
-        {/* Right: Context chat panel — side panel on wide screens (unchanged). */}
+        {/* Right: Context chat panel — drag its left edge to resize. */}
         {hasResults && !isMobile && (
-          <div className="w-80 flex-shrink-0 border-l border-border p-3 flex flex-col min-h-0">
-            <ContextChatPanel
-              vocabContext={selectedVocabContext}
-              onClearContext={() => setSelectedIdx(null)}
+          <>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize tutor panel"
+              onPointerDown={(e) => { e.preventDefault(); setDragging(true); }}
+              onDoubleClick={() => setTutorWidth(clampTutorWidth(384))}
+              title="Drag to resize · double-click to reset"
+              className={cn(
+                "w-1.5 flex-shrink-0 cursor-col-resize bg-border/40 hover:bg-primary/40 transition-colors",
+                dragging && "bg-primary/60"
+              )}
             />
-          </div>
+            <div
+              style={{ width: tutorWidth }}
+              className="flex-shrink-0 p-3 flex flex-col min-h-0"
+            >
+              <ContextChatPanel
+                vocabContext={selectedVocabContext}
+                onClearContext={() => setSelectedIdx(null)}
+              />
+            </div>
+          </>
         )}
       </div>
 

@@ -51,27 +51,36 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
         open ? "w-56" : "w-14"
       )}
     >
-      {/* Header */}
-      <div className={cn("flex items-center h-14 px-3 border-b border-sidebar-border gap-2.5 flex-shrink-0", !open && "justify-center")}>
+      {/* Header — the whole bar is the collapse toggle, so it's an easy target.
+          The chevron is decorative markup rather than a nested button, which
+          isn't valid inside a button and would swallow its own clicks. */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label={open ? "Collapse sidebar" : "Expand sidebar"}
+        title={open ? "Collapse sidebar" : "Expand sidebar"}
+        className={cn(
+          "group w-full flex items-center h-14 px-3 border-b border-sidebar-border gap-2.5 flex-shrink-0 text-left hover:bg-sidebar-accent/60 transition-colors",
+          !open && "justify-center"
+        )}
+      >
         {/* The wordmark carries the brand name, so alt text is the app name.
             Collapsed the rail is w-14 — 32px of usable width — which the toggle
             already needs, so the logo is dropped rather than clipped. */}
         {open && (
-          <div className="flex-1 min-w-0">
+          <span className="flex-1 min-w-0">
             <img
               src="/brand/romaintalk-wordmark.png"
               alt="RomainTalk"
               className="h-8 w-auto max-w-full object-contain object-left"
             />
-          </div>
+          </span>
         )}
-        <button
-          onClick={() => setOpen(!open)}
-          className="p-1 rounded-md hover:bg-sidebar-accent text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-        >
+        <span className="p-1 rounded-md text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0">
           {open ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-        </button>
-      </div>
+        </span>
+      </button>
 
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
