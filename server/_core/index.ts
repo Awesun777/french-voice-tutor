@@ -210,7 +210,15 @@ async function startServer() {
         // detection are all set here, at call creation, in the nested form.
         audio: {
           input: {
-            transcription: { model: "whisper-1" },
+            // Most accurate transcription model the realtime API accepts (the
+            // full list is whisper-1, gpt-realtime-whisper, gpt-live-transcribe,
+            // gpt-transcribe, gpt-4o-transcribe, gpt-4o-mini-transcribe).
+            // Roughly half the error rate of whisper-1 on accented speech, which
+            // is what a learner speaking French actually sounds like. This only
+            // feeds the on-screen transcript — Romain hears the raw audio — so
+            // accuracy matters more here than the latency gpt-live-transcribe
+            // would buy us.
+            transcription: { model: "gpt-transcribe" },
             // semantic_vad no longer accepts threshold / prefix_padding_ms /
             // silence_duration_ms; eagerness "low" waits longer before deciding
             // the user has finished, which is what those knobs were tuning for.
