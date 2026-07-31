@@ -7,7 +7,11 @@ import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
-import { dictCache as dictCacheTable } from "../drizzle/schema";
+import {
+  dictCache as dictCacheTable,
+  videoLessons as videoLessonsTable,
+  videoCues as videoCuesTable,
+} from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "./db";
 import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, assembleGrammarQuestions, type TenseKey, type VerbPick, type RawGeneratedItem } from "./grammarVerbs";
@@ -138,6 +142,19 @@ const DETAILS_SCHEMA_PROPS = {
 
 // ─── AI import cache (per-chunk) ──────────────────────────────────────────────
 const importCache = new Map<string, unknown[]>();
+
+/** One hoverable span in a cue: a single word, or a whole idiom. */
+export interface VideoToken {
+  /** Character offsets into the cue text. */
+  s: number;
+  e: number;
+  surface: string;
+  lemma?: string;
+  gloss: string;
+  kind: "word" | "expression";
+  /** Word start time in ms, used to emphasise the word being spoken. */
+  tMs?: number;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function todayKey() { return new Date().toISOString().split("T")[0]; }
@@ -1840,6 +1857,83 @@ ${input.transcript}`,
         } catch {
           return { translation: "", vocab: [] as { term: string; translation: string }[] };
         }
+      }),
+  }),
+
+  /**
+   * Curated video lessons. Read-only by design — transcripts and glosses are
+   * computed ahead of time by scripts/ingest-video.ts, so nothing here calls a
+   * model. That is what makes the reader's hover glosses instant and keeps the
+   * cost at one pass per video rather than one per view.
+   *
+   * These are queries (not mutations like the rest of `listening`) so
+   * react-query caches them across tab switches.
+   */
+  videos: router({
+    list: protectedProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      const rows = await db.select().from(videoLessonsTable);
+      return rows
+        .sort((a, b) => b.addedAt - a.addedAt)
+        .map((r) => ({
+          youtubeId: r.youtubeId,
+          title: r.title,
+          channel: r.channel,
+          durationSec: r.durationSec,
+          thumbnailUrl: r.thumbnailUrl,
+          level: r.level,
+        }));
+    }),
+
+    get: protectedProcedure
+      .input(z.object({ youtubeId: z.string().min(1).max(32) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "NOT_FOUND", message: "No database" });
+
+        const lessons = await db
+          .select()
+          .from(videoLessonsTable)
+          .where(eq(videoLessonsTable.youtubeId, input.youtubeId));
+        if (!lessons.length) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Video lesson not found" });
+        }
+        const lesson = lessons[0];
+
+        const cueRows = await db
+          .select()
+          .from(videoCuesTable)
+          .where(eq(videoCuesTable.lessonId, lesson.id));
+
+        const cues = cueRows
+          .sort((a, b) => a.idx - b.idx)
+          .map((c) => ({
+            idx: c.idx,
+            startMs: c.startMs,
+            endMs: c.endMs,
+            text: c.text,
+            // Written by the ingest script; a malformed row costs that cue's
+            // glosses rather than the whole lesson.
+            tokens: ((): VideoToken[] => {
+              try {
+                return JSON.parse(c.tokensJson) as VideoToken[];
+              } catch {
+                return [];
+              }
+            })(),
+          }));
+
+        return {
+          lesson: {
+            youtubeId: lesson.youtubeId,
+            title: lesson.title,
+            channel: lesson.channel,
+            durationSec: lesson.durationSec,
+            level: lesson.level,
+          },
+          cues,
+        };
       }),
   }),
 });

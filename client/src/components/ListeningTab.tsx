@@ -13,43 +13,62 @@
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import VideoLessonsMode from "@/components/VideoReader";
 import { toast } from "sonner";
 import {
-  Headphones, Link2, Upload, Loader2, Plus, Check, Languages, ListPlus, Mic, Square,
+  Headphones, Link2, Upload, Loader2, Plus, Check, Languages, ListPlus, Mic, Square, Youtube,
 } from "lucide-react";
 
 type Vocab = { term: string; translation: string };
 
 export default function ListeningTab() {
-  const [mode, setMode] = useState<"url" | "record" | "upload">("url");
+  const [mode, setMode] = useState<"videos" | "url" | "record" | "upload">("url");
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6">
-        <div className="flex items-center gap-2">
-          <Headphones className="w-5 h-5 text-primary" />
-          <div>
-            <h2 className="font-display text-xl font-bold text-foreground">Listening Lab</h2>
-            <p className="text-sm text-muted-foreground">Get the transcript, translation & vocab for a listening exercise</p>
+    // Column rather than one big scroller: the video reader manages its own
+    // player + transcript panes and needs the full height, which it can't get
+    // inside the max-w-2xl scrolling wrapper the other modes use.
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4">
+        <div className="max-w-2xl mx-auto space-y-4">
+          <div className="flex items-center gap-2">
+            <Headphones className="w-5 h-5 text-primary" />
+            <div>
+              <h2 className="font-display text-xl font-bold text-foreground">Listening Lab</h2>
+              <p className="text-sm text-muted-foreground">Watch with a live transcript, or transcribe your own audio</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {([
+              ["videos", "Videos", Youtube],
+              ["url", "TCF test URL", Link2],
+              ["record", "Record", Mic],
+              ["upload", "Upload audio", Upload],
+            ] as const).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                onClick={() => setMode(id)}
+                className={cn(
+                  "flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-semibold transition-all",
+                  mode === id ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-muted-foreground hover:bg-muted/30"
+                )}
+              >
+                <Icon className="w-4 h-4" /> {label}
+              </button>
+            ))}
           </div>
         </div>
-
-        <div className="grid grid-cols-3 gap-2">
-          {([["url", "TCF test URL", Link2], ["record", "Record", Mic], ["upload", "Upload audio", Upload]] as const).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              onClick={() => setMode(id)}
-              className={cn(
-                "flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-semibold transition-all",
-                mode === id ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-muted-foreground hover:bg-muted/30"
-              )}
-            >
-              <Icon className="w-4 h-4" /> {label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "url" ? <UrlMode /> : mode === "record" ? <RecordMode /> : <UploadMode />}
       </div>
+
+      {mode === "videos" ? (
+        <VideoLessonsMode />
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto px-4 sm:px-6 pb-6 space-y-6">
+            {mode === "url" ? <UrlMode /> : mode === "record" ? <RecordMode /> : <UploadMode />}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -209,3 +209,47 @@ export const pendingImports = mysqlTable("pending_imports", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 export type PendingImport = typeof pendingImports.$inferSelect;
+
+/**
+ * ─── Curated video lessons ───────────────────────────────────────────────────
+ * A YouTube video whose transcript and glosses were computed ahead of time by
+ * scripts/ingest-video.ts. Playback stays in YouTube's own iframe, so no media
+ * is stored here — only the timed transcript and the per-token meanings, which
+ * is what makes hovering instant and costs one LLM pass per video rather than
+ * one per view.
+ */
+export const videoLessons = mysqlTable("video_lessons", {
+  id: int("id").autoincrement().primaryKey(),
+  youtubeId: varchar("youtubeId", { length: 32 }).notNull().unique(),
+  title: varchar("title", { length: 512 }).notNull(),
+  channel: varchar("channel", { length: 256 }),
+  durationSec: int("durationSec").notNull(),
+  thumbnailUrl: varchar("thumbnailUrl", { length: 1024 }),
+  /** Optional CEFR hint shown on the feed card, e.g. "B1". */
+  level: varchar("level", { length: 16 }),
+  addedAt: bigint("addedAt", { mode: "number" }).notNull(),
+});
+export type VideoLesson = typeof videoLessons.$inferSelect;
+
+/**
+ * One transcript cue (roughly a spoken line) of a video lesson.
+ *
+ * Stored per row rather than as one blob on the lesson: a tokenised transcript
+ * runs to hundreds of KB and MySQL `text` caps at 64 KB, which would silently
+ * truncate longer videos.
+ *
+ * `tokensJson` holds this cue's spans as
+ *   [{ s, e, surface, lemma, gloss, kind: "word" | "expression", tMs }]
+ * where s/e are character offsets into `text` and tMs is the word's start time
+ * from Whisper (used to emphasise the word currently being spoken).
+ */
+export const videoCues = mysqlTable("video_cues", {
+  id: int("id").autoincrement().primaryKey(),
+  lessonId: int("lessonId").notNull(),
+  idx: int("idx").notNull(),
+  startMs: int("startMs").notNull(),
+  endMs: int("endMs").notNull(),
+  text: text("text").notNull(),
+  tokensJson: text("tokensJson").notNull(),
+});
+export type VideoCue = typeof videoCues.$inferSelect;
