@@ -114,7 +114,7 @@ export default function Home() {
               { icon: "🃏", label: "Flashcards", desc: "Flip & record your pronunciation" },
               { icon: "📊", label: "Progress Tracking", desc: "Streaks & growth charts" },
             ].map((f) => (
-              <div key={f.label} className="bg-card border border-border rounded-xl p-3.5">
+              <div key={f.label} className="bg-card card-float rounded-xl p-3.5">
                 <div className="text-2xl mb-1.5">{f.icon}</div>
                 <p className="text-sm font-semibold text-foreground">{f.label}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{f.desc}</p>
