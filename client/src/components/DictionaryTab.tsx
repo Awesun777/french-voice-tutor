@@ -1082,7 +1082,10 @@ export default function DictionaryTab() {
               aria-expanded={accentsOpen}
               title="French accents (é è à ç …)"
               className={cn(
-                "flex-shrink-0 px-2 flex items-center justify-center border rounded-xl transition-colors",
+                // 42px square matches the search input's rendered height
+                // (py-2.5 + text-sm + 1px borders). Keep the two in step if the
+                // input's padding ever changes.
+                "flex-shrink-0 size-[42px] flex items-center justify-center border rounded-xl transition-colors",
                 accentsOpen
                   ? "bg-primary/10 border-primary/50 text-primary"
                   : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -1091,7 +1094,7 @@ export default function DictionaryTab() {
               {/* The icon names the tool; open/closed is already carried by the
                   button's primary tint and border, so it doesn't also need to
                   swap to a chevron. */}
-              <Keyboard className="w-4 h-4" />
+              <Keyboard className="w-5 h-5" />
             </button>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
