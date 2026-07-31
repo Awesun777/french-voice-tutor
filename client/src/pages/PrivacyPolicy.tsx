@@ -1,11 +1,11 @@
 import { useLocation } from "wouter";
 import { ChevronLeft } from "lucide-react";
 
-const LAST_UPDATED = "July 29, 2026";
-const CONTACT_EMAIL = "anthonysunchen@gmail.com";
+const LAST_UPDATED = "July 30, 2026";
+const CONTACT_EMAIL = "admin@poruscap.com";
 
 /**
- * Public privacy policy for Le Dictionnaire (romaintalk.com).
+ * Public privacy policy for RomainTalk (romaintalk.com).
  *
  * This page must stay reachable at a stable public URL (/privacy) because it is
  * linked from the Google OAuth consent screen and is required for Google's
@@ -31,7 +31,7 @@ export default function PrivacyPolicy() {
         <div className="space-y-8 leading-relaxed text-[15px] text-foreground/90">
           <section className="space-y-3">
             <p>
-              Le Dictionnaire ("we", "us", or the "App") is a French vocabulary and
+              RomainTalk ("we", "us", or the "App") is a French vocabulary and
               pronunciation learning tool available at{" "}
               <span className="font-medium">romaintalk.com</span>. This Privacy Policy
               explains what information we collect, how we use it, and the choices you
@@ -136,8 +136,8 @@ export default function PrivacyPolicy() {
                     <td className="py-2 pr-4 font-mono text-xs">.../auth/drive.file</td>
                     <td className="py-2">
                       Access limited to files the App itself creates. We use it to create
-                      and update a single Google Doc in your Drive ("Le Dictionnaire") that
-                      exports your vocabulary library. We cannot see any other files in
+                      and update a single Google Doc in your Drive that RomainTalk creates
+                      to export your vocabulary library. We cannot see any other files in
                       your Drive.
                     </td>
                   </tr>
@@ -155,7 +155,7 @@ export default function PrivacyPolicy() {
           <section className="space-y-3">
             <h2 className="text-xl font-semibold">4. Limited Use Disclosure</h2>
             <p>
-              Le Dictionnaire's use and transfer of information received from Google APIs
+              RomainTalk's use and transfer of information received from Google APIs
               will adhere to the{" "}
               <a
                 href="https://developers.google.com/terms/api-services-user-data-policy"
