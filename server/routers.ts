@@ -11,6 +11,8 @@ import {
   dictCache as dictCacheTable,
   videoLessons as videoLessonsTable,
   videoCues as videoCuesTable,
+  articles as articlesTable,
+  articleBlocks as articleBlocksTable,
 } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { getDb } from "./db";
@@ -154,6 +156,21 @@ export interface VideoToken {
   kind: "word" | "expression";
   /** Word start time in ms, used to emphasise the word being spoken. */
   tMs?: number;
+}
+
+/**
+ * One hoverable span in an article block: a single word, or a whole idiom.
+ * Same shape as VideoToken minus the timing, kept separate because Reading and
+ * the Listening Lab are independent sections.
+ */
+export interface ArticleToken {
+  /** Character offsets into the block text. */
+  s: number;
+  e: number;
+  surface: string;
+  lemma?: string;
+  gloss: string;
+  kind: "word" | "expression";
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1933,6 +1950,86 @@ ${input.transcript}`,
             level: lesson.level,
           },
           cues,
+        };
+      }),
+  }),
+
+  /**
+   * Reading — curated articles with pre-computed glosses. Queries rather than
+   * mutations so react-query caches them, and no LLM call at request time: the
+   * glosses are written ahead by scripts/ingest-article.ts, which is what makes
+   * hovering instant.
+   */
+  articles: router({
+    list: protectedProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      const rows = await db.select().from(articlesTable);
+      return rows
+        .sort((a, b) => (b.publishedAt ?? b.addedAt) - (a.publishedAt ?? a.addedAt))
+        .map((r) => ({
+          slug: r.slug,
+          title: r.title,
+          source: r.source,
+          url: r.url,
+          summary: r.summary,
+          imageUrl: r.imageUrl,
+          level: r.level,
+          wordCount: r.wordCount,
+          publishedAt: r.publishedAt,
+        }));
+    }),
+
+    get: protectedProcedure
+      .input(z.object({ slug: z.string().min(1).max(128) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "NOT_FOUND", message: "No database" });
+
+        const found = await db
+          .select()
+          .from(articlesTable)
+          .where(eq(articlesTable.slug, input.slug));
+        if (!found.length) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Article not found" });
+        }
+        const article = found[0];
+
+        const blockRows = await db
+          .select()
+          .from(articleBlocksTable)
+          .where(eq(articleBlocksTable.articleId, article.id));
+
+        const blocks = blockRows
+          .sort((a, b) => a.idx - b.idx)
+          .map((b) => ({
+            idx: b.idx,
+            kind: b.kind,
+            text: b.text,
+            // Written by the ingest script; a malformed row costs that block's
+            // glosses rather than the whole article.
+            tokens: ((): ArticleToken[] => {
+              try {
+                return JSON.parse(b.tokensJson) as ArticleToken[];
+              } catch {
+                return [];
+              }
+            })(),
+          }));
+
+        return {
+          article: {
+            slug: article.slug,
+            title: article.title,
+            source: article.source,
+            url: article.url,
+            summary: article.summary,
+            imageUrl: article.imageUrl,
+            level: article.level,
+            wordCount: article.wordCount,
+            publishedAt: article.publishedAt,
+          },
+          blocks,
         };
       }),
   }),

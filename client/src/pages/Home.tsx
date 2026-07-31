@@ -10,6 +10,7 @@ import QuizTab from "@/components/QuizTab";
 import FlashcardTab from "@/components/FlashcardTab";
 import GrammarTestTab from "@/components/GrammarTestTab";
 import ListeningTab from "@/components/ListeningTab";
+import ReadingTab from "@/components/ReadingTab";
 import TutorTab from "@/components/TutorTab";
 import ProgressTab from "@/components/ProgressTab";
 import VoiceAgentChooser from "@/components/VoiceAgentChooser";
@@ -166,6 +167,7 @@ export default function Home() {
         {activeTab === "flashcards" && <FlashcardTab reviewTarget={reviewTarget} />}
         {activeTab === "grammar" && <GrammarTestTab />}
         {activeTab === "listening" && <ListeningTab />}
+        {activeTab === "reading" && <ReadingTab />}
         {activeTab === "tutor" && <TutorTab />}
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}
         {activeTab === "progress" && <ProgressTab />}

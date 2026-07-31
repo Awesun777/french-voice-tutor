@@ -253,3 +253,52 @@ export const videoCues = mysqlTable("video_cues", {
   tokensJson: text("tokensJson").notNull(),
 });
 export type VideoCue = typeof videoCues.$inferSelect;
+
+/**
+ * A curated French news article for the Reading tab.
+ *
+ * Deliberately its own pair of tables rather than sharing the video ones:
+ * Reading and the Listening Lab are independent sections, and an article has no
+ * concept of a timeline while a lesson has no concept of a byline.
+ */
+export const articles = mysqlTable("articles", {
+  id: int("id").autoincrement().primaryKey(),
+  /** URL-safe id derived from the title; how the client asks for one article. */
+  slug: varchar("slug", { length: 128 }).notNull().unique(),
+  title: varchar("title", { length: 512 }).notNull(),
+  /** Publication name, e.g. "Le Monde". */
+  source: varchar("source", { length: 256 }),
+  /** Canonical link, shown as an attribution link on the article. */
+  url: varchar("url", { length: 1024 }),
+  /** One-or-two-sentence French standfirst shown on the feed card. */
+  summary: text("summary"),
+  imageUrl: varchar("imageUrl", { length: 1024 }),
+  /** Optional CEFR hint shown on the feed card, e.g. "B1". */
+  level: varchar("level", { length: 16 }),
+  wordCount: int("wordCount").notNull(),
+  publishedAt: bigint("publishedAt", { mode: "number" }),
+  addedAt: bigint("addedAt", { mode: "number" }).notNull(),
+});
+export type Article = typeof articles.$inferSelect;
+
+/**
+ * One heading or paragraph of an article.
+ *
+ * Stored per row rather than as one blob on the article, for the same reason as
+ * video_cues: a tokenised article runs to hundreds of KB and MySQL `text` caps
+ * at 64 KB, which would silently truncate longer pieces.
+ *
+ * `tokensJson` holds this block's spans as
+ *   [{ s, e, surface, lemma, gloss, kind: "word" | "expression" }]
+ * where s/e are character offsets into `text`. No timings — an article has no
+ * clock.
+ */
+export const articleBlocks = mysqlTable("article_blocks", {
+  id: int("id").autoincrement().primaryKey(),
+  articleId: int("articleId").notNull(),
+  idx: int("idx").notNull(),
+  kind: mysqlEnum("kind", ["heading", "paragraph"]).default("paragraph").notNull(),
+  text: text("text").notNull(),
+  tokensJson: text("tokensJson").notNull(),
+});
+export type ArticleBlock = typeof articleBlocks.$inferSelect;

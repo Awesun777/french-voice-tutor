@@ -12,6 +12,7 @@ import {
   BarChart3,
   GraduationCap,
   Headphones,
+  Newspaper,
   ChevronLeft,
   ChevronRight,
   Layers,
@@ -69,6 +70,7 @@ const NAV: NavEntry[] = [
     icon: <ClipboardCheck className={ICON} />,
     items: [
       { id: "listening", label: "Listening Lab", icon: <Headphones className={ICON} /> },
+      { id: "reading", label: "Reading", icon: <Newspaper className={ICON} /> },
       { id: "grammar", label: "Grammar Test", icon: <GraduationCap className={ICON} /> },
     ],
   },
