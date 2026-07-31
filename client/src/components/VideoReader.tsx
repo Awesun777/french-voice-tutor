@@ -314,7 +314,7 @@ function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => v
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Player */}
-      <div className="flex-shrink-0 border-b border-border bg-card">
+      <div className="flex-shrink-0 border-b border-border bg-background">
         <div className="flex items-center gap-2 px-3 py-2">
           <button
             onClick={onBack}
@@ -324,7 +324,7 @@ function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => v
           </button>
           <p className="text-xs font-semibold text-foreground truncate ml-2">{data?.lesson.title}</p>
         </div>
-        <div className="mx-auto w-full max-w-2xl aspect-video bg-black">
+        <div className="mx-auto w-full max-w-2xl aspect-video bg-foreground/90 rounded-xl overflow-hidden">
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
       </div>
