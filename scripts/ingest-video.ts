@@ -76,13 +76,19 @@ async function fetchMeta(url: string): Promise<VideoMeta> {
   };
 }
 
-async function downloadAudio(url: string, dir: string): Promise<string> {
+async function downloadAudio(url: string, dir: string, limitSec: number | null): Promise<string> {
   const out = path.join(dir, "audio.%(ext)s");
   // m4a keeps the file small and is a format Whisper accepts directly, so there
   // is no transcode step unless the file also needs splitting.
-  await exec("yt-dlp", ["-f", "bestaudio[ext=m4a]/bestaudio", "-o", out, "--no-warnings", url], {
-    maxBuffer: 32 * 1024 * 1024,
-  });
+  const args = ["-f", "bestaudio[ext=m4a]/bestaudio", "-o", out, "--no-warnings"];
+  if (limitSec) {
+    // Fetch only the slice we want rather than pulling a whole 80-minute video
+    // to discard most of it. Cues then start at 0, matching the video, so no
+    // timestamp offset is needed.
+    args.push("--download-sections", `*0-${limitSec}`, "--force-keyframes-at-cuts");
+  }
+  args.push(url);
+  await exec("yt-dlp", args, { maxBuffer: 32 * 1024 * 1024 });
   const files = await readdir(dir);
   const audio = files.find((f) => f.startsWith("audio."));
   if (!audio) throw new Error("yt-dlp produced no audio file");
@@ -336,13 +342,18 @@ async function preflight() {
 async function main() {
   const [url, ...rest] = process.argv.slice(2);
   if (!url) {
-    console.error("usage: tsx scripts/ingest-video.ts <youtube-url> [--level B1]");
+    console.error("usage: tsx scripts/ingest-video.ts <youtube-url> [--level B1] [--minutes 10]");
     console.error("  run under `railway run --` so DATABASE_URL and OPENAI_API_KEY are set");
     process.exit(1);
   }
   await preflight();
   const levelIdx = rest.indexOf("--level");
   const level = levelIdx >= 0 ? rest[levelIdx + 1] ?? null : null;
+  const minIdx = rest.indexOf("--minutes");
+  const limitSec = minIdx >= 0 ? Math.round(Number(rest[minIdx + 1]) * 60) : null;
+  if (minIdx >= 0 && (!limitSec || limitSec <= 0)) {
+    throw new Error("--minutes needs a positive number");
+  }
 
   const db = await getDb();
   if (!db) throw new Error("No DATABASE_URL — run under `railway run --`");
@@ -353,8 +364,8 @@ async function main() {
     const meta = await fetchMeta(url);
     console.log(`  ${meta.title} — ${meta.durationSec}s`);
 
-    console.log("• downloading audio");
-    const audio = await downloadAudio(url, dir);
+    console.log(limitSec ? `• downloading first ${limitSec / 60} min of audio` : "• downloading audio");
+    const audio = await downloadAudio(url, dir, limitSec);
     const chunks = await toChunks(audio, dir);
 
     console.log("• transcribing (whisper-1, word timestamps)");
@@ -411,19 +422,24 @@ async function main() {
     });
 
     console.log("• writing to database");
+    // Derived once and shared by both branches: the feed must advertise what was
+    // actually transcribed, not the source video's full length.
+    const storedTitle = limitSec ? `${meta.title} (first ${limitSec / 60} min)` : meta.title;
+    const storedDuration = limitSec ?? meta.durationSec;
+
     const existing = await db.select().from(videoLessons).where(eq(videoLessons.youtubeId, meta.id));
     let lessonId: number;
     if (existing.length) {
       lessonId = existing[0].id;
       await db.update(videoLessons)
-        .set({ title: meta.title, channel: meta.channel, durationSec: meta.durationSec,
+        .set({ title: storedTitle, channel: meta.channel, durationSec: storedDuration,
                thumbnailUrl: meta.thumbnailUrl, level })
         .where(eq(videoLessons.id, lessonId));
       await db.delete(videoCues).where(eq(videoCues.lessonId, lessonId));
     } else {
       await db.insert(videoLessons).values({
-        youtubeId: meta.id, title: meta.title, channel: meta.channel,
-        durationSec: meta.durationSec, thumbnailUrl: meta.thumbnailUrl,
+        youtubeId: meta.id, title: storedTitle, channel: meta.channel,
+        durationSec: storedDuration, thumbnailUrl: meta.thumbnailUrl,
         level, addedAt: Date.now(),
       });
       const rows = await db.select().from(videoLessons).where(eq(videoLessons.youtubeId, meta.id));
@@ -443,7 +459,7 @@ async function main() {
     const exprCount = cues.reduce((n, c) => n + c.tokens.filter((t) => t.kind === "expression").length, 0);
     console.log(`✓ ${meta.title}`);
     console.log(`  ${cues.length} cues, ${tokenCount} tokens (${exprCount} expressions)`);
-    console.log(`  last cue ends at ${(cues[cues.length - 1].endMs / 1000).toFixed(0)}s of ${meta.durationSec}s`);
+    console.log(`  last cue ends at ${(cues[cues.length - 1].endMs / 1000).toFixed(0)}s of ${limitSec ?? meta.durationSec}s ingested`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
