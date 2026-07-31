@@ -304,7 +304,15 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
   };
 
   const addVocab = trpc.vocab.add.useMutation();
-  const [saved, setSaved] = useState<Set<string>>(new Set());
+  const { data: allVocab = [] } = trpc.vocab.list.useQuery();
+  const savedHere = useMemo(
+    () => allVocab.filter((w) => w.lessonSource && w.lessonSource === data?.lesson.title),
+    [allVocab, data?.lesson.title]
+  );
+  const saved = useMemo(
+    () => new Set(savedHere.map((w) => w.term.toLowerCase())),
+    [savedHere]
+  );
 
   const save = async (token: Token) => {
     const key = token.surface.toLowerCase();
@@ -317,7 +325,6 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
         entryKind: token.surface.trim().split(/\s+/).length >= 3 ? "phrase" : "word",
         lessonSource: data?.lesson.title ?? "Video",
       });
-      setSaved((s) => new Set(s).add(key));
       utils.vocab.list.invalidate();
       toast.success(`Saved "${token.surface}"`);
     } catch {
@@ -354,7 +361,8 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
         <div className="h-3" />
       </div>
 
-      {/* Transcript */}
+      {/* Transcript + saved-words rail */}
+      <div className="flex-1 min-h-0 flex">
       <div className="flex-1 min-h-0 relative">
         {!following && (
           <button
@@ -365,17 +373,24 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           </button>
         )}
         <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-4">
-          <div className="max-w-2xl mx-auto space-y-2 pb-32">
+          <div className="max-w-2xl mx-auto space-y-0.5 pb-32">
             {cues.map((cue, i) => (
               <p
                 key={cue.idx}
                 ref={(el) => { cueRefs.current[i] = el; }}
                 onClick={() => playerRef.current?.seekTo(cue.startMs / 1000, true)}
                 className={cn(
-                  "text-base leading-loose rounded-xl px-3 py-2 cursor-pointer transition-colors",
+                  // Tight gap, generous line-height: reads as prose rather than
+                  // a spaced-out list. The accent bar is on every line as
+                  // transparent, so becoming active doesn't shift the text.
+                  "border-l-[3px] pl-4 pr-3 py-1.5 rounded-r-lg leading-8 cursor-pointer transition-all",
                   i === activeIdx
-                    ? "bg-secondary/70 text-foreground"
-                    : "text-muted-foreground hover:bg-muted/40"
+                    ? "border-primary bg-secondary/60 text-foreground text-[1.0625rem]"
+                    : i < activeIdx
+                      // Already spoken — dimmed, so the transcript carries a
+                      // sense of where you are rather than looking uniform.
+                      ? "border-transparent text-muted-foreground/55 hover:bg-muted/30"
+                      : "border-transparent text-muted-foreground hover:bg-muted/30"
                 )}
               >
                 <CueText
@@ -432,6 +447,37 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
             </button>
           </div>
         )}
+      </div>
+
+      {/* Saved-words rail. Reads from the library filtered by this lesson, so it
+          survives leaving and coming back rather than only showing this
+          session's saves. */}
+      <aside className="hidden lg:flex w-64 flex-shrink-0 flex-col bg-background">
+        <div className="px-4 pt-5 pb-2">
+          <p className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            Saved from this video
+          </p>
+        </div>
+        {savedHere.length === 0 ? (
+          <p className="px-4 text-xs text-muted-foreground/80 leading-relaxed">
+            Hover any underlined word for its meaning, then save it — it will collect here.
+          </p>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-4 space-y-1">
+            {savedHere.map((w) => (
+              <div key={w.id} className="rounded-xl px-2.5 py-2 hover:bg-muted/40 transition-colors">
+                <p className="text-sm font-semibold text-foreground break-words">{w.term}</p>
+                <p className="text-xs text-muted-foreground break-words">{w.translation}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {savedHere.length > 0 && (
+          <div className="px-4 py-3 text-xs text-muted-foreground">
+            {savedHere.length} word{savedHere.length === 1 ? "" : "s"} saved
+          </div>
+        )}
+      </aside>
       </div>
     </div>
   );
