@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { SidebarTab } from "@/types";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,8 @@ import {
   Headphones,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
+  Layers,
+  ClipboardCheck,
   LogOut,
   User,
 } from "lucide-react";
@@ -38,6 +39,7 @@ interface NavGroup {
   kind: "group";
   id: string;
   label: string;
+  icon: React.ReactNode;
   items: Omit<NavLeaf, "kind">[];
 }
 type NavEntry = NavLeaf | NavGroup;
@@ -52,6 +54,7 @@ const NAV: NavEntry[] = [
     kind: "group",
     id: "vocab-review",
     label: "Vocab Review",
+    icon: <Layers className={ICON} />,
     items: [
       { id: "library", label: "My Library", icon: <BookMarked className={ICON} /> },
       { id: "quiz", label: "Quiz", icon: <Brain className={ICON} /> },
@@ -63,6 +66,7 @@ const NAV: NavEntry[] = [
     kind: "group",
     id: "test-prep",
     label: "Test Prep",
+    icon: <ClipboardCheck className={ICON} />,
     items: [
       { id: "listening", label: "Listening Lab", icon: <Headphones className={ICON} /> },
       { id: "grammar", label: "Grammar Test", icon: <GraduationCap className={ICON} /> },
@@ -70,68 +74,74 @@ const NAV: NavEntry[] = [
   },
 ];
 
-/** Every leaf in order, ignoring grouping — used by the collapsed rail. */
-const ALL_LEAVES: Omit<NavLeaf, "kind">[] = NAV.flatMap((e) =>
-  e.kind === "leaf" ? [{ id: e.id, label: e.label, icon: e.icon }] : e.items
-);
-
-const GROUPS_KEY = "sidebar-groups-v1";
-const DEFAULT_GROUPS: Record<string, boolean> = { "vocab-review": true, "test-prep": true };
-
 export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }: SidebarProps) {
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => { window.location.reload(); },
     onError: () => toast.error("Logout failed"),
   });
 
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "null");
-      if (saved && typeof saved === "object") return { ...DEFAULT_GROUPS, ...saved };
-    } catch {
-      // Malformed or unavailable storage — fall through to defaults.
+  // ─── Group flyout ───────────────────────────────────────────────────────────
+  // Groups open a floating panel to the right on hover rather than expanding in
+  // place. Positioned `fixed` from the trigger's rect: the nav scrolls, and an
+  // absolutely-positioned child would be clipped by its overflow.
+  const [flyout, setFlyout] = useState<{ id: string; top: number; left: number } | null>(null);
+  const closeTimer = useRef<number | null>(null);
+
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
     }
-    return DEFAULT_GROUPS;
-  });
+  };
+  // A grace period so the pointer can travel diagonally from the row to the
+  // panel without crossing a dead gap and dismissing it.
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => setFlyout(null), 180);
+  };
+  useEffect(() => cancelClose, []);
+
+  const openFlyout = (id: string, el: HTMLElement, itemCount: number) => {
+    cancelClose();
+    const r = el.getBoundingClientRect();
+    // Keep the panel on screen when the trigger sits low in the viewport.
+    const estimatedHeight = itemCount * 40 + 40;
+    setFlyout({
+      id,
+      top: Math.max(8, Math.min(r.top, window.innerHeight - estimatedHeight - 8)),
+      left: r.right + 8,
+    });
+  };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(GROUPS_KEY, JSON.stringify(openGroups));
-    } catch {
-      // Storage unavailable or over quota — a lost fold state is not worth failing over.
-    }
-  }, [openGroups]);
+    if (!flyout) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setFlyout(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flyout]);
 
-  // Reveal the group holding the active tab. Other tabs can switch the tab
-  // programmatically (the voice session's "review these words" CTA jumps to
-  // Flashcards), and landing on a tab hidden inside a collapsed group would
-  // leave the sidebar looking like nothing is selected.
-  useEffect(() => {
-    const owner = NAV.find(
-      (e): e is NavGroup => e.kind === "group" && e.items.some((i) => i.id === activeTab)
-    );
-    if (!owner) return;
-    setOpenGroups((prev) => (prev[owner.id] ? prev : { ...prev, [owner.id]: true }));
-  }, [activeTab]);
+  const flyoutGroup = flyout
+    ? (NAV.find((e): e is NavGroup => e.kind === "group" && e.id === flyout.id) ?? null)
+    : null;
 
-  const renderLeaf = (item: Omit<NavLeaf, "kind">, nested: boolean) => (
+  const renderLeaf = (item: Omit<NavLeaf, "kind">, inFlyout: boolean) => (
     <button
       key={item.id}
-      onClick={() => setActiveTab(item.id)}
+      role={inFlyout ? "menuitem" : undefined}
+      onClick={() => { setActiveTab(item.id); setFlyout(null); }}
       className={cn(
         "w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
-        !open && "justify-center px-2",
-        open && nested && "pl-5",
+        !open && !inFlyout && "justify-center px-2",
         activeTab === item.id
           ? "bg-primary/15 text-primary"
           : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
       )}
-      title={!open ? item.label : undefined}
+      title={!open && !inFlyout ? item.label : undefined}
     >
       <span className={cn("flex-shrink-0", activeTab === item.id ? "text-primary" : "")}>
         {item.icon}
       </span>
-      {open && <span className="truncate">{item.label}</span>}
+      {(open || inFlyout) && <span className="truncate">{item.label}</span>}
     </button>
   );
 
@@ -173,44 +183,67 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
         </span>
       </button>
 
-      {/* Navigation. Collapsed to w-14 there is no room for group labels, so the
-          rail flattens to every leaf in order — a headerless group would just be
-          an unexplained gap. */}
+      {/* Navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {!open
-          ? ALL_LEAVES.map((item) => renderLeaf(item, false))
-          : NAV.map((entry) => {
-              if (entry.kind === "leaf") return renderLeaf(entry, false);
-              const isOpen = openGroups[entry.id] ?? true;
-              const holdsActive = entry.items.some((i) => i.id === activeTab);
-              return (
-                <div key={entry.id}>
-                  <button
-                    onClick={() =>
-                      setOpenGroups((prev) => ({ ...prev, [entry.id]: !(prev[entry.id] ?? true) }))
-                    }
-                    aria-expanded={isOpen}
-                    className="w-full flex items-center gap-1.5 px-2.5 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <ChevronDown
-                      className={cn("w-3 h-3 flex-shrink-0 transition-transform", !isOpen && "-rotate-90")}
-                    />
-                    <span className="truncate">{entry.label}</span>
-                    {/* Folded away, the group still has to show that the current
-                        tab lives inside it. */}
-                    {!isOpen && holdsActive && (
-                      <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                    )}
-                  </button>
-                  {isOpen && (
-                    <div className="space-y-0.5">
-                      {entry.items.map((item) => renderLeaf(item, true))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+        {NAV.map((entry) => {
+          if (entry.kind === "leaf") return renderLeaf(entry, false);
+          const isOpen = flyout?.id === entry.id;
+          // Children never render inline, so the row itself has to show when the
+          // current tab lives inside it.
+          const holdsActive = entry.items.some((i) => i.id === activeTab);
+          return (
+            <button
+              key={entry.id}
+              onMouseEnter={(e) => openFlyout(entry.id, e.currentTarget, entry.items.length)}
+              onMouseLeave={scheduleClose}
+              onFocus={(e) => openFlyout(entry.id, e.currentTarget, entry.items.length)}
+              onClick={(e) =>
+                isOpen ? setFlyout(null) : openFlyout(entry.id, e.currentTarget, entry.items.length)
+              }
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+              title={!open ? entry.label : undefined}
+              className={cn(
+                "relative w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+                !open && "justify-center px-2",
+                isOpen || holdsActive
+                  ? "bg-sidebar-accent text-foreground"
+                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              )}
+            >
+              <span className={cn("flex-shrink-0", holdsActive && "text-primary")}>{entry.icon}</span>
+              {open && <span className="flex-1 text-left truncate">{entry.label}</span>}
+              {open && (
+                <ChevronRight
+                  className={cn("w-3.5 h-3.5 flex-shrink-0 transition-opacity", isOpen ? "opacity-100" : "opacity-50")}
+                />
+              )}
+              {holdsActive && !open && (
+                <span className="absolute right-1 w-1.5 h-1.5 rounded-full bg-primary" />
+              )}
+            </button>
+          );
+        })}
       </nav>
+
+      {/* Group flyout — fixed so the nav's overflow can't clip it. */}
+      {flyoutGroup && flyout && (
+        <div
+          role="menu"
+          aria-label={flyoutGroup.label}
+          style={{ top: flyout.top, left: flyout.left }}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+          className="fixed z-50 w-52 rounded-2xl border border-border bg-popover shadow-xl p-1.5"
+        >
+          <p className="px-2.5 pt-1.5 pb-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+            {flyoutGroup.label}
+          </p>
+          <div className="space-y-0.5">
+            {flyoutGroup.items.map((item) => renderLeaf(item, true))}
+          </div>
+        </div>
+      )}
 
       {/* User section */}
       <div className={cn("border-t border-sidebar-border p-2 flex-shrink-0", !open && "flex justify-center")}>
