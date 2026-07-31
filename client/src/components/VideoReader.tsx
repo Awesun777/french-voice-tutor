@@ -68,11 +68,8 @@ function fmtDuration(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default function VideoLessonsMode() {
-  const [openId, setOpenId] = useState<string | null>(null);
+export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
   const { data: videos = [], isLoading } = trpc.videos.list.useQuery();
-
-  if (openId) return <VideoReader youtubeId={openId} onBack={() => setOpenId(null)} />;
 
   if (isLoading) {
     return (
@@ -89,7 +86,7 @@ export default function VideoLessonsMode() {
         {videos.map((v) => (
           <button
             key={v.youtubeId}
-            onClick={() => setOpenId(v.youtubeId)}
+            onClick={() => onOpen(v.youtubeId)}
             className="text-left bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/50 transition-colors group"
           >
             <div className="aspect-video bg-muted overflow-hidden">
@@ -161,7 +158,7 @@ function YouTubePlayer({
 
 // ─── Reader ───────────────────────────────────────────────────────────────────
 
-function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => void }) {
+export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => void }) {
   const { data, isLoading } = trpc.videos.get.useQuery({ youtubeId });
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
@@ -313,20 +310,23 @@ function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => v
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Player */}
+      {/* Player. The reader takes over the whole pane — the Listening Lab header
+          and mode switcher are hidden while a video is open — so this bar owns
+          the only way back. */}
       <div className="flex-shrink-0 border-b border-border bg-background">
-        <div className="flex items-center gap-2 px-3 py-2">
+        <div className="mx-auto w-full max-w-2xl flex items-center gap-3 px-1 py-2.5">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> All videos
+            <ArrowLeft className="w-4 h-4" /> Videos
           </button>
-          <p className="text-xs font-semibold text-foreground truncate ml-2">{data?.lesson.title}</p>
+          <p className="text-sm font-semibold text-foreground truncate">{data?.lesson.title}</p>
         </div>
         <div className="mx-auto w-full max-w-2xl aspect-video bg-foreground/90 rounded-xl overflow-hidden">
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
+        <div className="h-3" />
       </div>
 
       {/* Transcript */}

@@ -1,19 +1,18 @@
 /**
- * ListeningTab ("Listening Lab") — turn a TCF listening clip into a study sheet.
+ * ListeningTab ("Listening Lab").
  *
- * Three inputs:
- *  1. Paste a TV5Monde TCF test URL → the app discovers each listening clip and
- *     transcribes them on demand.
- *  2. Record from the mic (e.g. audio played out loud) → transcribe directly.
- *  3. Upload an audio file → transcribe directly.
+ * Curated video lessons are the main event and fill the pane. The other three
+ * sources — TV5Monde TCF URL, mic recording, file upload — are secondary and
+ * live in a compact control top-right; each gives an audio player, a French
+ * transcript, and on request a translation plus B1 vocabulary.
  *
- * Each clip gives: an audio player, the French transcript, and (on request) an
- * English translation + B1 vocabulary you can save to your library.
+ * Opening a video hides this header entirely and hands the whole pane to
+ * VideoReader, which owns the way back.
  */
 import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import VideoLessonsMode from "@/components/VideoReader";
+import { VideoFeed, VideoReader } from "@/components/VideoReader";
 import { toast } from "sonner";
 import {
   Headphones, Link2, Upload, Loader2, Plus, Check, Languages, ListPlus, Mic, Square, Youtube,
@@ -22,38 +21,57 @@ import {
 type Vocab = { term: string; translation: string };
 
 export default function ListeningTab() {
-  const [mode, setMode] = useState<"videos" | "url" | "record" | "upload">("url");
+  const [mode, setMode] = useState<"videos" | "url" | "record" | "upload">("videos");
+  const [openVideoId, setOpenVideoId] = useState<string | null>(null);
+
+  // Reading a video takes over the whole pane: no lab header, no mode
+  // switcher, just the player and transcript, with the reader's own back
+  // button as the way out.
+  if (openVideoId) {
+    return <VideoReader youtubeId={openVideoId} onBack={() => setOpenVideoId(null)} />;
+  }
+
   return (
-    // Column rather than one big scroller: the video reader manages its own
-    // player + transcript panes and needs the full height, which it can't get
+    // Column rather than one big scroller: the video feed and reader manage
+    // their own scrolling and need the full height, which they can't get
     // inside the max-w-2xl scrolling wrapper the other modes use.
     <div className="flex-1 flex flex-col min-h-0">
       <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4">
-        <div className="max-w-2xl mx-auto space-y-4">
-          <div className="flex items-center gap-2">
-            <Headphones className="w-5 h-5 text-primary" />
-            <div>
+        <div className="max-w-3xl mx-auto flex items-start justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <Headphones className="w-5 h-5 text-primary flex-shrink-0" />
+            <div className="min-w-0">
               <h2 className="font-display text-xl font-bold text-foreground">Listening Lab</h2>
-              <p className="text-sm text-muted-foreground">Watch with a live transcript, or transcribe your own audio</p>
+              <p className="text-sm text-muted-foreground truncate">
+                {mode === "videos"
+                  ? "Watch with a live transcript"
+                  : "Transcribe your own audio"}
+              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {/* Secondary entries. Videos is the main event, so the other sources
+              sit here as a compact control rather than competing with the feed. */}
+          <div className="flex-shrink-0 flex items-center gap-1 p-1 rounded-xl bg-muted/50 border border-border">
             {([
               ["videos", "Videos", Youtube],
-              ["url", "TCF test URL", Link2],
+              ["url", "TCF", Link2],
               ["record", "Record", Mic],
-              ["upload", "Upload audio", Upload],
+              ["upload", "Upload", Upload],
             ] as const).map(([id, label, Icon]) => (
               <button
                 key={id}
                 onClick={() => setMode(id)}
+                title={label}
                 className={cn(
-                  "flex items-center justify-center gap-2 p-3 rounded-xl border text-sm font-semibold transition-all",
-                  mode === id ? "bg-primary/15 border-primary text-primary" : "bg-card border-border text-muted-foreground hover:bg-muted/30"
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                  mode === id
+                    ? "bg-card text-primary shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Icon className="w-4 h-4" /> {label}
+                <Icon className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
@@ -61,7 +79,7 @@ export default function ListeningTab() {
       </div>
 
       {mode === "videos" ? (
-        <VideoLessonsMode />
+        <VideoFeed onOpen={setOpenVideoId} />
       ) : (
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-2xl mx-auto px-4 sm:px-6 pb-6 space-y-6">
