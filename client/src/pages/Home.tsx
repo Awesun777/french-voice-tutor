@@ -26,7 +26,7 @@ export default function Home() {
   const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
   const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
 
-  // Dictionary lookup palette — ⌘K/Ctrl+K or the floating button. Skipped on
+  // Dictionary lookup palette — ⌘E/Ctrl+E or the floating button. Skipped on
   // the Dictionary and Tutor Chat tabs, where a search box is already the main
   // UI and a second one would just be in the way.
   const [dictOpen, setDictOpen] = useState(false);
@@ -37,11 +37,12 @@ export default function Home() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // ⌘K on macOS, Ctrl+K elsewhere. Deliberately not Shift+Tab: that is the
-      // universal "focus previous element" binding, and capturing it globally
-      // breaks backwards keyboard navigation for keyboard and screen-reader
-      // users.
-      if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      // ⌘E on macOS, Ctrl+E elsewhere — reachable one-handed with the thumb on
+      // ⌘ and the index finger on E, and unbound in Chrome on every platform.
+      // Deliberately not ⌘Q (the OS quit command, which never reaches the page
+      // as a cancelable event) and not Shift+Tab (the universal "focus previous
+      // element" binding, which keyboard and screen-reader users need).
+      if (e.key.toLowerCase() !== "e" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
       if (suppressedRef.current) return;
       e.preventDefault();
       // A selection anywhere becomes the query, so you can highlight a word in
