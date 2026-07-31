@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { DictResult, DictWordResult, DictPhraseResult, DictQuestionResult, DictWordDetails } from "@/types";
 import {
-  Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp, ChevronRight,
+  Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp, Keyboard,
   MessageCircle, Send, Sparkles, RefreshCw, ArrowLeftRight,
   BookmarkCheck, BookmarkX, MousePointerClick, X,
 } from "lucide-react";
@@ -1088,7 +1088,10 @@ export default function DictionaryTab() {
                   : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted"
               )}
             >
-              {accentsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              {/* The icon names the tool; open/closed is already carried by the
+                  button's primary tint and border, so it doesn't also need to
+                  swap to a chevron. */}
+              <Keyboard className="w-4 h-4" />
             </button>
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
