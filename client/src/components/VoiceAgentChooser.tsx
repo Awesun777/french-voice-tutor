@@ -46,7 +46,7 @@ const AGENTS: AgentConfig[] = [
     id: "romain",
     name: "Romain",
     // Keep in sync with the realtime model in server/_core/index.ts.
-    tag: "gpt-realtime-2 · OpenAI",
+    tag: "gpt-realtime-2.1 · OpenAI",
     video: "/avatars/romain.mp4",
     ring: "ring-primary",
     glow: "shadow-[0_0_60px_-12px] shadow-primary/50",

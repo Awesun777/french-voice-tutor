@@ -201,7 +201,7 @@ async function startServer() {
       // (unified interface requires multipart/form-data, NOT raw SDP body)
       const sessionConfig = JSON.stringify({
         type: "realtime",
-        model: "gpt-realtime-2",
+        model: "gpt-realtime-2.1",
         instructions: buildVoiceSystemPrompt(userMemory),
         // Audio config is nested under `audio` in the GA realtime schema.
         // A top-level `voice` (the old beta shape) is now rejected outright with
