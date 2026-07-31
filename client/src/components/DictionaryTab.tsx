@@ -97,7 +97,7 @@ function WordResult({
       onClick={onSelect}
     >
       {/* Main card */}
-      <div className="bg-card border border-border rounded-2xl p-5">
+      <div className="bg-card card-float rounded-2xl p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -297,7 +297,7 @@ function WordResult({
 
       {/* Conjugations */}
       {result.conjugations && result.wordType?.toLowerCase().includes("verb") && (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-card card-float rounded-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setShowConjugations(!showConjugations)}
             className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-muted/30 transition-colors"
@@ -328,7 +328,7 @@ function WordResult({
       {/* Synonyms & Confusing words */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" onClick={(e) => e.stopPropagation()}>
         {result.synonyms?.length > 0 && (
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="bg-card card-float rounded-2xl overflow-hidden">
             <button
               onClick={() => setShowSynonyms(!showSynonyms)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
@@ -351,7 +351,7 @@ function WordResult({
         )}
 
         {result.confusingWords?.length > 0 && (
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="bg-card card-float rounded-2xl overflow-hidden">
             <button
               onClick={() => setShowConfusing(!showConfusing)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
@@ -402,7 +402,7 @@ function PhraseResult({
   return (
     <div
       className={cn(
-        "bg-card border border-border rounded-2xl p-5 space-y-4 cursor-pointer transition-all",
+        "bg-card card-float-interactive rounded-2xl p-5 space-y-4 cursor-pointer transition-all",
         isSelected
           ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
           : "hover:ring-1 hover:ring-primary/40 hover:ring-offset-1 hover:ring-offset-background"
@@ -497,7 +497,7 @@ function QuestionResult({
   return (
     <div
       className={cn(
-        "bg-card border border-border rounded-2xl p-5 space-y-4 cursor-pointer transition-all",
+        "bg-card card-float-interactive rounded-2xl p-5 space-y-4 cursor-pointer transition-all",
         isSelected
           ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
           : "hover:ring-1 hover:ring-primary/40 hover:ring-offset-1 hover:ring-offset-background"
@@ -587,7 +587,7 @@ function ContextChatPanel({
       ];
 
   return (
-    <div className="flex flex-col h-full bg-card border border-border rounded-2xl overflow-hidden">
+    <div className="flex flex-col h-full bg-card card-float rounded-2xl overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-border bg-muted/20">
         <div className="flex items-center gap-2">
@@ -1189,7 +1189,7 @@ export default function DictionaryTab() {
             {/* Not found + spelling suggestions */}
             {lastNotFoundTerm && (
               <div className="space-y-3">
-                <div className="bg-card border border-border rounded-2xl p-5 text-center">
+                <div className="bg-card card-float rounded-2xl p-5 text-center">
                   <p className="text-3xl mb-2">🤷</p>
                   <p className="text-foreground font-semibold">"{lastNotFoundTerm}" wasn't found</p>
                   <p className="text-muted-foreground text-sm mt-1">

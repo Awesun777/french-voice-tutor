@@ -175,7 +175,7 @@ function PastSessionCard({ session }: { session: any }) {
     : null;
 
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className="bg-card card-float rounded-xl overflow-hidden">
       <button
         onClick={() => setExpanded((e) => !e)}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors text-left"
@@ -1039,7 +1039,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                   setShowMemoryPanel((v) => !v);
                   if (!showMemoryPanel) setIsEditingMemory(false);
                 }}
-                className="w-full flex items-center justify-between px-4 py-2.5 bg-card border border-border rounded-xl text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-card card-float rounded-xl text-sm font-medium text-foreground hover:bg-muted/50 transition-colors"
               >
                 <span className="flex items-center gap-2">
                   <Brain className="w-4 h-4 text-primary" />
@@ -1048,7 +1048,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                 {showMemoryPanel ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
               </button>
               {showMemoryPanel && (
-                <div className="mt-2 bg-card border border-border rounded-xl p-4 space-y-3">
+                <div className="mt-2 bg-card card-float rounded-xl p-4 space-y-3">
                   {!isEditingMemory ? (
                     <>
                       <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-wrap">
@@ -1198,7 +1198,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                       "max-w-[75%] px-3 py-2 rounded-2xl text-sm leading-relaxed",
                       line.role === "user"
                         ? "bg-secondary text-foreground rounded-tr-sm"
-                        : "bg-card border border-border text-foreground rounded-tl-sm"
+                        : "bg-card card-float text-foreground rounded-tl-sm"
                     )}>
                       {line.text}
                       {/* Blinking cursor for the in-progress streaming line */}
@@ -1281,7 +1281,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
             <h2 className="font-display text-lg font-bold text-foreground">Session Complete</h2>
 
             {endedSummary && (
-              <div className="w-full bg-card border border-border rounded-xl p-4">
+              <div className="w-full bg-card card-float rounded-xl p-4">
                 <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Session Summary</p>
                 <p className="text-sm text-foreground leading-relaxed">{endedSummary}</p>
               </div>
@@ -1311,7 +1311,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
             )}
 
             {transcript.length > 0 && (
-              <div className="w-full bg-card border border-border rounded-xl p-4">
+              <div className="w-full bg-card card-float rounded-xl p-4">
                 <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript ({transcript.filter(l => !l.id?.startsWith("summary-note-")).length} lines)</p>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {transcript

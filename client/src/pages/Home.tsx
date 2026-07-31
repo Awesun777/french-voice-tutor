@@ -26,7 +26,7 @@ export default function Home() {
   const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
   const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
 
-  // Dictionary lookup palette — ⌘E/Ctrl+E or the floating button. Skipped on
+  // Dictionary lookup palette — ⌘B/Ctrl+B or the floating button. Skipped on
   // the Dictionary and Tutor Chat tabs, where a search box is already the main
   // UI and a second one would just be in the way.
   const [dictOpen, setDictOpen] = useState(false);
@@ -37,12 +37,17 @@ export default function Home() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // ⌘E on macOS, Ctrl+E elsewhere — reachable one-handed with the thumb on
-      // ⌘ and the index finger on E, and unbound in Chrome on every platform.
-      // Deliberately not ⌘Q (the OS quit command, which never reaches the page
-      // as a cancelable event) and not Shift+Tab (the universal "focus previous
-      // element" binding, which keyboard and screen-reader users need).
-      if (e.key.toLowerCase() !== "e" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      // ⌘B on macOS, Ctrl+B elsewhere — reachable one-handed, and the only
+      // left-hand letter Chrome leaves free (the bookmarks bar is ⌘⇧B, the
+      // manager ⌘⌥B).
+      //
+      // Ruled out, all for the same reason: macOS dispatches menu-bar key
+      // equivalents to the app before the page sees them, so preventDefault
+      // never gets a chance. ⌘Q quits, ⌘E is Edit ▸ Find ▸ Use Selection for
+      // Find, and W/R/T/A/S/D/F/G/Z/X/C/V are likewise all menu items.
+      // Shift+Tab is out too — keyboard and screen-reader users need it to
+      // focus the previous element.
+      if (e.key.toLowerCase() !== "b" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
       if (suppressedRef.current) return;
       e.preventDefault();
       // A selection anywhere becomes the query, so you can highlight a word in

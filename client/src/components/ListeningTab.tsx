@@ -146,7 +146,7 @@ function UrlMode() {
       )}
 
       {loaded && clips.length === 0 && (
-        <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+        <div className="rounded-xl card-float bg-card p-4 text-sm text-muted-foreground">
           No clips found automatically. Switch to <span className="font-semibold text-foreground">Upload audio</span> and add the clip file directly.
         </div>
       )}
@@ -168,7 +168,7 @@ function ClipCard({ index, audioUrl }: { index: number; audioUrl: string }) {
   };
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
+    <div className="rounded-2xl card-float bg-card p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm font-bold text-foreground">Clip {index}</span>
         {!transcript && (
@@ -427,7 +427,7 @@ function TranscriptPanel({ transcript }: { transcript: string }) {
                 {analysis.vocab.map((v, i) => {
                   const isSaved = saved.has(v.term.toLowerCase());
                   return (
-                    <div key={i} className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2">
+                    <div key={i} className="flex items-center gap-2 bg-card card-float rounded-lg px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-semibold text-foreground">{v.term}</span>
                         <span className="text-xs text-muted-foreground"> — {v.translation}</span>

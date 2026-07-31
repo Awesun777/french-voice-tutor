@@ -149,7 +149,7 @@ function GrammarNotesPanel({ speak, pronounceState, activeText }: {
       {MODEL_VERBS.map((mv) => {
         const open = openVerb === mv.infinitive;
         return (
-          <div key={mv.infinitive} className="rounded-xl border border-border bg-card overflow-hidden">
+          <div key={mv.infinitive} className="rounded-xl card-float bg-card overflow-hidden">
             <button
               onClick={() => setOpenVerb(open ? "" : mv.infinitive)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors text-left"
@@ -201,7 +201,7 @@ function InfinitiveLookupPanel({ visible, loading, result, speak, pronounceState
   if (!visible) return null;
 
   return (
-    <div className="rounded-xl border border-border bg-card/60 p-4 text-left">
+    <div className="rounded-xl card-float bg-card/60 p-4 text-left">
       {loading || !result ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-2">
           <Loader2 className="w-4 h-4 animate-spin" /> Looking up…
@@ -415,7 +415,7 @@ export default function GrammarTestTab() {
               <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Review Mistakes</p>
               <div className="space-y-2">
                 {wrong.map((w, i) => (
-                  <div key={i} className="bg-card border border-border rounded-xl p-3.5">
+                  <div key={i} className="bg-card card-float rounded-xl p-3.5">
                     <p className="text-xs text-muted-foreground mb-1">{w.tenseLabel} · <span className="italic">{w.infinitive}</span></p>
                     <p className="text-sm text-foreground">{w.sentence.replace("___", `【${w.answer}】`)}</p>
                   </div>
@@ -460,7 +460,7 @@ export default function GrammarTestTab() {
             Complete with the correct form in the <span className="text-foreground font-semibold">{q.tenseLabel}</span>
           </p>
 
-          <div className="bg-gradient-to-br from-card to-muted/30 rounded-2xl p-6 sm:p-8 border border-border shadow-lg">
+          <div className="bg-gradient-to-br from-card to-muted/30 rounded-2xl p-6 sm:p-8 card-float">
             <SentenceWithBlank sentence={q.sentence}>
               {result ? (
                 <span className={cn("font-bold px-1", result.correct ? "text-emerald-700" : "text-red-700")}>{q.answer}</span>

@@ -143,6 +143,42 @@
 
 @layer components {
   /**
+   * Card elevation, in place of a pale-blue outline.
+   *
+   * White cards on warm cream are too close in value to separate themselves,
+   * so panels used to be drawn with a #CBD9E6 stroke. That put a cool blue
+   * line around everything and fought the warm palette. Instead they float:
+   * a soft navy-tinted shadow, the same treatment the Listening Lab video
+   * cards already used, now shared so every panel reads the same.
+   *
+   * .card-float             — panels and result cards; sits above the page.
+   * .card-float-interactive — clickable cards; deepens and lifts on hover.
+   */
+  .card-float {
+    box-shadow: 0 2px 10px -4px rgb(23 63 107 / 0.18);
+  }
+
+  .card-float-interactive {
+    box-shadow: 0 2px 10px -4px rgb(23 63 107 / 0.18);
+    transition: box-shadow 200ms ease, transform 200ms ease;
+  }
+
+  .card-float-interactive:hover {
+    box-shadow: 0 10px 28px -10px rgb(23 63 107 / 0.3);
+    transform: translateY(-2px);
+  }
+
+  /* Someone who asked for less motion still gets the shadow, just not the lift. */
+  @media (prefers-reduced-motion: reduce) {
+    .card-float-interactive {
+      transition: box-shadow 200ms ease;
+    }
+    .card-float-interactive:hover {
+      transform: none;
+    }
+  }
+
+  /**
    * Custom container utility that centers content and adds responsive padding.
    *
    * This overrides Tailwind's default container behavior to:

@@ -583,7 +583,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                   key={dateKey}
                   ref={(el) => { groupRefs.current[dateKey] = el; }}
                   data-group-key={dateKey}
-                  className="bg-card border border-border rounded-2xl overflow-hidden scroll-mt-4"
+                  className="bg-card card-float rounded-2xl overflow-hidden scroll-mt-4"
                 >
                   <GroupHeader
                     dateKey={dateKey}

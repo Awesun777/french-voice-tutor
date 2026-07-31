@@ -106,7 +106,7 @@ function PastSessionCard({ session }: { session: any }) {
   const [expanded, setExpanded] = useState(false);
   const lines: TranscriptLine[] = session.transcript ?? [];
   return (
-    <div className="bg-card border border-border rounded-xl p-3 space-y-2">
+    <div className="bg-card card-float rounded-xl p-3 space-y-2">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold text-foreground">
@@ -881,7 +881,7 @@ export function AnnaVoiceTab() {
                     "max-w-[75%] px-3 py-2 rounded-2xl text-sm leading-relaxed",
                     line.role === "user"
                       ? "bg-secondary text-foreground rounded-tr-sm"
-                      : "bg-card border border-border text-foreground rounded-tl-sm"
+                      : "bg-card card-float text-foreground rounded-tl-sm"
                   )}>
                     {line.text}
                   </div>
@@ -951,7 +951,7 @@ export function AnnaVoiceTab() {
             <h2 className="font-display text-lg font-bold text-foreground">Session Complete</h2>
 
             {endedSummary && (
-              <div className="w-full bg-card border border-border rounded-xl p-4">
+              <div className="w-full bg-card card-float rounded-xl p-4">
                 <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Session Summary</p>
                 <p className="text-sm text-foreground leading-relaxed">{endedSummary}</p>
               </div>
@@ -971,7 +971,7 @@ export function AnnaVoiceTab() {
             )}
 
             {transcript.length > 0 && (
-              <div className="w-full bg-card border border-border rounded-xl p-4">
+              <div className="w-full bg-card card-float rounded-xl p-4">
                 <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Transcript ({transcript.length} lines)</p>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {transcript.map((line, i) => (

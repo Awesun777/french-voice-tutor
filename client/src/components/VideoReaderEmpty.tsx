@@ -5,7 +5,7 @@
 export function EmptyVideoState() {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
-      <div className="max-w-md text-center rounded-2xl border border-border bg-card px-6 py-10">
+      <div className="max-w-md text-center rounded-2xl card-float bg-card px-6 py-10">
         <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center">
           <span className="text-3xl" aria-hidden="true">🎬</span>
         </div>

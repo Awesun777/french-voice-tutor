@@ -489,7 +489,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
           /* Flip card — front side depends on the chosen "show first" language */
           <div className="flip-card w-full" style={{ height: "220px" }} onClick={() => setFlipped((f) => !f)}>
             <div className={cn("flip-card-inner w-full h-full", flipped && "flipped")}>
-              <div className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 border border-border rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
+              <div className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
                 {sm2Status && (
                   <span className={cn("absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full font-semibold", SM2_STATUS_COLORS[sm2Status] ?? "bg-muted text-muted-foreground")}>
                     {SM2_STATUS_LABELS[sm2Status] ?? sm2Status}

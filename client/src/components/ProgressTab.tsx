@@ -20,7 +20,7 @@ function SM2StatsPanel() {
     { label: "Mastered", count: sm2Stats.mastered, color: "bg-green-500", text: "text-green-700" },
   ];
   return (
-    <div className="bg-card border border-border rounded-2xl p-5">
+    <div className="bg-card card-float rounded-2xl p-5">
       <p className="text-sm font-bold text-foreground mb-4">SM-2 Mastery Breakdown</p>
       <div className="flex h-3 rounded-full overflow-hidden mb-4 gap-0.5">
         {bars.map((b) => b.count > 0 && (
@@ -59,7 +59,7 @@ function ReviewSettingsPanel() {
   };
 
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden">
+    <div className="bg-card card-float rounded-2xl overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/20 transition-colors"
@@ -188,7 +188,7 @@ export default function ProgressTab() {
         {/* Stat cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {STAT_CARDS.map((s) => (
-            <div key={s.label} className="bg-card border border-border rounded-2xl p-4">
+            <div key={s.label} className="bg-card card-float rounded-2xl p-4">
               <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center mb-3", s.bg, s.color)}>
                 {s.icon}
               </div>
@@ -200,7 +200,7 @@ export default function ProgressTab() {
 
         {/* Streak heatmap */}
         {stats.byDay.length > 0 && (
-          <div className="bg-card border border-border rounded-2xl p-5">
+          <div className="bg-card card-float rounded-2xl p-5">
             <p className="text-sm font-bold text-foreground mb-4">Words Added Per Day</p>
             {vocabGrowth.length > 1 ? (
               <ResponsiveContainer width="100%" height={140}>
@@ -223,7 +223,7 @@ export default function ProgressTab() {
 
         {/* Cumulative growth */}
         {cumulativeData.length > 1 && (
-          <div className="bg-card border border-border rounded-2xl p-5">
+          <div className="bg-card card-float rounded-2xl p-5">
             <p className="text-sm font-bold text-foreground mb-4">Vocabulary Growth (Last 14 Days)</p>
             <ResponsiveContainer width="100%" height={140}>
               <LineChart data={cumulativeData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -243,7 +243,7 @@ export default function ProgressTab() {
 
         {/* Quiz performance */}
         {quizChartData.length > 0 && (
-          <div className="bg-card border border-border rounded-2xl p-5">
+          <div className="bg-card card-float rounded-2xl p-5">
             <p className="text-sm font-bold text-foreground mb-4">Quiz Scores (%)</p>
             <ResponsiveContainer width="100%" height={140}>
               <BarChart data={quizChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
@@ -263,7 +263,7 @@ export default function ProgressTab() {
 
         {/* Recent sessions */}
         {sessions.length > 0 && (
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="bg-card card-float rounded-2xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-border">
               <p className="text-sm font-bold text-foreground">Recent Quiz Sessions</p>
             </div>

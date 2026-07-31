@@ -183,7 +183,7 @@ function PhraseCard({ result, speak, pronounceState, activeText }: {
   activeText: string | null;
 }) {
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+    <div className="bg-card card-float rounded-2xl p-5 space-y-3">
       <div className="flex items-center gap-2">
         <h2 className="font-display text-xl font-bold text-foreground">{result.phrase}</h2>
         <PronounceButton text={result.phrase} speak={speak} state={pronounceState} activeText={activeText} className="p-1.5 bg-primary/15 hover:bg-primary/25 text-primary" iconSize="w-4 h-4" />
@@ -211,7 +211,7 @@ function PhraseCard({ result, speak, pronounceState, activeText }: {
 
 function QuestionCard({ result }: { result: DictQuestionResult }) {
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+    <div className="bg-card card-float rounded-2xl p-5 space-y-3">
       <p className="text-sm font-semibold text-foreground">{result.question}</p>
       <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">{result.answer}</p>
       {result.options?.length > 0 && (

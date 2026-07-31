@@ -50,7 +50,7 @@ export function WordResultCard({
 
   if (!result.found) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-5 text-center">
+      <div className="rounded-2xl card-float bg-card p-5 text-center">
         <p className="text-sm text-muted-foreground">No dictionary entry found.</p>
       </div>
     );
@@ -65,7 +65,7 @@ export function WordResultCard({
   return (
     <div className="space-y-3">
       {/* Main card */}
-      <div className="bg-card border border-border rounded-2xl p-5">
+      <div className="bg-card card-float rounded-2xl p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -238,7 +238,7 @@ function FoldSection({ title, open, onToggle, loading, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden">
+    <div className="bg-card card-float rounded-2xl overflow-hidden">
       <button onClick={onToggle} className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-muted/30 transition-colors">
         <span className="text-sm font-semibold text-foreground flex items-center gap-2">
           {title}

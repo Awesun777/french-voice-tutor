@@ -131,7 +131,7 @@ export default function TutorTab() {
                     "max-w-[80%] rounded-2xl px-4 py-3 text-sm",
                     msg.role === "user"
                       ? "bg-primary/20 text-foreground rounded-tr-sm"
-                      : "bg-card border border-border text-foreground rounded-tl-sm"
+                      : "bg-card card-float text-foreground rounded-tl-sm"
                   )}
                 >
                   {msg.role === "assistant" ? (
@@ -168,7 +168,7 @@ export default function TutorTab() {
                 <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
                   <span className="text-sm">🇫🇷</span>
                 </div>
-                <div className="bg-card border border-border rounded-2xl rounded-tl-sm px-4 py-3">
+                <div className="bg-card card-float rounded-2xl rounded-tl-sm px-4 py-3">
                   <div className="flex gap-1">
                     <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                     <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />

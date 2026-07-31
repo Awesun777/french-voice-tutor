@@ -614,7 +614,7 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
                 return (
                   <div
                     key={group.dateKey}
-                    className="rounded-lg border border-border bg-card overflow-hidden"
+                    className="rounded-lg card-float bg-card overflow-hidden"
                   >
                     {/* Group header row */}
                     <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/30">

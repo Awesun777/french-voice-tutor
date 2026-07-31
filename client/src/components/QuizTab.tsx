@@ -401,7 +401,7 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
               <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Review Mistakes</p>
               <div className="space-y-2">
                 {wrongAnswers.map((wa, i) => (
-                  <div key={i} className="bg-card border border-border rounded-xl p-3.5 flex items-start gap-3">
+                  <div key={i} className="bg-card card-float rounded-xl p-3.5 flex items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-foreground">{wa.word.term}</p>
                       <p className="text-xs text-emerald-700">✓ {wa.word.translation}</p>
@@ -482,7 +482,7 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-card to-muted/30 rounded-2xl p-6 sm:p-8 text-center border border-border shadow-lg">
+          <div className="bg-gradient-to-br from-card to-muted/30 rounded-2xl p-6 sm:p-8 text-center card-float">
             <p className="font-display text-xs uppercase tracking-widest text-muted-foreground mb-4">
               {isTypingMode ? "Write in French:" : "What does this mean?"}
             </p>
