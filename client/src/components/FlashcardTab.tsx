@@ -7,6 +7,44 @@ import { cn } from "@/lib/utils";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
 import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
+import { motion, useReducedMotion } from "framer-motion";
+
+/**
+ * The launch screen's art: a card flipping between its two sides, which is
+ * exactly what this tab does. The Quiz tab has its dog clip here; Flashcards
+ * had nothing, which was most of why the screen read as empty.
+ *
+ * Built from two absolutely-positioned faces on a preserve-3d parent rather
+ * than a video, so it costs nothing to load and picks up the palette.
+ */
+function FlipCardMotif() {
+  const reduce = useReducedMotion();
+  return (
+    <div className="h-28 w-40 sm:h-32 sm:w-44" style={{ perspective: 800 }}>
+      <motion.div
+        className="relative w-full h-full"
+        style={{ transformStyle: "preserve-3d" }}
+        animate={reduce ? undefined : { rotateY: [0, 0, 180, 180, 360] }}
+        transition={reduce ? undefined : { duration: 7, times: [0, 0.32, 0.5, 0.82, 1], repeat: Infinity, ease: "easeInOut" }}
+      >
+        <div
+          className="absolute inset-0 rounded-3xl bg-card flex flex-col items-center justify-center shadow-[0_10px_28px_-10px_rgb(23_63_107_/_0.45)]"
+          style={{ backfaceVisibility: "hidden" }}
+        >
+          <span className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-accent-strong">FR</span>
+          <span className="font-display text-xl font-bold text-foreground mt-1">bonjour</span>
+        </div>
+        <div
+          className="absolute inset-0 rounded-3xl bg-primary flex flex-col items-center justify-center shadow-[0_10px_28px_-10px_rgb(23_63_107_/_0.45)]"
+          style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }}
+        >
+          <span className="font-display text-[11px] font-bold uppercase tracking-[0.18em] text-primary-foreground/70">EN</span>
+          <span className="font-display text-xl font-bold text-primary-foreground mt-1">hello</span>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
 
 const SM2_STATUS_LABELS: Record<string, string> = { new: "New", learning: "Learning", review: "Review", mastered: "Mastered" };
 const SM2_STATUS_COLORS: Record<string, string> = {
@@ -328,6 +366,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
             kind="flashcards"
             initialDateKey={reviewTarget?.dateKey}
             onStart={startSession}
+            header={<FlipCardMotif />}
           />
         )}
       </div>
