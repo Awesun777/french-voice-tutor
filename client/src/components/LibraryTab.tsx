@@ -118,13 +118,13 @@ function GroupHeader({
 
   return (
     <div
-      className="px-4 py-3 border-b border-border flex items-center gap-2 group/header"
+      className="px-4 py-3 border-b border-primary/20 bg-primary/10 flex items-center gap-2 group/header"
       onClick={(e) => { if (!editing) { e.stopPropagation(); onToggle(); } }}
     >
       {/* Collapse toggle */}
       <button
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
-        className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+        className="text-primary/60 hover:text-primary transition-colors flex-shrink-0"
       >
         {isOpen
           ? <ChevronDown className="w-3.5 h-3.5" />
@@ -139,7 +139,7 @@ function GroupHeader({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel(); }}
-            className="flex-1 font-display text-xs font-bold uppercase tracking-wider bg-muted/60 border border-primary/50 rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1 font-display text-xs font-bold uppercase tracking-wider bg-card border border-primary/50 rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Group name or YYYY-MM-DD"
           />
           <button onClick={commit} className="p-1 rounded-md text-emerald-700 hover:bg-emerald-500/10 transition-colors flex-shrink-0">
@@ -151,12 +151,12 @@ function GroupHeader({
         </div>
       ) : (
         <>
-          <p className="flex-1 font-display text-xs font-bold text-muted-foreground uppercase tracking-wider cursor-pointer select-none">
+          <p className="flex-1 font-display text-xs font-bold text-primary uppercase tracking-wider cursor-pointer select-none">
             {fmtDateLabel(dateKey)}
           </p>
           <button
             onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
+            className="p-1 rounded-md text-primary/60 hover:text-primary hover:bg-primary/15 transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
             title="Rename group"
           >
             <Pencil className="w-3 h-3" />
@@ -168,7 +168,7 @@ function GroupHeader({
         {dueCount > 0 && (
           <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent-strong font-semibold">{dueCount} due</span>
         )}
-        <p className="text-xs text-muted-foreground">{wordCount} items</p>
+        <p className="text-xs text-primary/70 tabular-nums">{wordCount} items</p>
 
         {/* Delete group — shows confirm inline */}
         {confirmingDelete ? (
@@ -190,7 +190,7 @@ function GroupHeader({
         ) : (
           <button
             onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}
-            className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
+            className="p-1 rounded-md text-primary/50 hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
             title="Delete all words in this group"
           >
             <Trash2 className="w-3 h-3" />
@@ -214,6 +214,26 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
   const [editTerm, setEditTerm] = useState("");
   const [editTranslation, setEditTranslation] = useState("");
   const utils = trpc.useUtils();
+
+  // ─── Date index rail ────────────────────────────────────────────────────────
+  // Jump-to targets for each group, plus which one is currently in view so the
+  // rail can highlight it as you scroll.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+
+  // Positioned from bounding rects rather than scrollIntoView: the group sits
+  // several levels inside a nested flex/overflow tree, and this keeps the maths
+  // independent of which ancestor happens to be the offsetParent. Jumps are
+  // instant — smooth behaviour is silently dropped in some environments, which
+  // would leave the rail looking dead rather than merely un-animated.
+  const scrollToGroup = (key: string) => {
+    const el = groupRefs.current[key];
+    const scroller = scrollRef.current;
+    if (!el || !scroller) return;
+    scroller.scrollTop += el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8;
+    setActiveGroup(key);
+  };
 
   const { data: words = [], isLoading } = trpc.vocab.list.useQuery();
 
@@ -376,6 +396,27 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
 
   const dueCount = words.filter((w) => isDue(w)).length;
 
+  // Scroll-spy for the rail. The rootMargin pins "current" to whatever group has
+  // just reached the top of the viewport rather than whatever is merely visible,
+  // which is what reads correctly while scrolling.
+  const groupKeysSignature = sortedGroups.map(([k]) => k).join("|");
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const atTop = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        const key = atTop?.target.getAttribute("data-group-key");
+        if (key) setActiveGroup(key);
+      },
+      { root, rootMargin: "0px 0px -75% 0px", threshold: 0 }
+    );
+    Object.values(groupRefs.current).forEach((el) => el && observer.observe(el));
+    return () => observer.disconnect();
+  }, [groupKeysSignature]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -445,8 +486,53 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      {/* Body: date index rail + scrolling word list */}
+      <div className="flex-1 flex min-h-0">
+        {/* Date index — hidden below md, and pointless with a single group. */}
+        {!isLoading && sortedGroups.length > 1 && (
+          <nav className="hidden md:flex w-52 flex-shrink-0 flex-col border-r border-border overflow-y-auto py-4 px-2">
+            <p className="px-2 pb-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Lessons
+            </p>
+            <button
+              onClick={() => scrollRef.current?.scrollTo({ top: 0 })}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-primary/5 hover:text-foreground transition-colors"
+            >
+              <span className="flex-1 text-left truncate">All words</span>
+              <span className="text-xs tabular-nums text-muted-foreground">{filtered.length}</span>
+            </button>
+            <div className="my-2 border-t border-border" />
+            <div className="space-y-0.5">
+              {sortedGroups.map(([dateKey, dayWords]) => {
+                const groupDue = dayWords.filter(isDue).length;
+                return (
+                  <button
+                    key={dateKey}
+                    onClick={() => scrollToGroup(dateKey)}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
+                      activeGroup === dateKey
+                        ? "bg-primary/15 text-primary font-semibold"
+                        : "text-muted-foreground hover:bg-primary/5 hover:text-foreground"
+                    )}
+                    title={fmtDateLabel(dateKey)}
+                  >
+                    <span className="flex-1 text-left truncate">{fmtDateLabel(dateKey)}</span>
+                    {groupDue > 0 && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-accent-strong flex-shrink-0"
+                        title={`${groupDue} due for review`}
+                      />
+                    )}
+                    <span className="text-xs tabular-nums opacity-70">{dayWords.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        )}
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -469,7 +555,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
             <p className="text-muted-foreground text-sm">No words match your search</p>
           </div>
         ) : (
-          <div className="max-w-2xl mx-auto space-y-3">
+          <div className="max-w-3xl mx-auto space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">{filtered.length} of {words.length} words</p>
               <div className="flex gap-2">
@@ -493,7 +579,12 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
               const isOpen = !collapsed.has(dateKey);
               const groupDue = dayWords.filter(isDue).length;
               return (
-                <div key={dateKey} className="bg-card border border-border rounded-2xl overflow-hidden">
+                <div
+                  key={dateKey}
+                  ref={(el) => { groupRefs.current[dateKey] = el; }}
+                  data-group-key={dateKey}
+                  className="bg-card border border-border rounded-2xl overflow-hidden scroll-mt-4"
+                >
                   <GroupHeader
                     dateKey={dateKey}
                     wordCount={dayWords.length}
@@ -622,6 +713,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
             })}
           </div>
         )}
+        </div>
       </div>
 
       {showImport && (
