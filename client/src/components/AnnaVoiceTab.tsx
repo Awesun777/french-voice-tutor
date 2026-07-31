@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { AvatarVideo, avatarLayoutId, useAvatarPoster } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
 import { isGoodbye } from "@/lib/voiceEndTriggers";
+import { stallQuestionInstruction } from "@/lib/conversationQuestions";
 import {
   VoiceSessionSettings,
   useVoiceSettings,
@@ -323,6 +324,13 @@ export function AnnaVoiceTab() {
               `[Session settings: ${mixInstruction} ${saveOfferInstruction(mix)}]`
             );
           }, 800);
+          // Stall-recovery question bank, sent separately so it doesn't bloat
+          // the settings update into one unreadable blob.
+          setTimeout(() => {
+            conversationRef.current?.sendContextualUpdate(
+              `[${stallQuestionInstruction()}]`
+            );
+          }, 1100);
           // Inject persistent user memory so Anna remembers past conversations.
           const memory = userMemoryRef.current;
           if (memory && memory.trim()) {
@@ -547,6 +555,11 @@ export function AnnaVoiceTab() {
                 `${contextNote} [Session settings: ${languageMixInstruction(resumeMix)} ${saveOfferInstruction(resumeMix)}]`
               );
             }, 800);
+            setTimeout(() => {
+              conversationRef.current?.sendContextualUpdate(
+                `[${stallQuestionInstruction()}]`
+              );
+            }, 1100);
             // Also inject persistent user memory after the resume context note
             const memory = userMemoryRef.current;
             if (memory && memory.trim()) {

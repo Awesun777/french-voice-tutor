@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { AvatarVideo, avatarLayoutId, useAvatarPoster } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
 import { isGoodbye } from "@/lib/voiceEndTriggers";
+import { stallQuestionInstruction } from "@/lib/conversationQuestions";
 import {
   VoiceSessionSettings,
   useVoiceSettings,
@@ -62,13 +63,21 @@ import {
  * Real context cost is higher than text-only estimates because the Realtime
  * API also counts audio tokens, tool call overhead, and per-item metadata.
  */
-const TOKEN_BUDGET = 2000;
+const TOKEN_BUDGET = 3850;
 /**
- * Approximate tokens consumed by the static system prompt + tool schemas.
- * Actual measured value: ~694 tokens (prompt 497 + tools 197).
- * We use 750 to add a small safety margin for Realtime API overhead.
+ * Approximate tokens consumed by the system prompt + tool schemas.
+ *
+ * Measured 2026-07-31: base prompt ~1,360 + settings snippets ~220 + stall
+ * question bank ~800 + tools ~197 ≈ 2,580. Rounded up to 2,600 for Realtime
+ * overhead. The old pair (750 / 2,000) was written when the prompt was a third
+ * of this size and had drifted badly out of date.
+ *
+ * What actually governs pruning is the gap between these two numbers — the
+ * token allowance left for raw turns. That gap is 1,250, unchanged from the
+ * old constants, so this correction makes the numbers honest without shifting
+ * when summarization fires. Move TOKEN_BUDGET, not this, to retune the cadence.
  */
-const SYSTEM_PROMPT_TOKENS = 750;
+const SYSTEM_PROMPT_TOKENS = 2600;
 /** Always keep at least this many recent raw turns after pruning */
 const KEEP_RECENT = 8;
 /**
@@ -261,6 +270,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       speedInstruction(s.speed),
       languageMixInstruction(s.languageMix),
       saveOfferInstruction(s.languageMix),
+      stallQuestionInstruction(),
     ]
       .filter(Boolean)
       .join(" ");
