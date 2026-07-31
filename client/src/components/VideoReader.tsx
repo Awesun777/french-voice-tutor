@@ -87,7 +87,7 @@ export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
           <button
             key={v.youtubeId}
             onClick={() => onOpen(v.youtubeId)}
-            className="text-left bg-card border border-border rounded-2xl overflow-hidden hover:border-primary/50 transition-colors group"
+            className="text-left bg-card rounded-2xl overflow-hidden group transition-all duration-200 shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.18)] hover:shadow-[0_10px_28px_-10px_rgb(23_63_107_/_0.30)] hover:-translate-y-0.5"
           >
             <div className="aspect-video bg-muted overflow-hidden">
               {v.thumbnailUrl && (
@@ -313,7 +313,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
       {/* Player. The reader takes over the whole pane — the Listening Lab header
           and mode switcher are hidden while a video is open — so this bar owns
           the only way back. */}
-      <div className="flex-shrink-0 border-b border-border bg-background">
+      <div className="flex-shrink-0 bg-background relative z-10 shadow-[0_10px_24px_-16px_rgb(23_63_107_/_0.45)]">
         <div className="mx-auto w-full max-w-2xl flex items-center gap-3 px-1 py-2.5">
           <button
             onClick={onBack}
@@ -323,7 +323,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           </button>
           <p className="text-sm font-semibold text-foreground truncate">{data?.lesson.title}</p>
         </div>
-        <div className="mx-auto w-full max-w-2xl aspect-video bg-foreground/90 rounded-xl overflow-hidden">
+        <div className="mx-auto w-full max-w-2xl aspect-video bg-foreground/90 rounded-2xl overflow-hidden shadow-[0_16px_40px_-16px_rgb(23_63_107_/_0.45)]">
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
         <div className="h-3" />
@@ -370,7 +370,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
             style={{ top: hover.top, left: hover.left }}
             onMouseEnter={cancelHoverClose}
             onMouseLeave={scheduleHoverClose}
-            className="fixed z-50 w-64 rounded-2xl border border-border bg-popover shadow-xl p-3"
+            className="fixed z-50 w-64 rounded-2xl bg-popover p-3 shadow-[0_12px_32px_-8px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5"
           >
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
