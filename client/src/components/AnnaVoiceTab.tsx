@@ -762,7 +762,7 @@ export function AnnaVoiceTab() {
               </motion.div>
 
               {/* Session settings */}
-              <motion.div variants={idleItem}>
+              <motion.div variants={idleItem} className="w-full max-w-md">
                 <VoiceSessionSettings
                   agent="anna"
                   onChange={(s) => updateVoiceSettings(s)}
