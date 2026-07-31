@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { SidebarTab } from "@/types";
 import { DictionaryFab, DictionarySearchDrawer } from "@/components/DictionarySearchDrawer";
 import Sidebar from "@/components/Sidebar";
@@ -26,11 +26,38 @@ export default function Home() {
   const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
   const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
 
-  // Dictionary search drawer — available while practising (flashcards/grammar/quiz).
+  // Dictionary search drawer — available on every tab, by ⌘K/Ctrl+K anywhere or
+  // the floating button.
   const [dictOpen, setDictOpen] = useState(false);
-  const dictTabs: SidebarTab[] = ["flashcards", "grammar", "quiz"];
-  const dictAvailable = dictTabs.includes(activeTab);
-  useEffect(() => { if (!dictAvailable) setDictOpen(false); }, [dictAvailable]);
+  const [dictSeed, setDictSeed] = useState<string | undefined>(undefined);
+  // Where focus was when the drawer opened, so Escape can put it back.
+  const focusBeforeDict = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // ⌘K on macOS, Ctrl+K elsewhere. Deliberately not Shift+Tab: that is the
+      // universal "focus previous element" binding, and capturing it globally
+      // breaks backwards keyboard navigation for keyboard and screen-reader
+      // users.
+      if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      e.preventDefault();
+      // A selection anywhere becomes the query, so you can highlight a word in
+      // a transcript or a tutor reply and look it up without retyping it.
+      const selected = window.getSelection()?.toString().trim() ?? "";
+      focusBeforeDict.current = document.activeElement as HTMLElement | null;
+      setDictSeed(selected && selected.length <= 120 ? selected : undefined);
+      setDictOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const closeDict = useCallback(() => {
+    setDictOpen(false);
+    setDictSeed(undefined);
+    focusBeforeDict.current?.focus?.();
+    focusBeforeDict.current = null;
+  }, []);
 
   if (loading) {
     return (
@@ -121,12 +148,8 @@ export default function Home() {
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}
         {activeTab === "progress" && <ProgressTab />}
       </main>
-      {dictAvailable && (
-        <>
-          <DictionaryFab open={dictOpen} onOpen={() => setDictOpen(true)} />
-          <DictionarySearchDrawer open={dictOpen} onClose={() => setDictOpen(false)} />
-        </>
-      )}
+      <DictionaryFab open={dictOpen} onOpen={() => setDictOpen(true)} />
+      <DictionarySearchDrawer open={dictOpen} onClose={closeDict} initialTerm={dictSeed} />
     </div>
   );
 }

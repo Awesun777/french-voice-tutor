@@ -40,6 +40,15 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
   const [term, setTerm] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Escape closes, as expected of a palette-style overlay. Bound only while
+  // open so it never competes with other Escape handlers on the page.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   const utils = trpc.useUtils();
   const addVocab = trpc.vocab.add.useMutation();
   const [saved, setSaved] = useState<Set<string>>(new Set());
