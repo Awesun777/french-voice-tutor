@@ -21,8 +21,9 @@ import { motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { AvatarVideo, avatarLayoutId } from "@/components/AvatarVideo";
+import { AvatarVideo, avatarLayoutId, useAvatarPoster } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
+import { isGoodbye } from "@/lib/voiceEndTriggers";
 import {
   VoiceSessionSettings,
   useVoiceSettings,
@@ -227,6 +228,8 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [savedWords, setSavedWords] = useState<SavedWord[]>([]);
+  // Still frame of Romain's avatar, used as the per-message "profile pic".
+  const romainPoster = useAvatarPoster("/avatars/romain.mp4");
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [endedSummary, setEndedSummary] = useState<string | null>(null);
@@ -261,6 +264,13 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
 
   // Track the in-progress AI streaming line (delta accumulation)
   const streamingLineIdRef = useRef<string | null>(null);
+  // Guards the goodbye auto-end so a "au revoir" only ends the session once.
+  const goodbyeTriggeredRef = useRef(false);
+  // Always points at the latest endSession so the goodbye timer (a long-lived
+  // closure set up at session start) persists the current transcript, not a
+  // stale empty one. endingRef makes endSession idempotent across callers.
+  const endSessionRef = useRef<() => void>(() => {});
+  const endingRef = useRef(false);
   // Track item IDs that were already handled by the streaming path so the
   // response.output_item.done fallback never duplicates them
   const finalizedItemIdsRef = useRef<Set<string>>(new Set());
@@ -454,6 +464,12 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
           setUserSpeaking(false);
           // Defer summarization so it never fires while Romain is mid-response
           deferredSummarize();
+          // If the user said goodbye, wrap up the session (after a short beat so
+          // Romain can say "Au revoir" back before we tear the connection down).
+          if (isGoodbye(text) && !goodbyeTriggeredRef.current) {
+            goodbyeTriggeredRef.current = true;
+            setTimeout(() => { endSessionRef.current(); }, 3500);
+          }
         }
       }
 
@@ -720,6 +736,8 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       streamingLineIdRef.current = null;
       finalizedItemIdsRef.current.clear();
       completedTurnsRef.current = [];
+      goodbyeTriggeredRef.current = false;
+      endingRef.current = false;
       isSummarizingRef.current = false;
       if (summarizeTimerRef.current) { clearTimeout(summarizeTimerRef.current); summarizeTimerRef.current = null; }
       // 1. Create a session record in our DB
@@ -852,7 +870,8 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
   };
 
   const endSession = async () => {
-    if (!sessionId) return;
+    if (endingRef.current || !sessionId) return;
+    endingRef.current = true;
     setSessionState("ending");
     cleanupWebRTC();
     try {
@@ -874,6 +893,8 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       setSessionState("ended");
     }
   };
+  // Keep the ref pointed at the current endSession (fresh transcript closure).
+  useEffect(() => { endSessionRef.current = endSession; });
 
   const togglePause = () => {
     if (sessionState === "active") {
@@ -969,7 +990,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
             >
             <motion.div variants={idleItem}>
               <h2 className="font-display text-xl font-bold text-foreground mb-2">Talk to Romain</h2>
-              <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
+              <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
                 Your personal French tutor. Have a natural conversation in French, ask questions, and say <span className="text-primary font-medium">&ldquo;save the word&rdquo;</span> to add any word or phrase to your library.
               </p>
             </motion.div>
@@ -983,7 +1004,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
             </motion.div>
 
             {/* Memory viewer panel */}
-            <motion.div variants={idleItem} className="max-w-sm w-full">
+            <motion.div variants={idleItem} className="max-w-md w-full">
               <button
                 onClick={() => {
                   setShowMemoryPanel((v) => !v);
@@ -1135,10 +1156,14 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
                     )}
                   >
                     <div className={cn(
-                      "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5",
+                      "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5 overflow-hidden",
                       line.role === "user" ? "bg-secondary text-foreground" : "bg-primary/20 text-primary"
                     )}>
-                      {line.role === "user" ? "Me" : "R"}
+                      {line.role === "user"
+                        ? "Me"
+                        : romainPoster
+                          ? <img src={romainPoster} alt="Romain" className="w-full h-full object-cover" />
+                          : "R"}
                     </div>
                     <div className={cn(
                       "max-w-[75%] px-3 py-2 rounded-2xl text-sm leading-relaxed",

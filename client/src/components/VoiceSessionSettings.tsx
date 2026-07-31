@@ -213,7 +213,7 @@ export function VoiceSessionSettings({ agent, onChange, compact }: Props) {
   }
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4 text-left max-w-sm w-full space-y-4">
+    <div className="bg-card border border-border rounded-xl p-4 text-left max-w-md w-full space-y-4">
       <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">Session Settings</p>
 
       {/* Speed */}

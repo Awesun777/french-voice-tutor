@@ -17,8 +17,9 @@ import { Conversation, type VoiceConversation } from "@elevenlabs/client";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { AvatarVideo, avatarLayoutId } from "@/components/AvatarVideo";
+import { AvatarVideo, avatarLayoutId, useAvatarPoster } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
+import { isGoodbye } from "@/lib/voiceEndTriggers";
 import {
   VoiceSessionSettings,
   useVoiceSettings,
@@ -147,6 +148,8 @@ export function AnnaVoiceTab() {
   const [isPaused, setIsPaused] = useState(false);
   // True while reconnecting after a pause (so transcript stays visible)
   const [isResuming, setIsResuming] = useState(false);
+  // Still frame of Anna's avatar, used as the per-message "profile pic".
+  const annaPoster = useAvatarPoster("/avatars/anna.mp4");
 
   const conversationRef = useRef<VoiceConversation | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -165,6 +168,13 @@ export function AnnaVoiceTab() {
   // Set to true while we deliberately end the session for pause, so onDisconnect
   // doesn't trigger the "ending" state transition and save the session to DB.
   const isPausingRef = useRef(false);
+  // Guards the goodbye auto-end so a "au revoir" only ends the session once.
+  const goodbyeTriggeredRef = useRef(false);
+  // Always points at the latest endSession so the goodbye timer (a long-lived
+  // closure set up at session start) persists the current transcript, not a
+  // stale empty one. endingRef makes endSession idempotent across callers.
+  const endSessionRef = useRef<() => void>(() => {});
+  const endingRef = useRef(false);
 
   // Voice settings (speed + language mix) — persisted in localStorage
   const { settings: voiceSettings, update: updateVoiceSettings } = useVoiceSettings("anna");
@@ -273,6 +283,8 @@ export function AnnaVoiceTab() {
       isSummarizingRef.current = false;
       aiSpeakingRef.current = false;
       isPausingRef.current = false;
+      goodbyeTriggeredRef.current = false;
+      endingRef.current = false;
       setIsResuming(false);
 
       // 1. Create session record in DB
@@ -364,11 +376,24 @@ export function AnnaVoiceTab() {
               { role: "assistant", text },
             ];
           } else {
-            // User turn — each onMessage for user source is a finalized utterance
+            // User turn — each onMessage for user source is a finalized utterance.
+            // Show it in the live transcript (ElevenLabs already transcribes the
+            // user's speech for us), de-duping an identical repeat of the last line.
+            setTranscript((prev) => {
+              const last = prev[prev.length - 1];
+              if (last && last.role === "user" && last.text === text) return prev;
+              return [...prev, { role: "user", text, timestamp: Date.now(), id: `user-${Date.now()}` }];
+            });
             completedTurnsRef.current = [
               ...completedTurnsRef.current,
               { role: "user", text },
             ];
+            // If the user said goodbye, wrap up the session (after a short beat so
+            // Anna can say "Au revoir" back before we tear the connection down).
+            if (isGoodbye(text) && !goodbyeTriggeredRef.current) {
+              goodbyeTriggeredRef.current = true;
+              setTimeout(() => { endSessionRef.current(); }, 3500);
+            }
           }
         },
 
@@ -440,7 +465,8 @@ export function AnnaVoiceTab() {
   };
 
   const endSession = async () => {
-    if (!sessionId) return;
+    if (endingRef.current || !sessionId) return;
+    endingRef.current = true;
     setSessionState("ending");
     cleanup();
     try {
@@ -459,6 +485,8 @@ export function AnnaVoiceTab() {
       setSessionState("ended");
     }
   };
+  // Keep the ref pointed at the current endSession (fresh transcript closure).
+  useEffect(() => { endSessionRef.current = endSession; });
 
   /**
    * True pause: end the ElevenLabs WebSocket session so the server stops
@@ -723,7 +751,7 @@ export function AnnaVoiceTab() {
             >
               <motion.div variants={idleItem}>
                 <h2 className="font-display text-xl font-bold text-foreground mb-2">Talk to Anna</h2>
-                <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
+                <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
                   Your French tutor with a natural ElevenLabs voice. Have a conversation in French and say{" "}
                   <span className="text-speaking font-medium">&ldquo;save the word&rdquo;</span> to add words to your library.
                 </p>
@@ -815,10 +843,14 @@ export function AnnaVoiceTab() {
                   )}
                 >
                   <div className={cn(
-                    "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5",
+                    "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5 overflow-hidden",
                     line.role === "user" ? "bg-secondary text-foreground" : "bg-speaking/20 text-speaking"
                   )}>
-                    {line.role === "user" ? "Me" : "A"}
+                    {line.role === "user"
+                      ? "Me"
+                      : annaPoster
+                        ? <img src={annaPoster} alt="Anna" className="w-full h-full object-cover" />
+                        : "A"}
                   </div>
                   <div className={cn(
                     "max-w-[75%] px-3 py-2 rounded-2xl text-sm leading-relaxed",
