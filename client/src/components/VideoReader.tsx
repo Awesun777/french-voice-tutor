@@ -191,23 +191,34 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
     if (state === window.YT?.PlayerState.BUFFERING) setFollowing(true);
   }, []);
 
-  // Space toggles playback anywhere on this page. preventDefault stops it
-  // also scrolling the transcript, which is the default action for space on a
-  // scrollable pane. Typing fields are skipped, though the reader has none
-  // today — the dictionary drawer can be opened over it.
+  // Transport keys, matching YouTube's own: space toggles play, left/right seek
+  // by 5s. preventDefault stops space and the arrows from also scrolling the
+  // transcript, which is their default action on a scrollable pane. Typing
+  // fields are skipped — the dictionary drawer can be opened over this page.
   useEffect(() => {
     if (!playerReady) return;
+    const SEEK_SEC = 5;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== " " && e.code !== "Space") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      e.preventDefault();
       const p = playerRef.current;
       if (!p) return;
-      // 1 === PLAYING in the IFrame API's PlayerState enum.
-      if (p.getPlayerState() === 1) p.pauseVideo();
-      else p.playVideo();
+
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        // 1 === PLAYING in the IFrame API's PlayerState enum.
+        if (p.getPlayerState() === 1) p.pauseVideo();
+        else p.playVideo();
+        return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const delta = e.key === "ArrowRight" ? SEEK_SEC : -SEEK_SEC;
+        p.seekTo(Math.max(0, p.getCurrentTime() + delta), true);
+        // Seeking is deliberate navigation, so re-engage autoscroll.
+        setFollowing(true);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -345,17 +356,17 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
       {/* Player. The reader takes over the whole pane — the Listening Lab header
           and mode switcher are hidden while a video is open — so this bar owns
           the only way back. */}
-      <div className="flex-shrink-0 bg-background relative z-10 shadow-[0_10px_24px_-16px_rgb(23_63_107_/_0.45)]">
+      <div className="flex-shrink-0 bg-primary relative z-10 shadow-[0_12px_28px_-14px_rgb(23_63_107_/_0.65)]">
         <div className="mx-auto w-full max-w-2xl flex items-center gap-3 px-1 py-2.5">
           <button
             onClick={onBack}
-            className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+            className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Videos
           </button>
-          <p className="text-sm font-semibold text-foreground truncate">{data?.lesson.title}</p>
+          <p className="text-sm font-semibold text-primary-foreground/90 truncate">{data?.lesson.title}</p>
         </div>
-        <div className="mx-auto w-full max-w-2xl aspect-video bg-foreground/90 rounded-2xl overflow-hidden shadow-[0_16px_40px_-16px_rgb(23_63_107_/_0.45)]">
+        <div className="mx-auto w-full max-w-2xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]">
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
         <div className="h-3" />

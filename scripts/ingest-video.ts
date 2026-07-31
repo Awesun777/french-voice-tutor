@@ -80,19 +80,27 @@ async function downloadAudio(url: string, dir: string, limitSec: number | null):
   const out = path.join(dir, "audio.%(ext)s");
   // m4a keeps the file small and is a format Whisper accepts directly, so there
   // is no transcode step unless the file also needs splitting.
-  const args = ["-f", "bestaudio[ext=m4a]/bestaudio", "-o", out, "--no-warnings"];
-  if (limitSec) {
-    // Fetch only the slice we want rather than pulling a whole 80-minute video
-    // to discard most of it. Cues then start at 0, matching the video, so no
-    // timestamp offset is needed.
-    args.push("--download-sections", `*0-${limitSec}`, "--force-keyframes-at-cuts");
-  }
-  args.push(url);
-  await exec("yt-dlp", args, { maxBuffer: 32 * 1024 * 1024 });
+  //
+  // Deliberately NOT using yt-dlp's --download-sections: that delegates the
+  // range fetch to ffmpeg, whose request YouTube answers with 403 Forbidden
+  // because it lacks the client context yt-dlp negotiated. Pulling the whole
+  // audio and trimming locally costs bandwidth but always works.
+  await exec("yt-dlp", ["-f", "bestaudio[ext=m4a]/bestaudio", "-o", out, "--no-warnings", url], {
+    maxBuffer: 32 * 1024 * 1024,
+  });
   const files = await readdir(dir);
   const audio = files.find((f) => f.startsWith("audio."));
   if (!audio) throw new Error("yt-dlp produced no audio file");
-  return path.join(dir, audio);
+  const full = path.join(dir, audio);
+  if (!limitSec) return full;
+
+  // Stream-copy trim: no re-encode, so it is near-instant and lossless.
+  const trimmed = path.join(dir, "trimmed.m4a");
+  await exec("ffmpeg", [
+    "-hide_banner", "-loglevel", "error",
+    "-i", full, "-t", String(limitSec), "-c", "copy", "-vn", trimmed,
+  ]);
+  return trimmed;
 }
 
 /**
@@ -200,6 +208,71 @@ const GLOSS_SCHEMA = {
   additionalProperties: false,
 };
 
+
+/**
+ * High-frequency French multi-word expressions, always grouped when they appear.
+ * The model alone is inconsistent about the very common ones — it missed
+ * "comment ça va" on the first ingest — so these are matched deterministically
+ * as a floor. Merged with whatever the model finds, then laid down
+ * longest-first so "comment ça va" wins over "ça va".
+ */
+const COMMON_EXPRESSIONS: { phrase: string; gloss: string }[] = [
+  { phrase: "comment ça va", gloss: "how are you" },
+  { phrase: "comment allez-vous", gloss: "how are you (formal)" },
+  { phrase: "qu'est-ce que", gloss: "what (question)" },
+  { phrase: "qu'est-ce qui", gloss: "what (subject question)" },
+  { phrase: "est-ce que", gloss: "(question marker)" },
+  { phrase: "s'il vous plaît", gloss: "please (formal)" },
+  { phrase: "s'il te plaît", gloss: "please (informal)" },
+  { phrase: "à tout à l'heure", gloss: "see you later" },
+  { phrase: "de toute façon", gloss: "anyway" },
+  { phrase: "de plus en plus", gloss: "more and more" },
+  { phrase: "n'importe quoi", gloss: "nonsense / anything" },
+  { phrase: "tout à l'heure", gloss: "in a while / earlier" },
+  { phrase: "avoir besoin de", gloss: "to need" },
+  { phrase: "avoir envie de", gloss: "to feel like" },
+  { phrase: "se rendre compte", gloss: "to realise" },
+  { phrase: "en train de", gloss: "in the middle of" },
+  { phrase: "faire attention", gloss: "to pay attention" },
+  { phrase: "tout le monde", gloss: "everyone" },
+  { phrase: "à peu près", gloss: "roughly" },
+  { phrase: "en même temps", gloss: "at the same time" },
+  { phrase: "tout de suite", gloss: "right away" },
+  { phrase: "tout de même", gloss: "all the same" },
+  { phrase: "pas du tout", gloss: "not at all" },
+  { phrase: "au lieu de", gloss: "instead of" },
+  { phrase: "à cause de", gloss: "because of" },
+  { phrase: "petit à petit", gloss: "little by little" },
+  { phrase: "tout à coup", gloss: "suddenly" },
+  { phrase: "plus ou moins", gloss: "more or less" },
+  { phrase: "c'est-à-dire", gloss: "that is to say" },
+  { phrase: "par exemple", gloss: "for example" },
+  { phrase: "tout à fait", gloss: "absolutely" },
+  { phrase: "n'est-ce pas", gloss: "isn't it" },
+  { phrase: "quand même", gloss: "still / anyway" },
+  { phrase: "bien sûr", gloss: "of course" },
+  { phrase: "en fait", gloss: "actually" },
+  { phrase: "du coup", gloss: "so / as a result" },
+  { phrase: "par contre", gloss: "on the other hand" },
+  { phrase: "au fait", gloss: "by the way" },
+  { phrase: "peut-être", gloss: "maybe" },
+  { phrase: "beaucoup de", gloss: "a lot of" },
+  { phrase: "grâce à", gloss: "thanks to" },
+  { phrase: "il y a", gloss: "there is / there are" },
+  { phrase: "il faut", gloss: "one must / it is necessary" },
+  { phrase: "d'accord", gloss: "okay / agreed" },
+  { phrase: "de rien", gloss: "you're welcome" },
+  { phrase: "ça marche", gloss: "that works" },
+  { phrase: "ça dépend", gloss: "it depends" },
+  { phrase: "ça y est", gloss: "that's it" },
+  { phrase: "tant pis", gloss: "too bad" },
+  { phrase: "tant mieux", gloss: "so much the better" },
+  { phrase: "au revoir", gloss: "goodbye" },
+  { phrase: "bon courage", gloss: "good luck" },
+  { phrase: "à la fois", gloss: "at once" },
+  { phrase: "ça va", gloss: "it's fine / how's it going" },
+];
+
 async function glossBatch(text: string): Promise<GlossPayload> {
   const response = await invokeLLM({
     messages: [
@@ -215,11 +288,19 @@ async function glossBatch(text: string): Promise<GlossPayload> {
           `1) "glosses": for every distinct French word above, give its dictionary form ` +
           `("lemma") and a concise English meaning as used here ("gloss", 1-5 words). ` +
           `Copy "surface" exactly as it appears, accents preserved.\n` +
-          `2) "expressions": idiomatic multi-word expressions of 2-5 words that appear ` +
-          `VERBATIM above and whose meaning is NOT obvious from the individual words — ` +
-          `e.g. "pour être honnête", "il y a", "tout à fait", "avoir besoin de". ` +
-          `Do NOT list ordinary noun phrases or verb+object pairs that translate word by ` +
-          `word. Copy each phrase exactly as it appears.`,
+          `2) "expressions": multi-word expressions of 2-5 words appearing VERBATIM ` +
+          `above that a learner should memorise as a SINGLE UNIT rather than word by ` +
+          `word. The test is "would a teacher or phrasebook present this as one chunk?" ` +
+          `— not "is its meaning non-obvious". INCLUDE: greetings and set questions ` +
+          `("comment ça va", "ça va", "n'est-ce pas"), fixed phrases ("s'il vous plaît", ` +
+          `"tout à fait", "bien sûr", "de retour"), discourse markers ("en fait", ` +
+          `"du coup", "quand même", "par contre"), grammatical chunks ("il y a", ` +
+          `"est-ce que", "qu'est-ce que", "il faut"), and verbs with their fixed ` +
+          `preposition or complement ("avoir besoin de", "avoir envie de", ` +
+          `"se rendre compte"). EXCLUDE full clauses that merely describe something ` +
+          `specific and would never be reused — e.g. "c'est un prêtre", ` +
+          `"on commence pas tranquille". Copy each phrase exactly as it appears, ` +
+          `accents and elisions preserved.`,
       },
     ],
     response_format: {
@@ -364,7 +445,7 @@ async function main() {
     const meta = await fetchMeta(url);
     console.log(`  ${meta.title} — ${meta.durationSec}s`);
 
-    console.log(limitSec ? `• downloading first ${limitSec / 60} min of audio` : "• downloading audio");
+    console.log(limitSec ? `• downloading audio, trimming to first ${limitSec / 60} min` : "• downloading audio");
     const audio = await downloadAudio(url, dir, limitSec);
     const chunks = await toChunks(audio, dir);
 
@@ -417,7 +498,13 @@ async function main() {
         const inCue = allWords.filter(
           (w) => w.start * 1000 >= cue.startMs - 250 && w.start * 1000 <= cue.endMs + 250
         );
-        cue.tokens = buildTokens(cue.text, glossBy, p.expressions, inCue, cue.startMs);
+        cue.tokens = buildTokens(
+          cue.text,
+          glossBy,
+          [...p.expressions, ...COMMON_EXPRESSIONS],
+          inCue,
+          cue.startMs
+        );
       }
     });
 
