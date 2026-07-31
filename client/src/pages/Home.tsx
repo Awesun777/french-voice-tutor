@@ -26,7 +26,7 @@ export default function Home() {
   const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
   const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
 
-  // Dictionary lookup palette — ⌘B/Ctrl+B or the floating button. Skipped on
+  // Dictionary lookup palette — Shift+\ or the floating button. Skipped on
   // the Dictionary and Tutor Chat tabs, where a search box is already the main
   // UI and a second one would just be in the way.
   const [dictOpen, setDictOpen] = useState(false);
@@ -37,18 +37,23 @@ export default function Home() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // ⌘B on macOS, Ctrl+B elsewhere — reachable one-handed, and the only
-      // left-hand letter Chrome leaves free (the bookmarks bar is ⌘⇧B, the
-      // manager ⌘⌥B).
+      // Shift+\ (the "|" key). Every ⌘ chord we tried failed the same way:
+      // macOS hands menu-bar key equivalents to the application before the page
+      // sees them, so preventDefault never gets a chance — ⌘Q quits, ⌘E is
+      // Edit ▸ Find ▸ Use Selection for Find, ⌘1-9 switch tabs. A plain
+      // printable key is never a menu equivalent, so nothing can intercept it.
+      // Shift+Tab is out for a different reason: keyboard and screen-reader
+      // users need it to focus the previous element.
       //
-      // Ruled out, all for the same reason: macOS dispatches menu-bar key
-      // equivalents to the app before the page sees them, so preventDefault
-      // never gets a chance. ⌘Q quits, ⌘E is Edit ▸ Find ▸ Use Selection for
-      // Find, and W/R/T/A/S/D/F/G/Z/X/C/V are likewise all menu items.
-      // Shift+Tab is out too — keyboard and screen-reader users need it to
-      // focus the previous element.
-      if (e.key.toLowerCase() !== "b" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      // Matched on `code` (physical key) rather than `key` (the character), so
+      // it lands in the same place on AZERTY and other layouts where Shift+\
+      // produces something other than "|".
+      if (e.code !== "Backslash" || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
       if (suppressedRef.current) return;
+      // The flip side of using a printable key: it must never steal a real "|"
+      // from someone typing. Anything focused that accepts text is off limits.
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       e.preventDefault();
       // A selection anywhere becomes the query, so you can highlight a word in
       // a transcript or a tutor reply and look it up without retyping it.
