@@ -26,9 +26,11 @@ export default function Home() {
   const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
   const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
 
-  // Dictionary search drawer — available on every tab, by ⌘K/Ctrl+K anywhere or
-  // the floating button.
+  // Dictionary lookup palette — ⌘K/Ctrl+K or the floating button. Skipped on
+  // the Dictionary and Tutor Chat tabs, where a search box is already the main
+  // UI and a second one would just be in the way.
   const [dictOpen, setDictOpen] = useState(false);
+  const dictSuppressed = activeTab === "dictionary" || activeTab === "tutor";
   const [dictSeed, setDictSeed] = useState<string | undefined>(undefined);
   // Where focus was when the drawer opened, so Escape can put it back.
   const focusBeforeDict = useRef<HTMLElement | null>(null);
@@ -40,6 +42,7 @@ export default function Home() {
       // breaks backwards keyboard navigation for keyboard and screen-reader
       // users.
       if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (suppressedRef.current) return;
       e.preventDefault();
       // A selection anywhere becomes the query, so you can highlight a word in
       // a transcript or a tutor reply and look it up without retyping it.
@@ -51,6 +54,14 @@ export default function Home() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Read through a ref so the key listener stays mounted once rather than
+  // re-binding on every tab change.
+  const suppressedRef = useRef(dictSuppressed);
+  suppressedRef.current = dictSuppressed;
+
+  // Leaving a tab with the palette open should close it.
+  useEffect(() => { if (dictSuppressed) setDictOpen(false); }, [dictSuppressed]);
 
   const closeDict = useCallback(() => {
     setDictOpen(false);
@@ -148,8 +159,12 @@ export default function Home() {
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}
         {activeTab === "progress" && <ProgressTab />}
       </main>
-      <DictionaryFab open={dictOpen} onOpen={() => setDictOpen(true)} />
-      <DictionarySearchDrawer open={dictOpen} onClose={closeDict} initialTerm={dictSeed} />
+      {!dictSuppressed && (
+        <>
+          <DictionaryFab open={dictOpen} onOpen={() => setDictOpen(true)} />
+          <DictionarySearchDrawer open={dictOpen} onClose={closeDict} initialTerm={dictSeed} />
+        </>
+      )}
     </div>
   );
 }

@@ -95,31 +95,38 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 z-50 w-[92%] max-w-md bg-background border-l border-border shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-primary" />
-            <span className="text-sm font-bold text-foreground">Dictionary</span>
-          </div>
+      {/* Backdrop dims and blurs the page so the panel reads as a layer above
+          it rather than another region of the page. */}
+      <div
+        className="fixed inset-0 z-40 bg-foreground/25 backdrop-blur-[2px] animate-in fade-in duration-150"
+        onClick={onClose}
+      />
+      {/* Rises from the bottom, centred and floating clear of the edge — a
+          command-palette shape rather than a docked side panel. */}
+      <aside className="fixed z-50 inset-x-0 bottom-0 sm:bottom-6 flex justify-center px-0 sm:px-4 pointer-events-none">
+      <div className="pointer-events-auto w-full sm:max-w-2xl max-h-[76vh] flex flex-col bg-popover rounded-t-3xl sm:rounded-3xl ring-1 ring-black/5 shadow-[0_24px_60px_-12px_rgb(23_63_107_/_0.45)] animate-in fade-in slide-in-from-bottom-8 duration-200 ease-out overflow-hidden">
+        <div className="flex items-center gap-2 px-4 pt-3.5 pb-1 shrink-0">
+          <Search className="w-4 h-4 text-primary" />
+          <span className="text-sm font-bold text-foreground flex-1">Dictionary</span>
+          <kbd className="hidden sm:inline text-[10px] font-mono px-1.5 py-0.5 rounded border border-border text-muted-foreground">esc</kbd>
           <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="px-4 py-3 border-b border-border shrink-0 flex gap-2">
+        <div className="px-4 py-3 shrink-0 flex gap-2">
           <input
             ref={inputRef}
             value={term}
             onChange={(e) => setTerm(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runSearch()}
             placeholder="Search a French or English word…"
-            className="flex-1 px-3 py-2 rounded-xl border border-border bg-card text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary text-sm"
+            className="flex-1 px-3.5 py-2.5 rounded-xl bg-muted/50 text-foreground placeholder-muted-foreground text-base focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
           />
           <button
             onClick={runSearch}
             disabled={quickLoading || !term.trim()}
-            className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-semibold text-sm transition-colors flex items-center"
+            className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-semibold text-sm transition-colors flex items-center"
           >
             {quickLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Go"}
           </button>
@@ -163,6 +170,7 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
             <p className="text-sm text-muted-foreground text-center py-8">No entry found for that.</p>
           )}
         </div>
+      </div>
       </aside>
     </>
   );
