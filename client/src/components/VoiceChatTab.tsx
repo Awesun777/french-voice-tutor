@@ -247,17 +247,25 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
   const { settings: voiceSettings, update: updateVoiceSettings } = useVoiceSettings("romain");
   // Stable ref so session.update closures always see the latest settings
   const voiceSettingsRef = useRef(voiceSettings);
+  /**
+   * Romain's base system prompt (persona, tool guidance, user memory), fetched
+   * from the server at session start. A session.update REPLACES `instructions`,
+   * so every update must re-send the base prompt with the settings appended —
+   * sending the settings alone would strip Romain of everything else.
+   */
+  const baseInstructionsRef = useRef<string>("");
+  const composeInstructions = (s: typeof voiceSettings) =>
+    [baseInstructionsRef.current, speedInstruction(s.speed), languageMixInstruction(s.languageMix)]
+      .filter(Boolean)
+      .join(" ");
+
   useEffect(() => {
     voiceSettingsRef.current = voiceSettings;
     // If a session is already active, push updated instructions immediately
-    if (dcRef.current?.readyState === "open") {
-      const settingsInstructions = [
-        speedInstruction(voiceSettings.speed),
-        languageMixInstruction(voiceSettings.languageMix),
-      ].join(" ");
+    if (dcRef.current?.readyState === "open" && baseInstructionsRef.current) {
       dcRef.current.send(JSON.stringify({
         type: "session.update",
-        session: { instructions: settingsInstructions },
+        session: { type: "realtime", instructions: composeInstructions(voiceSettings) },
       }));
     }
   }, [voiceSettings]);
@@ -744,6 +752,18 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       const { id } = await createSessionMutation.mutateAsync();
       setSessionId(id);
 
+      // Grab the base system prompt so session.update can re-send it verbatim.
+      // Non-fatal: if this fails we still connect, we just skip the settings
+      // update rather than risk overwriting the prompt with settings alone.
+      try {
+        const cfgResp = await fetch("/api/voice/session-config", { method: "POST" });
+        baseInstructionsRef.current = cfgResp.ok
+          ? (await cfgResp.json()).instructions ?? ""
+          : "";
+      } catch {
+        baseInstructionsRef.current = "";
+      }
+
       // 2. Set up WebRTC
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
@@ -785,33 +805,20 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       dcRef.current = dc;
       dc.addEventListener("message", handleDataChannelMessage);
       dc.addEventListener("open", () => {
-        // Configure transcription, VAD, and per-user settings via session.update.
-        // Must be done over data channel (not at session creation time for the GA API).
-        const s = voiceSettingsRef.current;
-        const settingsInstructions = [
-          speedInstruction(s.speed),
-          languageMixInstruction(s.languageMix),
-        ].join(" ");
-        dc.send(JSON.stringify({
-          type: "session.update",
-          session: {
-            voice: "cedar",
-            input_audio_transcription: { model: "whisper-1" },
-            turn_detection: {
-              type: "semantic_vad",
-              // eagerness: how quickly semantic VAD decides the user has finished
-              // "low" = waits longer before cutting off, reducing false triggers
-              eagerness: "low",
-              // threshold still applies to the underlying energy gate before
-              // semantic analysis kicks in — 0.75 filters out quiet background noise
-              threshold: 0.75,
-              prefix_padding_ms: 600,
-              silence_duration_ms: 1200,
+        // Voice, transcription and turn detection are all set server-side at call
+        // creation now (the GA schema nests them under `audio`), so the only thing
+        // left to push over the data channel is the per-user settings — and those
+        // must be sent as base prompt + settings, because session.update replaces
+        // `instructions` wholesale rather than appending to it.
+        if (baseInstructionsRef.current) {
+          dc.send(JSON.stringify({
+            type: "session.update",
+            session: {
+              type: "realtime",
+              instructions: composeInstructions(voiceSettingsRef.current),
             },
-            // Append speed + language mix instructions to the session instructions
-            instructions: settingsInstructions,
-          },
-        }));
+          }));
+        }
 
         // Trigger the initial greeting
         dc.send(JSON.stringify({

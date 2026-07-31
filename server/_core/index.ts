@@ -203,12 +203,22 @@ async function startServer() {
         type: "realtime",
         model: "gpt-realtime-2",
         instructions: buildVoiceSystemPrompt(userMemory),
-        // Voice must be set here at call creation — the GA realtime interface
-        // does not reliably honor a voice sent later via session.update over the
-        // data channel (it falls back to a default voice). "cedar" is the
-        // masculine voice for Romain. input_audio_transcription and
-        // turn_detection are still sent via session.update after connection.
-        voice: "cedar",
+        // Audio config is nested under `audio` in the GA realtime schema.
+        // A top-level `voice` (the old beta shape) is now rejected outright with
+        // "Unknown parameter: 'session.voice'", which fails the whole call and
+        // makes the session unstartable — so voice, transcription and turn
+        // detection are all set here, at call creation, in the nested form.
+        audio: {
+          input: {
+            transcription: { model: "whisper-1" },
+            // semantic_vad no longer accepts threshold / prefix_padding_ms /
+            // silence_duration_ms; eagerness "low" waits longer before deciding
+            // the user has finished, which is what those knobs were tuning for.
+            turn_detection: { type: "semantic_vad", eagerness: "low" },
+          },
+          // "cedar" is the masculine voice for Romain.
+          output: { voice: "cedar" },
+        },
         tools: VOICE_TOOLS,
         tool_choice: "auto",
       });
@@ -247,20 +257,23 @@ async function startServer() {
   });
 
   // ── Session config endpoint — POST /api/voice/session-config ─────────────────
-  // Returns the session config (instructions, tools, VAD, transcription) so the
-  // browser can send it as a session.update event over the data channel.
-  app.post("/api/voice/session-config", (_req, res) => {
+  // Returns the base system prompt (memory included) for the current user.
+  // A session.update REPLACES `instructions` rather than appending to them, so
+  // the browser needs the base prompt in hand to re-send it verbatim alongside
+  // the per-user speed / language-mix lines. Without this the first
+  // session.update would silently wipe Romain's persona and tool guidance.
+  app.post("/api/voice/session-config", async (req, res) => {
+    let userMemory: string | null = null;
+    try {
+      const user = await sdk.authenticateRequest(req);
+      if (user?.id) {
+        userMemory = await getUserMemory(user.id);
+      }
+    } catch {
+      // Unauthenticated or memory unavailable — fall back to the static prompt
+    }
     res.json({
-      instructions: VOICE_SYSTEM_PROMPT,
-      tools: VOICE_TOOLS,
-      tool_choice: "auto",
-      input_audio_transcription: { model: "whisper-1" },
-      turn_detection: {
-        type: "server_vad",
-        threshold: 0.4,
-        prefix_padding_ms: 500,
-        silence_duration_ms: 1500,
-      },
+      instructions: userMemory ? buildVoiceSystemPrompt(userMemory) : VOICE_SYSTEM_PROMPT,
     });
   });
 
