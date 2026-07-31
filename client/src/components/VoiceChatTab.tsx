@@ -869,6 +869,12 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
     audioCtxRef.current = null;
   };
 
+  // Tear down the live WebRTC connection if the tab unmounts (user hits
+  // "Tutors" or navigates to another sidebar tab) so Romain stops talking.
+  // Empty deps + refs-only cleanup means it runs once, on unmount.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => cleanupWebRTC, []);
+
   const endSession = async () => {
     if (endingRef.current || !sessionId) return;
     endingRef.current = true;

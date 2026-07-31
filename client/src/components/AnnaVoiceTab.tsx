@@ -267,6 +267,10 @@ export function AnnaVoiceTab() {
     }
   }, []);
 
+  // Tear down the live voice connection if the tab unmounts (user hits
+  // "Tutors" or navigates to another sidebar tab) so Anna stops talking.
+  useEffect(() => cleanup, [cleanup]);
+
   const startSession = async () => {
     try {
       setSessionState("connecting");
