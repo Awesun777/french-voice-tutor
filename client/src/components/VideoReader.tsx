@@ -115,6 +115,50 @@ export default function VideoLessonsMode() {
   );
 }
 
+/**
+ * The player lives in its own component so its host div is guaranteed to exist
+ * when the effect runs. Previously the effect sat in the reader alongside an
+ * `if (isLoading) return <Loader/>` guard, so on any load where the IFrame API
+ * was already cached the promise resolved before the transcript query did — the
+ * host ref was still null, the effect bailed, and no player was ever created.
+ */
+function YouTubePlayer({
+  videoId,
+  onPlayer,
+  onState,
+}: {
+  videoId: string;
+  onPlayer: (p: YTPlayer | null) => void;
+  onState: (state: number) => void;
+}) {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let player: YTPlayer | null = null;
+
+    loadYouTubeApi().then(() => {
+      if (cancelled || !hostRef.current || !window.YT) return;
+      player = new window.YT.Player(hostRef.current, {
+        videoId,
+        playerVars: { rel: 0, modestbranding: 1, playsinline: 1, origin: window.location.origin },
+        events: {
+          onReady: () => { if (!cancelled) onPlayer(player); },
+          onStateChange: (e: { data: number }) => { if (!cancelled) onState(e.data); },
+        },
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      onPlayer(null);
+      try { player?.destroy(); } catch { /* already gone */ }
+    };
+  }, [videoId, onPlayer, onState]);
+
+  return <div ref={hostRef} className="w-full h-full" />;
+}
+
 // ─── Reader ───────────────────────────────────────────────────────────────────
 
 function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => void }) {
@@ -122,55 +166,42 @@ function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => v
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
 
-  const playerHostRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const cueRefs = useRef<Record<number, HTMLParagraphElement | null>>({});
 
   const [timeMs, setTimeMs] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
   /** Autoscroll follows playback until the reader scrolls by hand. */
   const [following, setFollowing] = useState(true);
   const programmaticScroll = useRef(false);
 
   const cues: Cue[] = useMemo(() => (data?.cues ?? []) as Cue[], [data]);
 
-  // ─── Player ────────────────────────────────────────────────────────────────
+  const handlePlayer = useCallback((p: YTPlayer | null) => {
+    playerRef.current = p;
+    setPlayerReady(!!p);
+  }, []);
+
+  const handleState = useCallback((state: number) => {
+    setPlaying(state === window.YT?.PlayerState.PLAYING);
+    // A seek re-engages following: you jumped somewhere deliberately, so the
+    // transcript should go there too.
+    if (state === window.YT?.PlayerState.BUFFERING) setFollowing(true);
+  }, []);
+
+  // Poll the clock once a player exists. 250ms is plenty for line-level
+  // tracking — the highlight needs to look responsive, not be frame-accurate.
   useEffect(() => {
-    let cancelled = false;
-    let poll: number | null = null;
-
-    loadYouTubeApi().then(() => {
-      if (cancelled || !playerHostRef.current || !window.YT) return;
-      playerRef.current = new window.YT.Player(playerHostRef.current, {
-        videoId: youtubeId,
-        playerVars: { rel: 0, modestbranding: 1 },
-        events: {
-          onStateChange: (e: { data: number }) => {
-            const isPlaying = e.data === window.YT?.PlayerState.PLAYING;
-            setPlaying(isPlaying);
-            // A seek re-engages following: you jumped somewhere deliberately,
-            // so the transcript should go there too.
-            if (e.data === window.YT?.PlayerState.BUFFERING) setFollowing(true);
-          },
-        },
-      });
-      // 250ms is fine for line-level tracking and cheap; the highlight only
-      // needs to look responsive, not be frame-accurate.
-      poll = window.setInterval(() => {
-        const p = playerRef.current;
-        if (!p?.getCurrentTime) return;
-        setTimeMs(Math.round(p.getCurrentTime() * 1000));
-      }, 250);
-    });
-
-    return () => {
-      cancelled = true;
-      if (poll !== null) window.clearInterval(poll);
-      try { playerRef.current?.destroy(); } catch { /* already gone */ }
-      playerRef.current = null;
-    };
-  }, [youtubeId]);
+    if (!playerReady) return;
+    const poll = window.setInterval(() => {
+      const p = playerRef.current;
+      if (!p?.getCurrentTime) return;
+      setTimeMs(Math.round(p.getCurrentTime() * 1000));
+    }, 250);
+    return () => window.clearInterval(poll);
+  }, [playerReady]);
 
   // ─── Active cue (binary search over a sorted, non-overlapping list) ────────
   const activeIdx = useMemo(() => {
@@ -294,7 +325,7 @@ function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => v
           <p className="text-xs font-semibold text-foreground truncate ml-2">{data?.lesson.title}</p>
         </div>
         <div className="mx-auto w-full max-w-2xl aspect-video bg-black">
-          <div ref={playerHostRef} className="w-full h-full" />
+          <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
       </div>
 
