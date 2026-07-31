@@ -311,12 +311,36 @@ async function putGloss(key: string, value: GlossPayload) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+/** Fail with something actionable rather than `spawn yt-dlp ENOENT`. */
+async function preflight() {
+  const missing: string[] = [];
+  // ffmpeg wants a single dash; --version exits non-zero and looks like a
+  // missing binary.
+  for (const [bin, flag] of [["yt-dlp", "--version"], ["ffmpeg", "-version"]] as const) {
+    try {
+      await exec(bin, [flag]);
+    } catch {
+      missing.push(bin);
+    }
+  }
+  if (missing.length) {
+    throw new Error(
+      `missing on PATH: ${missing.join(", ")}\n  install with:  brew install ${missing.join(" ")}`
+    );
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is not set — run this under `railway run --`");
+  }
+}
+
 async function main() {
   const [url, ...rest] = process.argv.slice(2);
   if (!url) {
     console.error("usage: tsx scripts/ingest-video.ts <youtube-url> [--level B1]");
+    console.error("  run under `railway run --` so DATABASE_URL and OPENAI_API_KEY are set");
     process.exit(1);
   }
+  await preflight();
   const levelIdx = rest.indexOf("--level");
   const level = levelIdx >= 0 ? rest[levelIdx + 1] ?? null : null;
 
