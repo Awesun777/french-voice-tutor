@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { Send, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/EmptyState";
 import { Streamdown } from "streamdown";
 
 import { usePronounce } from "@/lib/pronounce";
@@ -74,7 +75,7 @@ export default function TutorTab() {
     <div className="flex flex-col h-full">
       {/* Header */}
       {/* h-14 matches the sidebar header, so this divider continues that line. */}
-      <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center justify-between">
+      <div className="flex-shrink-0 h-14 border-b border-chrome-border bg-chrome px-4 flex items-center justify-between">
         <div>
           <p className="font-bold text-foreground">French Tutor</p>
           <p className="text-xs text-muted-foreground">Ask anything about French grammar, vocabulary, or usage</p>
@@ -97,11 +98,13 @@ export default function TutorTab() {
           </div>
         ) : messages.length === 0 ? (
           <div className="max-w-xl mx-auto">
-            <div className="text-center py-8">
-              <p className="text-4xl mb-3">💬</p>
-              <p className="text-lg font-semibold text-foreground mb-1">Your French Tutor</p>
-              <p className="text-sm text-muted-foreground mb-6">Ask about grammar, vocabulary, pronunciation, or practice conversations</p>
-            </div>
+            <EmptyState
+              emoji="💬"
+              title="Your French Tutor"
+              description="Ask about grammar, vocabulary, pronunciation, or practice conversations"
+              tone="rose"
+              className="mb-6"
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {QUICK_PROMPTS.map((p) => (
                 <button
@@ -183,7 +186,7 @@ export default function TutorTab() {
       </div>
 
       {/* Input */}
-      <div className="flex-shrink-0 border-t border-border bg-background/80 backdrop-blur-sm px-4 py-3">
+      <div className="flex-shrink-0 border-t border-chrome-border bg-chrome px-4 py-3">
         <div className="max-w-2xl mx-auto flex gap-2 items-end">
           <textarea
             ref={inputRef}

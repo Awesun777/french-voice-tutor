@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Loader2, Flame, BookOpen, Brain, Star, Settings2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/EmptyState";
 
 function fmtDate(dateKey: string) {
   return new Date(dateKey + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -298,11 +299,13 @@ export default function ProgressTab() {
         )}
 
         {sessions.length === 0 && stats.totalWords === 0 && (
-          <div className="text-center py-12">
-            <p className="text-4xl mb-3">📊</p>
-            <p className="text-lg font-semibold text-foreground mb-2">No data yet</p>
-            <p className="text-sm text-muted-foreground">Add words and take quizzes to see your progress here.</p>
-          </div>
+          <EmptyState
+            emoji="📊"
+            title="No data yet"
+            description="Add words and take quizzes to see your progress here."
+            tone="blue"
+            className="my-12"
+          />
         )}
 
         {/* SM-2 Mastery Breakdown */}

@@ -896,7 +896,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center justify-between">
+      <div className="flex-shrink-0 h-14 border-b border-chrome-border bg-chrome px-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Mic className="w-4 h-4 text-primary" />
           <span className="font-semibold text-sm text-foreground">Voice Chat with Romain</span>
