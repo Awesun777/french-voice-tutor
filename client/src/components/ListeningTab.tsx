@@ -52,7 +52,7 @@ export default function ListeningTab() {
 
           {/* Secondary entries. Videos is the main event, so the other sources
               sit here as a compact control rather than competing with the feed. */}
-          <div className="flex-shrink-0 flex items-center gap-1 p-1 rounded-xl bg-muted/50 border border-border">
+          <div className="flex-shrink-0 flex items-center gap-1 p-1 rounded-xl bg-speaking-surface border border-speaking/25">
             {([
               ["videos", "Videos", Youtube],
               ["url", "TCF", Link2],
@@ -64,10 +64,13 @@ export default function ListeningTab() {
                 onClick={() => setMode(id)}
                 title={label}
                 className={cn(
+                  // Burgundy rather than navy: this control is the one bit of
+                  // chrome that competes with the video feed, and the palette's
+                  // dark red separates it from the primary-coloured everything else.
                   "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
                   mode === id
-                    ? "bg-card text-primary shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-speaking text-speaking-foreground shadow-sm"
+                    : "text-speaking hover:bg-speaking/10"
                 )}
               >
                 <Icon className="w-3.5 h-3.5" />
