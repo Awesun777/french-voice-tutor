@@ -69,19 +69,37 @@ export function useAvatarPoster(src: string | null): string | null {
  *  import cycle between the chooser and the session tabs. */
 export const avatarLayoutId = (id: "romain" | "anna") => `agent-avatar-${id}`;
 
-export function AvatarVideo({ src, className }: { src: string; className?: string }) {
+export function AvatarVideo({
+  src,
+  className,
+  loop = true,
+}: {
+  src: string;
+  className?: string;
+  /** Off for clips that don't loop seamlessly, so they play once and hold on
+   *  their final frame instead of jump-cutting back to the start. */
+  loop?: boolean;
+}) {
   const ref = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    ref.current?.play().catch(() => {});
-  }, []);
+    const el = ref.current;
+    if (!el) return;
+    const tryPlay = () => { el.play().catch(() => {}); };
+    tryPlay();
+    // A play() issued before the media is ready rejects, and with the rejection
+    // swallowed there was nothing to retry — the clip would sit frozen on its
+    // first frame. Retry once the element reports it can play.
+    el.addEventListener("canplay", tryPlay);
+    return () => el.removeEventListener("canplay", tryPlay);
+  }, [src]);
 
   return (
     <video
       ref={ref}
       src={src}
       autoPlay
-      loop
+      loop={loop}
       muted
       playsInline
       preload="auto"

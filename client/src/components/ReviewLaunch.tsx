@@ -40,9 +40,12 @@ interface ReviewLaunchProps {
   /** Pre-select this date and jump to the count chooser (used by CTAs). */
   initialDateKey?: string | null;
   onStart: (choice: ReviewLaunchChoice) => void;
+  /** Optional art rendered above the copy, inside the centred column so it
+   *  doesn't strand the launch controls halfway down the pane. */
+  header?: React.ReactNode;
 }
 
-export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLaunchProps) {
+export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: ReviewLaunchProps) {
   const { data: stats } = trpc.review.getStats.useQuery();
   const { data: dates = [] } = trpc.review.getDates.useQuery();
 
@@ -130,6 +133,7 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-5">
+        {header && <div className="flex justify-center">{header}</div>}
         <div className="text-center">
           <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-wider">{verb}</p>
           <h2 className="font-display text-lg font-bold text-foreground mt-1">What do you want to review?</h2>

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
 import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
+import { AvatarVideo } from "@/components/AvatarVideo";
 
 function shuffle<T>(arr: T[]): T[] { return [...arr].sort(() => Math.random() - 0.5); }
 /**
@@ -667,6 +668,15 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
           kind="quiz"
           initialDateKey={reviewTarget?.dateKey}
           onStart={startQuiz}
+          header={
+            /* The clip's background is pure #FFFFFF, the same as --card, so a
+               white card frame makes it disappear without keying. It plays once
+               rather than looping — the animation ends on the QUIZ sign and
+               would jump-cut back to the start. */
+            <div className="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl overflow-hidden bg-card border border-border shadow-sm">
+              <AvatarVideo src="/video/quiz-dog.mp4" loop={false} />
+            </div>
+          }
         />
       )}
     </div>
