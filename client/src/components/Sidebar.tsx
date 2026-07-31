@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { SidebarTab } from "@/types";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -13,6 +14,7 @@ import {
   Headphones,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   LogOut,
   User,
 } from "lucide-react";
@@ -26,23 +28,112 @@ interface SidebarProps {
   user: { name?: string | null; email?: string | null };
 }
 
-const NAV_ITEMS: { id: SidebarTab; label: string; icon: React.ReactNode; emoji: string }[] = [
-  { id: "dictionary", label: "Dictionary", icon: <BookOpen className="w-4.5 h-4.5" />, emoji: "📖" },
-  { id: "tutor", label: "Tutor Chat", icon: <MessageCircle className="w-4.5 h-4.5" />, emoji: "💬" },
-  { id: "voice-chat", label: "Voice Chat", icon: <Mic className="w-4.5 h-4.5" />, emoji: "🎙️" },
-  { id: "library", label: "My Library", icon: <BookMarked className="w-4.5 h-4.5" />, emoji: "📚" },
-  { id: "quiz", label: "Quiz", icon: <Brain className="w-4.5 h-4.5" />, emoji: "🧠" },
-  { id: "flashcards", label: "Flashcards", icon: <CreditCard className="w-4.5 h-4.5" />, emoji: "🃏" },
-  { id: "grammar", label: "Grammar Test", icon: <GraduationCap className="w-4.5 h-4.5" />, emoji: "✍️" },
-  { id: "listening", label: "Listening Lab", icon: <Headphones className="w-4.5 h-4.5" />, emoji: "🎧" },
-  { id: "progress", label: "Progress", icon: <BarChart3 className="w-4.5 h-4.5" />, emoji: "📊" },
+interface NavLeaf {
+  kind: "leaf";
+  id: SidebarTab;
+  label: string;
+  icon: React.ReactNode;
+}
+interface NavGroup {
+  kind: "group";
+  id: string;
+  label: string;
+  items: Omit<NavLeaf, "kind">[];
+}
+type NavEntry = NavLeaf | NavGroup;
+
+const ICON = "w-4.5 h-4.5";
+
+const NAV: NavEntry[] = [
+  { kind: "leaf", id: "dictionary", label: "Dictionary", icon: <BookOpen className={ICON} /> },
+  { kind: "leaf", id: "tutor", label: "Tutor Chat", icon: <MessageCircle className={ICON} /> },
+  { kind: "leaf", id: "voice-chat", label: "Voice Chat", icon: <Mic className={ICON} /> },
+  {
+    kind: "group",
+    id: "vocab-review",
+    label: "Vocab Review",
+    items: [
+      { id: "library", label: "My Library", icon: <BookMarked className={ICON} /> },
+      { id: "quiz", label: "Quiz", icon: <Brain className={ICON} /> },
+      { id: "flashcards", label: "Flashcards", icon: <CreditCard className={ICON} /> },
+      { id: "progress", label: "Progress", icon: <BarChart3 className={ICON} /> },
+    ],
+  },
+  {
+    kind: "group",
+    id: "test-prep",
+    label: "Test Prep",
+    items: [
+      { id: "listening", label: "Listening Lab", icon: <Headphones className={ICON} /> },
+      { id: "grammar", label: "Grammar Test", icon: <GraduationCap className={ICON} /> },
+    ],
+  },
 ];
+
+/** Every leaf in order, ignoring grouping — used by the collapsed rail. */
+const ALL_LEAVES: Omit<NavLeaf, "kind">[] = NAV.flatMap((e) =>
+  e.kind === "leaf" ? [{ id: e.id, label: e.label, icon: e.icon }] : e.items
+);
+
+const GROUPS_KEY = "sidebar-groups-v1";
+const DEFAULT_GROUPS: Record<string, boolean> = { "vocab-review": true, "test-prep": true };
 
 export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }: SidebarProps) {
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => { window.location.reload(); },
     onError: () => toast.error("Logout failed"),
   });
+
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "null");
+      if (saved && typeof saved === "object") return { ...DEFAULT_GROUPS, ...saved };
+    } catch {
+      // Malformed or unavailable storage — fall through to defaults.
+    }
+    return DEFAULT_GROUPS;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GROUPS_KEY, JSON.stringify(openGroups));
+    } catch {
+      // Storage unavailable or over quota — a lost fold state is not worth failing over.
+    }
+  }, [openGroups]);
+
+  // Reveal the group holding the active tab. Other tabs can switch the tab
+  // programmatically (the voice session's "review these words" CTA jumps to
+  // Flashcards), and landing on a tab hidden inside a collapsed group would
+  // leave the sidebar looking like nothing is selected.
+  useEffect(() => {
+    const owner = NAV.find(
+      (e): e is NavGroup => e.kind === "group" && e.items.some((i) => i.id === activeTab)
+    );
+    if (!owner) return;
+    setOpenGroups((prev) => (prev[owner.id] ? prev : { ...prev, [owner.id]: true }));
+  }, [activeTab]);
+
+  const renderLeaf = (item: Omit<NavLeaf, "kind">, nested: boolean) => (
+    <button
+      key={item.id}
+      onClick={() => setActiveTab(item.id)}
+      className={cn(
+        "w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+        !open && "justify-center px-2",
+        open && nested && "pl-5",
+        activeTab === item.id
+          ? "bg-primary/15 text-primary"
+          : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+      )}
+      title={!open ? item.label : undefined}
+    >
+      <span className={cn("flex-shrink-0", activeTab === item.id ? "text-primary" : "")}>
+        {item.icon}
+      </span>
+      {open && <span className="truncate">{item.label}</span>}
+    </button>
+  );
 
   return (
     <aside
@@ -82,27 +173,43 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
         </span>
       </button>
 
-      {/* Navigation */}
+      {/* Navigation. Collapsed to w-14 there is no room for group labels, so the
+          rail flattens to every leaf in order — a headerless group would just be
+          an unexplained gap. */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={cn(
-              "w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
-              !open && "justify-center px-2",
-              activeTab === item.id
-                ? "bg-primary/15 text-primary"
-                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
-            )}
-            title={!open ? item.label : undefined}
-          >
-            <span className={cn("flex-shrink-0", activeTab === item.id ? "text-primary" : "")}>
-              {item.icon}
-            </span>
-            {open && <span className="truncate">{item.label}</span>}
-          </button>
-        ))}
+        {!open
+          ? ALL_LEAVES.map((item) => renderLeaf(item, false))
+          : NAV.map((entry) => {
+              if (entry.kind === "leaf") return renderLeaf(entry, false);
+              const isOpen = openGroups[entry.id] ?? true;
+              const holdsActive = entry.items.some((i) => i.id === activeTab);
+              return (
+                <div key={entry.id}>
+                  <button
+                    onClick={() =>
+                      setOpenGroups((prev) => ({ ...prev, [entry.id]: !(prev[entry.id] ?? true) }))
+                    }
+                    aria-expanded={isOpen}
+                    className="w-full flex items-center gap-1.5 px-2.5 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronDown
+                      className={cn("w-3 h-3 flex-shrink-0 transition-transform", !isOpen && "-rotate-90")}
+                    />
+                    <span className="truncate">{entry.label}</span>
+                    {/* Folded away, the group still has to show that the current
+                        tab lives inside it. */}
+                    {!isOpen && holdsActive && (
+                      <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                    )}
+                  </button>
+                  {isOpen && (
+                    <div className="space-y-0.5">
+                      {entry.items.map((item) => renderLeaf(item, true))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
       </nav>
 
       {/* User section */}
