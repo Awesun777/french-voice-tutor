@@ -113,15 +113,37 @@ function DriftingField() {
   );
 }
 
-/** Children rise and fade in one after another. */
-const container = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.07, delayChildren: 0.04 } },
-};
-const item = {
-  hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const } },
-};
+/**
+ * One element rising into place.
+ *
+ * Each item owns its own delay rather than inheriting a staggerChildren
+ * orchestration from the parent. Half this screen mounts late — the stats grid
+ * and the date picker only appear once their queries resolve — and with parent
+ * orchestration the children present at first paint were left stranded on the
+ * `hidden` variant while the later arrivals animated normally.
+ */
+function Rise({
+  delay = 0,
+  className,
+  children,
+}: {
+  delay?: number;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const reduce = useReducedMotion();
+  if (reduce) return <div className={className}>{children}</div>;
+  return (
+    <motion.div
+      className={className}
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, delay, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 /** The four SM-2 buckets, in the order a word actually travels through them. */
 const BUCKETS = [
@@ -174,39 +196,37 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
     return (
       <div className="relative flex-1 flex flex-col items-center justify-center p-6 overflow-hidden">
         <DriftingField />
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="relative w-full max-w-md space-y-6 text-center"
-        >
-          <motion.button
-            variants={item}
-            onClick={() => setSource(initialDateKey ? source : null)}
-            disabled={!!initialDateKey}
-            className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-0"
-          >
-            <ChevronLeft className="w-3.5 h-3.5 inline -mt-0.5" /> Back
-          </motion.button>
+        <div className="relative w-full max-w-md space-y-6 text-center">
+          <Rise>
+            <button
+              onClick={() => setSource(initialDateKey ? source : null)}
+              disabled={!!initialDateKey}
+              className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-0"
+            >
+              <ChevronLeft className="w-3.5 h-3.5 inline -mt-0.5" /> Back
+            </button>
+          </Rise>
 
-          <motion.div variants={item}>
+          <Rise delay={0.07}>
             <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-[0.18em]">{verb}</p>
             <h2 className="font-display text-2xl font-bold text-foreground mt-1.5">{label}</h2>
             <p className="text-sm text-muted-foreground mt-1">
               <CountUp value={available} className="font-bold text-foreground" /> word{available === 1 ? "" : "s"} available
             </p>
-          </motion.div>
+          </Rise>
 
           {available === 0 ? (
-            <motion.p variants={item} className="text-sm text-muted-foreground">
-              Nothing to review here right now. {source === "due" ? "Come back later or pick a date." : ""}
-            </motion.p>
+            <Rise delay={0.14}>
+              <p className="text-sm text-muted-foreground">
+                Nothing to review here right now. {source === "due" ? "Come back later or pick a date." : ""}
+              </p>
+            </Rise>
           ) : (
             <>
-              <motion.p variants={item} className="text-sm font-semibold text-foreground">
-                How many words?
-              </motion.p>
-              <motion.div variants={item} className="flex flex-wrap gap-2.5 justify-center">
+              <Rise delay={0.14}>
+                <p className="text-sm font-semibold text-foreground">How many words?</p>
+              </Rise>
+              <Rise delay={0.21} className="flex flex-wrap gap-2.5 justify-center">
                 {presets.map((n) => (
                   <motion.button
                     key={n}
@@ -227,10 +247,10 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
                   All {available} left
                   <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
                 </motion.button>
-              </motion.div>
+              </Rise>
             </>
           )}
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -243,33 +263,28 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
     <div className="relative flex-1 flex flex-col items-center justify-center p-6 overflow-hidden">
       <DriftingField />
 
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="relative w-full max-w-lg space-y-6"
-      >
+      <div className="relative w-full max-w-lg space-y-6">
         {header && (
-          <motion.div variants={item} className="flex justify-center">
+          <Rise className="flex justify-center">
             {/* Soft halo behind whatever art the tab supplies, so it sits on the
                 page rather than floating unattached. */}
             <div className="relative">
               <div aria-hidden className="absolute inset-0 -m-3 rounded-full bg-accent/20 blur-2xl" />
               <div className="relative">{header}</div>
             </div>
-          </motion.div>
+          </Rise>
         )}
 
-        <motion.div variants={item} className="text-center">
+        <Rise delay={0.07} className="text-center">
           <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-[0.18em]">{verb}</p>
           <h2 className="font-display text-2xl sm:text-3xl font-bold text-foreground mt-1.5 leading-tight">
             What do you want to review?
           </h2>
-        </motion.div>
+        </Rise>
 
         {/* Hero — the one obvious thing to press. */}
+        <Rise delay={0.14}>
         <motion.button
-          variants={item}
           onClick={() => !caughtUp && setSource("due")}
           disabled={caughtUp}
           whileHover={reduce || caughtUp ? undefined : { y: -3 }}
@@ -324,12 +339,13 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
             </div>
           )}
         </motion.button>
+        </Rise>
 
         {/* Live SM-2 buckets. Already computed for the due count — surfacing them
             turns a blank screen into a sense of a collection being worked
             through. */}
         {total > 0 && (
-          <motion.div variants={item} className="grid grid-cols-4 gap-2.5">
+          <Rise delay={0.21} className="grid grid-cols-4 gap-2.5">
             {BUCKETS.map((b) => (
               <div
                 key={b.key}
@@ -344,11 +360,11 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
                 </p>
               </div>
             ))}
-          </motion.div>
+          </Rise>
         )}
 
         {kind === "flashcards" && (
-          <motion.div variants={item} className="flex items-center justify-center gap-3">
+          <Rise delay={0.28} className="flex items-center justify-center gap-3">
             <p className="text-xs font-semibold text-muted-foreground">Show first</p>
             <div className="flex gap-1 p-1 rounded-xl bg-muted/60">
               {([
@@ -375,12 +391,12 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
                 </button>
               ))}
             </div>
-          </motion.div>
+          </Rise>
         )}
 
         {/* Secondary path, deliberately quieter than the hero. */}
         {dates.length > 0 && (
-          <motion.div variants={item} className="flex items-center justify-center">
+          <Rise delay={0.35} className="flex items-center justify-center">
             <div className="relative">
               <select
                 value=""
@@ -397,16 +413,16 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
               </select>
               <CalendarDays className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             </div>
-          </motion.div>
+          </Rise>
         )}
 
         {dates.length === 0 && (
-          <motion.div variants={item} className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+          <Rise delay={0.35} className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
             <Sparkles className="w-3.5 h-3.5 text-star flex-shrink-0" />
             No words yet — import vocab or save words from a voice chat to start reviewing.
-          </motion.div>
+          </Rise>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }
