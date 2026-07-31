@@ -389,7 +389,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
   return (
     <div className="flex flex-col h-full">
       {/* Top bar: change session + progress */}
-      <div className="flex-shrink-0 h-14 border-b border-chrome-border bg-chrome px-4 flex items-center gap-2">
+      <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center gap-2">
         <button onClick={() => setChoice(null)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft className="w-3.5 h-3.5" /> Change
         </button>

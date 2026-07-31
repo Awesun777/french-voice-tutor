@@ -640,7 +640,7 @@ export default function GrammarTestTab() {
         </div>
       </div>
 
-      <div className="flex-shrink-0 p-4 border-t border-chrome-border bg-chrome">
+      <div className="flex-shrink-0 p-4 border-t border-border bg-background/80 backdrop-blur-sm">
         <div className="max-w-md mx-auto">
           <button
             onClick={start}

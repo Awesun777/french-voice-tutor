@@ -77,7 +77,7 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
             />
           </span>
         )}
-        <span className="p-1 rounded-md text-sidebar-muted group-hover:text-foreground transition-colors flex-shrink-0">
+        <span className="p-1 rounded-md text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0">
           {open ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </span>
       </button>
@@ -91,13 +91,9 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
             className={cn(
               "w-full flex items-center gap-3 px-2.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
               !open && "justify-center px-2",
-              // Active is a white card, not a tint: on the pale-blue sidebar a
-              // primary/15 tint has almost nothing to sit against. Inactive text
-              // uses --sidebar-muted because --muted-foreground drops to 4.44:1
-              // against pale blue.
               activeTab === item.id
-                ? "bg-sidebar-accent text-primary shadow-sm"
-                : "text-sidebar-muted hover:bg-white/60 hover:text-foreground"
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             )}
             title={!open ? item.label : undefined}
           >
@@ -118,11 +114,11 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-foreground truncate">{user.name ?? "User"}</p>
-              {user.email && <p className="text-xs text-sidebar-muted truncate">{user.email}</p>}
+              {user.email && <p className="text-xs text-muted-foreground truncate">{user.email}</p>}
             </div>
             <button
               onClick={() => logoutMutation.mutate()}
-              className="p-1.5 rounded-md hover:bg-destructive/20 text-sidebar-muted hover:text-destructive transition-colors"
+              className="p-1.5 rounded-md hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
               title="Sign out"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -131,7 +127,7 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
         ) : (
           <button
             onClick={() => logoutMutation.mutate()}
-            className="p-2 rounded-md hover:bg-destructive/20 text-sidebar-muted hover:text-destructive transition-colors"
+            className="p-2 rounded-md hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
             title="Sign out"
           >
             <LogOut className="w-4 h-4" />

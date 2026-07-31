@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "@/components/EmptyState";
 import { Streamdown } from "streamdown";
 
 import { usePronounce } from "@/lib/pronounce";
@@ -590,12 +589,10 @@ function ContextChatPanel({
   return (
     <div className="flex flex-col h-full bg-card border border-border rounded-2xl overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-border bg-speaking-surface/70">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-border bg-muted/20">
         <div className="flex items-center gap-2">
-          {/* Burgundy rather than navy: the panel is the rose zone now, and this
-              is the one spot where the palette's warm hue belongs. */}
-          <div className="p-1.5 rounded-lg bg-speaking/15">
-            <MessageCircle className="w-3.5 h-3.5 text-speaking" />
+          <div className="p-1.5 rounded-lg bg-primary/15">
+            <MessageCircle className="w-3.5 h-3.5 text-primary" />
           </div>
           <span className="text-sm font-semibold text-foreground flex-1">Ask your tutor</span>
         </div>
@@ -1074,7 +1071,7 @@ export default function DictionaryTab() {
       {/* The search row is h-14 to match the sidebar header, so the divider
           continues that line. Padding sits on the row rather than the bordered
           container, so the accent keyboard can expand below without shifting it. */}
-      <div className="flex-shrink-0 border-b border-chrome-border bg-chrome px-4">
+      <div className="flex-shrink-0 border-b border-border bg-background/80 backdrop-blur-sm px-4">
         <div className="max-w-full">
           {/* 3.5rem minus the container's 1px bottom border, so the total lands
               on the sidebar's 56px rather than 57. */}
@@ -1164,13 +1161,13 @@ export default function DictionaryTab() {
           <div className={cn("space-y-4", hasResults ? "w-full" : "max-w-2xl mx-auto")}>
             {/* Empty state */}
             {!hasResults && !searchMutation.isPending && (
-              <EmptyState
-                emoji="🔍"
-                title="Search the French dictionary"
-                description={'Type a word, phrase, or question like "how do I say hello?"'}
-                tone="blue"
-                className="my-12"
-              />
+              <div className="text-center py-12">
+                <p className="text-5xl mb-4">🔍</p>
+                <p className="text-lg font-semibold text-foreground mb-2">Search the French dictionary</p>
+                <p className="text-sm text-muted-foreground">
+                  Type a word, phrase, or question like "how do I say hello?"
+                </p>
+              </div>
             )}
 
             {/* Loading */}
@@ -1283,7 +1280,7 @@ export default function DictionaryTab() {
             />
             <div
               style={{ width: tutorWidth }}
-              className="flex-shrink-0 p-3 flex flex-col min-h-0 bg-speaking-surface/40"
+              className="flex-shrink-0 p-3 flex flex-col min-h-0"
             >
               <ContextChatPanel
                 vocabContext={selectedVocabContext}
@@ -1318,7 +1315,7 @@ export default function DictionaryTab() {
             )}
           </button>
           {tutorOpen && (
-            <div className="h-[55vh] p-3 flex flex-col min-h-0 border-t border-border bg-speaking-surface/40">
+            <div className="h-[55vh] p-3 flex flex-col min-h-0 border-t border-border">
               <ContextChatPanel
                 vocabContext={selectedVocabContext}
                 onClearContext={() => setSelectedIdx(null)}

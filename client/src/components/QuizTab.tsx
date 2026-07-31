@@ -4,7 +4,6 @@ import { VocabEntry } from "@/types";
 import { Loader2, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "@/components/EmptyState";
 
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
@@ -377,13 +376,10 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
 
   if (!words.length) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <EmptyState
-          emoji="🧠"
-          title="No words yet!"
-          description="Add words to your library first."
-          tone="rose"
-        />
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+        <p className="text-5xl mb-4">🧠</p>
+        <p className="text-xl font-semibold text-foreground mb-2">No words yet!</p>
+        <p className="text-sm text-muted-foreground">Add words to your library first.</p>
       </div>
     );
   }
@@ -643,7 +639,7 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
 
       {/* Direction toggle */}
       {/* h-14 matches the sidebar header, so this divider continues that line. */}
-      <div className="flex-shrink-0 h-14 border-b border-chrome-border bg-chrome px-4 flex items-center justify-center gap-2">
+      <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center justify-center gap-2">
         {[
           { id: "fr2en" as const, label: "FR → EN" },
           { id: "en2fr" as const, label: "EN → FR" },

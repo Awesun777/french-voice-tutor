@@ -4,7 +4,6 @@ import { VocabEntry, SidebarTab, ImportItem } from "@/types";
 import { Star, Trash2, Search, Download, Upload, Loader2, ChevronDown, ChevronRight, Pencil, Check, X, AlertTriangle, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { EmptyState } from "@/components/EmptyState";
 import ImportModal from "./ImportModal";
 import { GoogleDrivePanel } from "./GoogleDrivePanel";
 
@@ -382,7 +381,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
       {/* Header */}
       {/* min-h-14 matches the sidebar header so the divider continues that line;
           min- rather than fixed because these controls wrap on narrow screens. */}
-      <div className="flex-shrink-0 min-h-14 border-b border-chrome-border bg-chrome px-4 py-2 flex items-center">
+      <div className="flex-shrink-0 min-h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-2 flex items-center">
         <div className="w-full flex items-center gap-3 flex-wrap">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -453,23 +452,22 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : words.length === 0 ? (
-          <EmptyState
-            emoji="📚"
-            title="Your library is empty"
-            description="Search words in the Dictionary, or import from lesson notes."
-            tone="gold"
-            className="my-16"
-            action={
-              <button
-                onClick={() => setShowImport(true)}
-                className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors"
-              >
-                Import Lesson Notes
-              </button>
-            }
-          />
+          <div className="text-center py-20">
+            <p className="text-5xl mb-4">📚</p>
+            <p className="text-lg font-semibold text-foreground mb-2">Your library is empty</p>
+            <p className="text-sm text-muted-foreground mb-6">Search words in the Dictionary, or import from lesson notes.</p>
+            <button
+              onClick={() => setShowImport(true)}
+              className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors"
+            >
+              Import Lesson Notes
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
-          <EmptyState emoji="🔍" title="No words match your search" tone="gold" compact className="my-14" />
+          <div className="text-center py-16">
+            <p className="text-4xl mb-3">🔍</p>
+            <p className="text-muted-foreground text-sm">No words match your search</p>
+          </div>
         ) : (
           <div className="max-w-2xl mx-auto space-y-3">
             <div className="flex items-center justify-between">

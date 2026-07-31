@@ -47,9 +47,6 @@
   --color-speaking-surface: var(--speaking-surface);
   --color-star: var(--star);
   --color-accent-strong: var(--accent-strong);
-  --color-chrome: var(--chrome);
-  --color-chrome-border: var(--chrome-border);
-  --color-sidebar-muted: var(--sidebar-muted);
 }
 
 :root {
@@ -101,27 +98,13 @@
   --chart-4: #C08A2E;
   --chart-5: #4A7C59;
 
-  /* ─── App chrome ────────────────────────────────────────────────────────────
-   * The sidebar and every tab header share one surface, distinct from the cream
-   * content area. Previously all three were cream-on-cream, which is why the UI
-   * read as a single undifferentiated field. Driven from one token so the
-   * sidebar and the nine headers can never drift apart.
-   */
-  --chrome: #DCECF8;              /* pale blue */
-  --chrome-border: #B9D2E8;       /* --border vanishes against pale blue */
-  /* --muted-foreground is 4.44:1 on pale blue — just under AA. This is the same
-   * warm grey darkened to 5.7:1, for inactive nav labels and footer text. */
-  --sidebar-muted: #5F5A54;
-
-  --sidebar: var(--chrome);
+  --sidebar: #FBF2E4;             /* a shade deeper than the page, so it separates */
   --sidebar-foreground: #252321;
   --sidebar-primary: #173F6B;
   --sidebar-primary-foreground: #FFF8ED;
-  /* The active pill is a white card, not a tint — a tint flattens against the
-   * pale blue the sidebar now is. */
-  --sidebar-accent: #FFFFFF;
+  --sidebar-accent: #DCECF8;
   --sidebar-accent-foreground: #173F6B;
-  --sidebar-border: var(--chrome-border);
+  --sidebar-border: #EFE2CE;
   --sidebar-ring: #173F6B;
 
   /* Roles the shadcn token set has no slot for. */

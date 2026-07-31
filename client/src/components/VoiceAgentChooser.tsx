@@ -108,7 +108,7 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
       {startedAgent ? (
         // ── In session: mount the chosen tutor's tab with a back affordance. ──
         <div className="flex flex-col h-full overflow-hidden">
-          <div className="flex-shrink-0 h-14 border-b border-chrome-border bg-chrome px-4 flex items-center gap-3">
+          <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center gap-3">
             <button
               onClick={() => setStarted(null)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
