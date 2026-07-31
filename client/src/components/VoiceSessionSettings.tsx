@@ -89,6 +89,32 @@ export function languageMixInstruction(mix: LanguageMix): string {
   }
 }
 
+/**
+ * Returns the system prompt snippet telling the tutor to offer to save a word
+ * after correcting the student.
+ *
+ * The language of that one question follows the explanation setting: English
+ * only when the student asked for explanations in English, French otherwise
+ * (both "Tout en français" and "Mix" keep it in French). It is shared by Romain
+ * and Anna so the behaviour can't drift between the two tutors — Anna's base
+ * prompt lives in the ElevenLabs dashboard, so this snippet is the only place
+ * the rule can be stated once for both.
+ */
+export function saveOfferInstruction(mix: LanguageMix): string {
+  const askInEnglish = mix === "english";
+  const example = askInEnglish
+    ? `for example: "Want me to save that one for you?"`
+    : `par exemple : "Tu veux que je le sauvegarde ?" ou "Je te le mets dans ton carnet ?"`;
+  return [
+    "When you correct something the student said, or teach them the right word or phrase for what they were reaching for,",
+    "usually follow the correction with a short offer to save it to their vocabulary library —",
+    `${example}`,
+    "If they say yes, call the save_vocab function with that word or phrase.",
+    `IMPORTANT: ask this specific question in ${askInEnglish ? "ENGLISH" : "FRENCH"}, regardless of the language the rest of the correction was in.`,
+    "Do this regularly but not after every single correction — skip it when the student is mid-thought or the correction was trivial, so it stays natural rather than mechanical.",
+  ].join(" ");
+}
+
 /** Returns the ElevenLabs voice speed value for Anna */
 export function annaVoiceSpeed(speed: SpeedLevel): number {
   switch (speed) {

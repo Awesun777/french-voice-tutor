@@ -24,6 +24,7 @@ import {
   VoiceSessionSettings,
   useVoiceSettings,
   languageMixInstruction,
+  saveOfferInstruction,
   annaVoiceSpeed,
 } from "@/components/VoiceSessionSettings";
 import {
@@ -313,11 +314,13 @@ export function AnnaVoiceTab() {
 
         onConnect: () => {
           setSessionState("active");
-          // Inject language mix instruction
-          const mixInstruction = languageMixInstruction(voiceSettingsRef.current.languageMix);
+          // Inject language mix instruction + the offer-to-save rule. Anna's base
+          // prompt lives in the ElevenLabs dashboard, so both have to arrive here.
+          const mix = voiceSettingsRef.current.languageMix;
+          const mixInstruction = languageMixInstruction(mix);
           setTimeout(() => {
             conversationRef.current?.sendContextualUpdate(
-              `[Session settings: ${mixInstruction}]`
+              `[Session settings: ${mixInstruction} ${saveOfferInstruction(mix)}]`
             );
           }, 800);
           // Inject persistent user memory so Anna remembers past conversations.
@@ -535,9 +538,14 @@ export function AnnaVoiceTab() {
           onConnect: () => {
             setSessionState("active");
             setIsResuming(false);
-            // Inject resume context note (recent turns)
+            // Inject resume context note (recent turns) plus the session settings.
+            // A resume is a brand-new ElevenLabs session, so the language mix and
+            // offer-to-save rules have to be re-sent or they are lost on pause.
+            const resumeMix = voiceSettingsRef.current.languageMix;
             setTimeout(() => {
-              conversationRef.current?.sendContextualUpdate(contextNote);
+              conversationRef.current?.sendContextualUpdate(
+                `${contextNote} [Session settings: ${languageMixInstruction(resumeMix)} ${saveOfferInstruction(resumeMix)}]`
+              );
             }, 800);
             // Also inject persistent user memory after the resume context note
             const memory = userMemoryRef.current;

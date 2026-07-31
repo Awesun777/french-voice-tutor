@@ -29,6 +29,7 @@ import {
   useVoiceSettings,
   speedInstruction,
   languageMixInstruction,
+  saveOfferInstruction,
 } from "@/components/VoiceSessionSettings";
 import {
   Mic,
@@ -255,7 +256,12 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
    */
   const baseInstructionsRef = useRef<string>("");
   const composeInstructions = (s: typeof voiceSettings) =>
-    [baseInstructionsRef.current, speedInstruction(s.speed), languageMixInstruction(s.languageMix)]
+    [
+      baseInstructionsRef.current,
+      speedInstruction(s.speed),
+      languageMixInstruction(s.languageMix),
+      saveOfferInstruction(s.languageMix),
+    ]
       .filter(Boolean)
       .join(" ");
 
