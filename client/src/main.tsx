@@ -8,6 +8,13 @@ import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
 
+if (new URLSearchParams(window.location.search).get("uipreview") === "1") {
+  void (async () => {
+    const { installUiPreviewFixtures } = await import("@/lib/__uiPreviewFixtures");
+    installUiPreviewFixtures();
+  })();
+}
+
 const queryClient = new QueryClient();
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {

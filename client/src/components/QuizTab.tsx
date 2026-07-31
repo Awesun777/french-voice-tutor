@@ -669,11 +669,13 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
           initialDateKey={reviewTarget?.dateKey}
           onStart={startQuiz}
           header={
-            /* The clip's background is pure #FFFFFF, the same as --card, so a
-               white card frame makes it disappear without keying. It plays once
+            /* Same treatment as the Romain/Anna avatars in VoiceAgentChooser:
+               rounded-full with a ring-4 border. The clip's background is pure
+               #FFFFFF, the same as --card, so the disc reads as a solid
+               medallion without needing the white keyed out. It plays once
                rather than looping — the animation ends on the QUIZ sign and
-               would jump-cut back to the start. */
-            <div className="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl overflow-hidden bg-card border border-border shadow-sm">
+               would jump-cut back to the dog in the window. */
+            <div className="h-28 w-28 sm:h-32 sm:w-32 rounded-full overflow-hidden bg-card ring-4 ring-border">
               <AvatarVideo src="/video/quiz-dog.mp4" loop={false} />
             </div>
           }

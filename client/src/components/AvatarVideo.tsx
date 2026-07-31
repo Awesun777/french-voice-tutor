@@ -91,7 +91,15 @@ export function AvatarVideo({
     // swallowed there was nothing to retry — the clip would sit frozen on its
     // first frame. Retry once the element reports it can play.
     el.addEventListener("canplay", tryPlay);
-    return () => el.removeEventListener("canplay", tryPlay);
+    // Chrome pauses muted, audio-less video when the tab goes to the background
+    // ("video-only background media was paused to save power"). Without this the
+    // clip stays frozen wherever it stopped — mid-pose, not on a resting frame.
+    const onVisibility = () => { if (!document.hidden) tryPlay(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      el.removeEventListener("canplay", tryPlay);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [src]);
 
   return (
