@@ -37,6 +37,9 @@ declare global {
 }
 interface YTPlayer {
   getCurrentTime(): number;
+  getPlayerState(): number;
+  playVideo(): void;
+  pauseVideo(): void;
   seekTo(sec: number, allowSeekAhead: boolean): void;
   destroy(): void;
 }
@@ -187,6 +190,28 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
     // transcript should go there too.
     if (state === window.YT?.PlayerState.BUFFERING) setFollowing(true);
   }, []);
+
+  // Space toggles playback anywhere on this page. preventDefault stops it
+  // also scrolling the transcript, which is the default action for space on a
+  // scrollable pane. Typing fields are skipped, though the reader has none
+  // today — the dictionary drawer can be opened over it.
+  useEffect(() => {
+    if (!playerReady) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== " " && e.code !== "Space") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      const p = playerRef.current;
+      if (!p) return;
+      // 1 === PLAYING in the IFrame API's PlayerState enum.
+      if (p.getPlayerState() === 1) p.pauseVideo();
+      else p.playVideo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [playerReady]);
 
   // Poll the clock once a player exists. 250ms is plenty for line-level
   // tracking — the highlight needs to look responsive, not be frame-accurate.
