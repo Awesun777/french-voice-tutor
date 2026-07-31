@@ -63,21 +63,24 @@ import {
  * Real context cost is higher than text-only estimates because the Realtime
  * API also counts audio tokens, tool call overhead, and per-item metadata.
  */
-const TOKEN_BUDGET = 3850;
+const TOKEN_BUDGET = 3500;
 /**
  * Approximate tokens consumed by the system prompt + tool schemas.
  *
- * Measured 2026-07-31: base prompt ~1,360 + settings snippets ~220 + stall
- * question bank ~800 + tools ~197 ≈ 2,580. Rounded up to 2,600 for Realtime
- * overhead. The old pair (750 / 2,000) was written when the prompt was a third
- * of this size and had drifted badly out of date.
+ * Measured 2026-07-31: base prompt ~1,360 + settings snippets ~220 + the
+ * per-session stall question sample ~440 + tools ~197 ≈ 2,220. Rounded up to
+ * 2,250 for Realtime overhead. The old pair (750 / 2,000) was written when the
+ * prompt was a third of this size and had drifted badly out of date.
+ *
+ * Growing the question bank does NOT move this number — only a fixed-size
+ * sample is ever sent, so the file can hold hundreds of questions.
  *
  * What actually governs pruning is the gap between these two numbers — the
  * token allowance left for raw turns. That gap is 1,250, unchanged from the
  * old constants, so this correction makes the numbers honest without shifting
  * when summarization fires. Move TOKEN_BUDGET, not this, to retune the cadence.
  */
-const SYSTEM_PROMPT_TOKENS = 2600;
+const SYSTEM_PROMPT_TOKENS = 2250;
 /** Always keep at least this many recent raw turns after pruning */
 const KEEP_RECENT = 8;
 /**
@@ -264,13 +267,20 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
    * sending the settings alone would strip Romain of everything else.
    */
   const baseInstructionsRef = useRef<string>("");
+  /**
+   * This session's stall questions, sampled ONCE at session start. Held in a
+   * ref rather than recomputed inside composeInstructions because that runs on
+   * every settings change — re-sampling mid-session would hand Romain a fresh
+   * set of questions and break the "never ask the same one twice" rule.
+   */
+  const stallInstructionRef = useRef<string>("");
   const composeInstructions = (s: typeof voiceSettings) =>
     [
       baseInstructionsRef.current,
       speedInstruction(s.speed),
       languageMixInstruction(s.languageMix),
       saveOfferInstruction(s.languageMix),
-      stallQuestionInstruction(),
+      stallInstructionRef.current,
     ]
       .filter(Boolean)
       .join(" ");
@@ -779,6 +789,10 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       } catch {
         baseInstructionsRef.current = "";
       }
+
+      // Draw this session's stall questions once, biased by what Romain
+      // remembers about the student.
+      stallInstructionRef.current = stallQuestionInstruction(memoryData?.memory);
 
       // 2. Set up WebRTC
       const pc = new RTCPeerConnection();

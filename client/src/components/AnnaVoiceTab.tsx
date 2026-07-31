@@ -202,6 +202,12 @@ export function AnnaVoiceTab() {
   useEffect(() => {
     userMemoryRef.current = userMemoryData?.memory ?? null;
   }, [userMemoryData]);
+  /**
+   * This session's stall questions, sampled once at session start. Reused
+   * verbatim on resume: a resume is a new ElevenLabs session, and re-sampling
+   * there would offer Anna questions she may already have asked before the pause.
+   */
+  const stallInstructionRef = useRef<string>("");
   const { data: pastSessions = [], refetch: refetchSessions } = trpc.voiceSession.list.useQuery(
     undefined,
     { enabled: showPastSessions }
@@ -297,6 +303,9 @@ export function AnnaVoiceTab() {
       const { id } = await createSessionMutation.mutateAsync();
       setSessionId(id);
 
+      // Draw this session's stall questions once, biased by what Anna remembers.
+      stallInstructionRef.current = stallQuestionInstruction(userMemoryRef.current);
+
       // 2. Get signed URL from server
       const { signedUrl } = await annaSignedUrlMutation.mutateAsync();
 
@@ -328,7 +337,7 @@ export function AnnaVoiceTab() {
           // the settings update into one unreadable blob.
           setTimeout(() => {
             conversationRef.current?.sendContextualUpdate(
-              `[${stallQuestionInstruction()}]`
+              `[${stallInstructionRef.current}]`
             );
           }, 1100);
           // Inject persistent user memory so Anna remembers past conversations.
@@ -557,7 +566,7 @@ export function AnnaVoiceTab() {
             }, 800);
             setTimeout(() => {
               conversationRef.current?.sendContextualUpdate(
-                `[${stallQuestionInstruction()}]`
+                `[${stallInstructionRef.current}]`
               );
             }, 1100);
             // Also inject persistent user memory after the resume context note
