@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
 import { motion, useReducedMotion } from "framer-motion";
 
@@ -68,6 +69,25 @@ const GRADES = [
 ];
 
 type SwipeDir = "left" | "up" | "right";
+
+/**
+ * Tooltip wrapper for the card-top icons.
+ *
+ * These were bare `title` attributes, which take a second or two to appear,
+ * can't be styled, and never show on touch. A row of six unlabelled icons is
+ * exactly where someone needs to know what they do without guessing.
+ *
+ * `asChild` keeps the trigger as the button itself rather than nesting one
+ * inside another, which is invalid markup and swallows clicks.
+ */
+function IconHint({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={6}>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 /** Where a graded card flies to. Far enough to clear any viewport. */
 const FLY = { left: { x: -700, y: 40, rotate: -18 }, right: { x: 700, y: 40, rotate: 18 }, up: { x: 0, y: -700, rotate: 0 } };
@@ -503,59 +523,84 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
             <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${((idx + 1) / deck.length) * 100}%` }} />
           </div>
 
-          {/* Card-top controls: merge, star, pronounce, mic, delete */}
+          {/* Card-top controls: edit, merge, star, pronounce, record, delete */}
+          <TooltipProvider delayDuration={150}>
           <div className="flex items-center justify-center gap-2">
-            <button
-              onClick={startEdit}
-              className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
-              title="Edit the French or English text"
-            >
-              <Pencil className="w-4.5 h-4.5" />
-            </button>
-            <button
-              onClick={handleMergeWithPrevious}
-              disabled={idx < 1 || mergeMutation.isPending}
-              className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 disabled:opacity-30 transition-colors"
-              title="Merge this card into the previous one (rejoin a split sentence)"
-            >
-              {mergeMutation.isPending ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : <Combine className="w-4.5 h-4.5" />}
-            </button>
-            <button
-              onClick={() => starMutation.mutate({ id: currentWord.id })}
-              className={cn("p-2.5 rounded-xl border transition-colors", currentWord.starred ? "bg-star/20 border-star/50 text-star" : "bg-card border-border text-muted-foreground hover:text-star hover:border-star/50")}
-              title="Star this word"
-            >
-              <Star className={cn("w-4.5 h-4.5", currentWord.starred && "fill-current")} />
-            </button>
-            <PronounceButton
-              text={currentWord.term}
-              speak={speak}
-              state={pronounceState}
-              activeText={activeText}
-              className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50"
-              iconSize="w-4.5 h-4.5"
-            />
-            <button
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
-              className={cn("p-2.5 rounded-xl border transition-all", recording ? "bg-red-500/20 border-red-500 text-red-700 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50")}
-              title="Hold to record your pronunciation"
-            >
-              {recording ? <MicOff className="w-4.5 h-4.5" /> : <Mic className="w-4.5 h-4.5" />}
-            </button>
+            <IconHint label="Edit this card's French or English">
+              <button
+                onClick={startEdit}
+                aria-label="Edit this card"
+                className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+              >
+                <Pencil className="w-4.5 h-4.5" />
+              </button>
+            </IconHint>
+            <IconHint label={idx < 1 ? "Merge into the previous card — needs a card before this one" : "Merge into the previous card (rejoins a split sentence)"}>
+              {/* A disabled button fires no pointer events, so the hint would
+                  never show on the one card where it needs explaining. The span
+                  takes the hover instead. */}
+              <span className="inline-flex">
+                <button
+                  onClick={handleMergeWithPrevious}
+                  disabled={idx < 1 || mergeMutation.isPending}
+                  aria-label="Merge into the previous card"
+                  className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                >
+                  {mergeMutation.isPending ? <Loader2 className="w-4.5 h-4.5 animate-spin" /> : <Combine className="w-4.5 h-4.5" />}
+                </button>
+              </span>
+            </IconHint>
+            <IconHint label={currentWord.starred ? "Starred — click to unstar" : "Star this word to find it quickly later"}>
+              <button
+                onClick={() => starMutation.mutate({ id: currentWord.id })}
+                aria-label={currentWord.starred ? "Unstar this word" : "Star this word"}
+                className={cn("p-2.5 rounded-xl border transition-colors", currentWord.starred ? "bg-star/20 border-star/50 text-star" : "bg-card border-border text-muted-foreground hover:text-star hover:border-star/50")}
+              >
+                <Star className={cn("w-4.5 h-4.5", currentWord.starred && "fill-current")} />
+              </button>
+            </IconHint>
+            <IconHint label="Hear it pronounced">
+              <span className="inline-flex">
+                <PronounceButton
+                  text={currentWord.term}
+                  speak={speak}
+                  state={pronounceState}
+                  activeText={activeText}
+                  className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-primary hover:border-primary/50"
+                  iconSize="w-4.5 h-4.5"
+                />
+              </span>
+            </IconHint>
+            <IconHint label="Hold to record yourself, release to compare">
+              <button
+                onMouseDown={startRecording}
+                onMouseUp={stopRecording}
+                onTouchStart={startRecording}
+                onTouchEnd={stopRecording}
+                aria-label="Hold to record your pronunciation"
+                className={cn("p-2.5 rounded-xl border transition-all", recording ? "bg-red-500/20 border-red-500 text-red-700 scale-110 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-primary hover:border-primary/50")}
+              >
+                {recording ? <MicOff className="w-4.5 h-4.5" /> : <Mic className="w-4.5 h-4.5" />}
+              </button>
+            </IconHint>
             {confirmDeleteId === currentWord.id ? (
               <div className="flex items-center gap-1">
                 <button onClick={handleDeleteCurrent} className="px-3 py-2 rounded-xl bg-destructive text-destructive-foreground text-xs font-bold hover:bg-destructive/80 transition-colors">Delete</button>
                 <button onClick={() => setConfirmDeleteId(null)} className="px-3 py-2 rounded-xl bg-muted text-muted-foreground text-xs font-bold hover:bg-muted/80 transition-colors">Cancel</button>
               </div>
             ) : (
-              <button onClick={handleDeleteCurrent} className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10 transition-colors" title="Delete this word">
-                <Trash2 className="w-4.5 h-4.5" />
-              </button>
+              <IconHint label="Delete this word from your library">
+                <button
+                  onClick={handleDeleteCurrent}
+                  aria-label="Delete this word"
+                  className="p-2.5 rounded-xl border border-border bg-card text-muted-foreground hover:text-destructive hover:border-destructive/50 hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash2 className="w-4.5 h-4.5" />
+                </button>
+              </IconHint>
             )}
           </div>
+          </TooltipProvider>
 
           {/* Edit panel (replaces the card while editing) */}
           {editing ? (
