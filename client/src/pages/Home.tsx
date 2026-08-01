@@ -76,6 +76,15 @@ export default function Home() {
   const [voiceAskContext, setVoiceAskContext] = useState<string | undefined>(undefined);
   const voiceAskOpenRef = useRef(false);
   voiceAskOpenRef.current = voiceAskOpen;
+  /**
+   * Bumped when either held key is released. Push-to-talk: recording runs only
+   * while Shift+Return are down.
+   *
+   * Tracked here rather than in the palette because the release can land before
+   * the palette has mounted — on a quick tap the keyup would otherwise be lost
+   * and the recording would run on with nobody holding anything.
+   */
+  const [voiceAskRelease, setVoiceAskRelease] = useState(0);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -95,8 +104,19 @@ export default function Home() {
       setVoiceAskContext(selected ? selected.slice(0, 500) : undefined);
       setVoiceAskOpen(true);
     };
+    // Letting go of either key ends the recording. Both are watched because
+    // there is no telling which one the user lifts first.
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" && e.key !== "Shift") return;
+      if (!voiceAskOpenRef.current) return;
+      setVoiceAskRelease((n) => n + 1);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
+    };
   }, []);
 
   // Read through a ref so the key listener stays mounted once rather than
@@ -163,6 +183,7 @@ export default function Home() {
       <VoiceAskDrawer
         open={voiceAskOpen}
         contextText={voiceAskContext}
+        releaseSignal={voiceAskRelease}
         onClose={() => { setVoiceAskOpen(false); setVoiceAskContext(undefined); }}
       />
     </div>

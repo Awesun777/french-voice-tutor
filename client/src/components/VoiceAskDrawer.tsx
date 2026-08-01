@@ -1,13 +1,14 @@
 /**
  * VoiceAskDrawer — ask the French tutor a question out loud.
  *
- * Opened with Shift+Return from anywhere. Records, transcribes, and shows the
+ * Push-to-talk on Shift+Return from anywhere: recording runs while the chord is
+ * held and sends the moment either key is released. Transcribes and shows the
  * tutor's written answer, in the same bottom-rising palette the dictionary
  * shortcut uses so the two shortcuts feel like one family.
  *
- * Recording starts the moment it opens: the shortcut exists so you can ask
- * without breaking stride, and a palette that then makes you click a button
- * would defeat that.
+ * Holding rather than pressing means the recording is bounded by an action the
+ * user is already taking, so there is nothing to remember to stop — and it
+ * removes the earlier bug where the chord's own key auto-repeat stopped it.
  */
 import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
@@ -18,12 +19,6 @@ import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
 
 type Phase = "recording" | "thinking" | "answered" | "error";
-
-/**
- * How long after opening the palette a Return keypress is ignored. Long enough
- * to outlast the OS auto-repeat that the opening Shift+Return chord produces.
- */
-const STOP_GRACE_MS = 700;
 
 /** Below this there is nothing worth sending to a transcription model. */
 const MIN_RECORDING_MS = 800;
@@ -46,11 +41,14 @@ export function VoiceAskDrawer({
   open,
   onClose,
   contextText,
+  releaseSignal = 0,
 }: {
   open: boolean;
   onClose: () => void;
   /** Text highlighted when the shortcut fired, so "what does it mean?" works. */
   contextText?: string;
+  /** Increments when Shift or Return is released — ends the recording. */
+  releaseSignal?: number;
 }) {
   const [phase, setPhase] = useState<Phase>("recording");
   const [question, setQuestion] = useState("");
@@ -63,8 +61,14 @@ export function VoiceAskDrawer({
   const streamRef = useRef<MediaStream | null>(null);
   /** Set when the user closes mid-recording, so the audio is thrown away. */
   const abortedRef = useRef(false);
-  /** When the current recording began, for the Return grace period. */
+  /** When the current recording began, for the minimum-length check. */
   const openedAt = useRef(0);
+  /**
+   * Set when the keys are released before the recorder exists. getUserMedia
+   * takes a few hundred ms, so a quick tap releases first — without this the
+   * stop finds nothing to stop and the mic runs on with nobody holding a key.
+   */
+  const stopWhenReadyRef = useRef(false);
 
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
@@ -106,6 +110,7 @@ export function VoiceAskDrawer({
 
   const beginRecording = useCallback(async () => {
     abortedRef.current = false;
+    stopWhenReadyRef.current = false;
     openedAt.current = Date.now();
     setPhase("recording");
     setQuestion("");
@@ -132,13 +137,18 @@ export function VoiceAskDrawer({
         // round-trip.
         const elapsed = Date.now() - openedAt.current;
         if (elapsed < MIN_RECORDING_MS || blob.size < 1000) {
-          setErrorMsg("That was too short to hear — press the shortcut again and speak.");
+          setErrorMsg("That was too short to hear — hold Shift+Return while you speak.");
           setPhase("error");
           return;
         }
         send(blob, mime);
       };
       rec.start();
+      // Released while the mic was still being acquired.
+      if (stopWhenReadyRef.current) {
+        stopWhenReadyRef.current = false;
+        try { rec.stop(); } catch { /* ignore */ }
+      }
     } catch {
       setErrorMsg("Microphone access was blocked. Allow it in your browser settings.");
       setPhase("error");
@@ -177,34 +187,42 @@ export function VoiceAskDrawer({
   }, [open, phase]);
 
   const stopAndSend = () => {
-    try {
-      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-    } catch { /* ignore */ }
+    const rec = recorderRef.current;
+    if (rec?.state === "recording") {
+      try { rec.stop(); } catch { /* ignore */ }
+      return;
+    }
+    // The recorder isn't up yet — tell beginRecording to stop the moment it is.
+    stopWhenReadyRef.current = true;
   };
 
-  // Escape closes; a plain Return while recording sends.
-  //
-  // Three guards, all for the same failure: the palette is opened WITH
-  // Shift+Return, and holding that chord even briefly makes the OS auto-repeat
-  // Enter. Those repeats land on this listener the moment it mounts and stop
-  // the recording after roughly half a second, before anything has been said.
-  //   - e.repeat  — ignores auto-repeat outright
-  //   - e.shiftKey — Shift+Return opens; only a plain Return sends
-  //   - openedAt  — covers releasing Shift while still holding Return, where
-  //                 the repeat arrives with shiftKey already false
+  // Push-to-talk: releasing either held key ends the recording and sends.
+  // Skipped on the initial render so opening the palette doesn't immediately
+  // stop it with a stale signal.
+  const lastRelease = useRef(releaseSignal);
+  useEffect(() => {
+    if (releaseSignal === lastRelease.current) return;
+    lastRelease.current = releaseSignal;
+    if (open && phase === "recording") stopAndSend();
+    // stopAndSend reads refs only, so it does not need to be a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [releaseSignal, open, phase]);
+
+  // Escape closes. Holding the chord again after an answer asks another
+  // question, so you never have to reach for the mouse.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-      if (e.key !== "Enter" || phase !== "recording") return;
-      if (e.repeat || e.shiftKey) return;
-      if (Date.now() - openedAt.current < STOP_GRACE_MS) return;
-      e.preventDefault();
-      stopAndSend();
+      if (e.key !== "Enter" || !e.shiftKey || e.repeat) return;
+      if (phase === "answered" || phase === "error") {
+        e.preventDefault();
+        beginRecording();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, phase, onClose]);
+  }, [open, phase, onClose, beginRecording]);
 
   if (!open) return null;
 
@@ -258,13 +276,16 @@ export function VoiceAskDrawer({
                     ? "Ask about the highlighted text — “what does it mean?”"
                     : "Ask in English or French — “how do I say I'm hungry?”"}
                 </p>
+                <p className="text-sm font-semibold text-speaking mt-4">
+                  Keep holding — release to ask
+                </p>
+                {/* Still clickable, for anyone who can't hold a chord down. */}
                 <button
                   onClick={stopAndSend}
-                  className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold shadow-[0_8px_20px_-8px_rgb(23_63_107_/_0.8)] hover:bg-primary/90 transition-colors"
+                  className="mt-3 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold shadow-[0_8px_20px_-8px_rgb(23_63_107_/_0.8)] hover:bg-primary/90 transition-colors"
                 >
                   <Square className="w-3.5 h-3.5" /> Stop & ask
                 </button>
-                <p className="text-[11px] text-muted-foreground mt-2">or press Return</p>
               </div>
             )}
 
@@ -299,7 +320,7 @@ export function VoiceAskDrawer({
                   onClick={beginRecording}
                   className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-muted/60 text-foreground text-sm font-bold hover:bg-muted transition-colors"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" /> Ask another
+                  <RotateCcw className="w-3.5 h-3.5" /> Ask another (or hold Shift+Return)
                 </button>
               </div>
             )}
