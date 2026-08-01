@@ -154,6 +154,23 @@ async function startServer() {
   const app = express();
   // Trust the reverse proxy (Manus platform) so req.protocol and forwarded headers are correct
   app.set("trust proxy", 1);
+
+  // www.romaintalk.com → romaintalk.com. Railway happily serves both hostnames,
+  // but two live URLs for the same app split the search-engine signal between
+  // them, so www is not a second home — it is a permanent redirect to the apex.
+  //
+  // Registered before the body parsers and every route, OAuth callbacks
+  // included: a visitor who lands on www must be moved across before anything
+  // sets a session cookie, or the cookie is scoped to the wrong host and the
+  // sign-in silently fails to carry over.
+  //
+  // req.hostname (not the raw Host header) because `trust proxy` makes it read
+  // X-Forwarded-Host and drop any port, so this stays inert on localhost.
+  app.use((req, res, next) => {
+    if (!req.hostname.startsWith("www.")) return next();
+    res.redirect(301, `${req.protocol}://${req.hostname.slice(4)}${req.originalUrl}`);
+  });
+
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
