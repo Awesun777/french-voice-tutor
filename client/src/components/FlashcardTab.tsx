@@ -55,11 +55,56 @@ const SM2_STATUS_COLORS: Record<string, string> = {
 };
 
 // 3-button self-rating → SM-2 grade. Again=1, Good=3, Easy=5.
+/**
+ * `dir` is the direction the card flies off when graded, and the direction you
+ * can drag it to grade by hand: Again left, Good up, Easy right. Left/right
+ * follow the tinder-like convention of reject/accept; Good takes up because it
+ * is the middle option and has no natural side.
+ */
 const GRADES = [
-  { grade: 1 as const, key: "again" as const, label: "Again", color: "bg-red-500/20 hover:bg-red-500/40 text-red-800 border-red-500/30" },
-  { grade: 3 as const, key: "good" as const, label: "Good", color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-800 border-blue-500/30" },
-  { grade: 5 as const, key: "easy" as const, label: "Easy", color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-800 border-emerald-500/30" },
+  { grade: 1 as const, key: "again" as const, label: "Again", dir: "left" as const, color: "bg-red-500/20 hover:bg-red-500/40 text-red-800 border-red-500/30" },
+  { grade: 3 as const, key: "good" as const, label: "Good", dir: "up" as const, color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-800 border-blue-500/30" },
+  { grade: 5 as const, key: "easy" as const, label: "Easy", dir: "right" as const, color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-800 border-emerald-500/30" },
 ];
+
+type SwipeDir = "left" | "up" | "right";
+
+/** Where a graded card flies to. Far enough to clear any viewport. */
+const FLY = { left: { x: -700, y: 40, rotate: -18 }, right: { x: 700, y: 40, rotate: 18 }, up: { x: 0, y: -700, rotate: 0 } };
+
+/** Drag distance past which releasing commits the grade. */
+const SWIPE_THRESHOLD = 110;
+
+/**
+ * The example sentence on the back of a card.
+ *
+ * Fetched only once the answer is showing: pre-fetching every card in the deck
+ * would fire a generation per word up front, and most sessions never reach the
+ * end of the deck.
+ */
+function CardExample({ term, translation, visible }: { term: string; translation: string; visible: boolean }) {
+  const { data, isLoading } = trpc.dictionary.example.useQuery(
+    { term, translation },
+    { enabled: visible, staleTime: Infinity, refetchOnWindowFocus: false }
+  );
+
+  if (!visible) return null;
+  if (isLoading) {
+    return (
+      <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="w-3 h-3 animate-spin" /> example…
+      </div>
+    );
+  }
+  if (!data?.fr) return null;
+
+  return (
+    <div className="mt-3 w-full max-w-sm rounded-xl bg-background/70 px-3.5 py-2.5 text-center">
+      <p className="text-sm text-foreground leading-snug">{data.fr}</p>
+      <p className="text-xs text-muted-foreground mt-1 leading-snug">{data.en}</p>
+    </div>
+  );
+}
 
 interface SessionResult { total: number; again: number; good: number; easy: number; }
 const ZERO: SessionResult = { total: 0, again: 0, good: 0, easy: 0 };
@@ -95,6 +140,9 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
   const [deck, setDeck] = useState<VocabEntry[]>(restore?.deck ?? []);
   const [idx, setIdx] = useState(restore?.idx ?? 0);
   const [flipped, setFlipped] = useState(restore?.flipped ?? false);
+  /** Non-null while a graded card is flying off screen. */
+  const [swipe, setSwipe] = useState<SwipeDir | null>(null);
+  const reduceMotion = useReducedMotion();
   const [starting, setStarting] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcription, setTranscription] = useState<string | null>(null);
@@ -270,7 +318,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     }
   }, [idx, deck.length]);
 
-  const handleGrade = useCallback((grade: 1 | 3 | 5) => {
+  const applyGrade = useCallback((grade: 1 | 3 | 5) => {
     if (!currentWord) return;
     submitReviewMutation.mutate({ vocabId: currentWord.id, grade });
     const key = grade === 1 ? "again" : grade === 3 ? "good" : "easy";
@@ -291,6 +339,19 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     }
     advance();
   }, [currentWord, idx, submitReviewMutation, advance]);
+
+  const handleGrade = useCallback((grade: 1 | 3 | 5) => {
+    if (!currentWord) return;
+    // Fly the card out in the grade's direction, then apply. The delay is the
+    // animation's own length — grading immediately would swap the content
+    // underneath a card that is still on screen.
+    const dir = GRADES.find((g) => g.grade === grade)?.dir ?? "up";
+    setSwipe(dir);
+    window.setTimeout(() => {
+      setSwipe(null);
+      applyGrade(grade);
+    }, 260);
+  }, [currentWord, applyGrade]);
 
   // Keyboard shortcuts to rate faster: 1 = Again, 2 = Good, 3 = Easy.
   // Space flips the card (same as tapping it).
@@ -526,9 +587,27 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
             </div>
           ) : (
           /* Flip card — front side depends on the chosen "show first" language */
-          <div className="flip-card w-full" style={{ height: "220px" }} onClick={() => setFlipped((f) => !f)}>
+          <motion.div
+            className="w-full"
+            style={{ height: "260px", touchAction: "pan-y" }}
+            // Drag to grade by hand, in the same directions the buttons fly:
+            // left = Again, up = Good, right = Easy.
+            drag={reduceMotion ? false : true}
+            dragSnapToOrigin
+            dragElastic={0.5}
+            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+            onDragEnd={(_, info) => {
+              const { x, y } = info.offset;
+              if (y < -SWIPE_THRESHOLD && Math.abs(y) > Math.abs(x)) handleGrade(3);
+              else if (x < -SWIPE_THRESHOLD) handleGrade(1);
+              else if (x > SWIPE_THRESHOLD) handleGrade(5);
+            }}
+            animate={swipe ? FLY[swipe] : { x: 0, y: 0, rotate: 0, opacity: 1 }}
+            transition={{ duration: swipe ? 0.26 : 0.2, ease: "easeOut" }}
+          >
+          <div className="flip-card w-full h-full" onClick={() => setFlipped((f) => !f)}>
             <div className={cn("flip-card-inner w-full h-full", flipped && "flipped")}>
-              <div className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
+              <div className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-grab active:cursor-grabbing shadow-lg">
                 {sm2Status && (
                   <span className={cn("absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full font-semibold", SM2_STATUS_COLORS[sm2Status] ?? "bg-muted text-muted-foreground")}>
                     {SM2_STATUS_LABELS[sm2Status] ?? sm2Status}
@@ -537,12 +616,19 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
                 <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.term : currentWord.translation}</p>
                 <p className="text-xs text-muted-foreground mt-2">Tap or press <kbd className="font-mono border border-current rounded px-1 leading-tight">space</kbd> to reveal</p>
               </div>
-              <div className="flip-card-back absolute inset-0 bg-gradient-to-br from-primary/10 to-card border border-primary/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer shadow-lg">
+              <div className="flip-card-back absolute inset-0 bg-gradient-to-br from-primary/10 to-card border border-primary/30 rounded-2xl flex flex-col items-center justify-center p-5 cursor-grab active:cursor-grabbing shadow-lg">
                 <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.translation : currentWord.term}</p>
-                <p className="text-xs text-muted-foreground mt-2">Tap or press <kbd className="font-mono border border-current rounded px-1 leading-tight">space</kbd> to flip back</p>
+                {/* Always keyed on the French side, whichever face it is on, so
+                    the sentence demonstrates the French rather than the gloss. */}
+                <CardExample
+                  term={currentWord.term}
+                  translation={currentWord.translation}
+                  visible={flipped}
+                />
               </div>
             </div>
           </div>
+          </motion.div>
           )}
 
           {/* Nav arrows flanking the 3 grade buttons (hidden while editing) */}

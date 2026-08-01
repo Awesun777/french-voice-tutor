@@ -445,6 +445,76 @@ ${picks.map((p, i) => `${i + 1}. verb "${p.infinitive}" — tense ${tenseLabel(p
 
   // ─── Dictionary ─────────────────────────────────────────────────────────────
   dictionary: router({
+    /**
+     * One short example sentence for a term, used on the back of a flashcard.
+     *
+     * A query rather than a mutation so react-query holds it for the session,
+     * and cached in dict_cache on top of that — the cache is global and has no
+     * TTL, so a word costs one generation ever, no matter how many times it
+     * comes round in review or how many users have it.
+     *
+     * Deliberately not dictionary.searchDetails: that returns conjugations,
+     * grammar notes and two examples, which is a far larger and slower call
+     * than a flashcard back needs.
+     */
+    example: protectedProcedure
+      .input(z.object({
+        term: z.string().min(1).max(200),
+        translation: z.string().max(300).optional(),
+      }))
+      .query(async ({ input }) => {
+        const term = input.term.trim();
+        const key = `example::v1::${term.toLowerCase()}`;
+        const cached = await getCached(key);
+        if (cached) return cached as { fr: string; en: string };
+
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "system",
+              content: "You write example sentences for French learners. Return only valid JSON matching the schema.",
+            },
+            {
+              role: "user",
+              content:
+                `French term: "${term}"` +
+                (input.translation ? `\nIt means: "${input.translation}"` : "") +
+                `\n\nWrite ONE short, natural example sentence in French that uses "${term}" ` +
+                `exactly as written, and its English translation.\n` +
+                `- Around 6-12 words: it sits on the back of a flashcard.\n` +
+                `- Everyday register, B1 vocabulary, proper accents.\n` +
+                `- Show the term doing its normal job in a sentence, not a definition.\n` +
+                `- The English must translate the French sentence, not gloss the term.`,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "example_sentence",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: { fr: { type: "string" }, en: { type: "string" } },
+                required: ["fr", "en"],
+                additionalProperties: false,
+              },
+            },
+          } as never,
+        });
+
+        const raw = response.choices[0].message.content ?? "{}";
+        let parsed: { fr?: string; en?: string };
+        try {
+          parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+        } catch {
+          return { fr: "", en: "" };
+        }
+        const result = { fr: parsed.fr ?? "", en: parsed.en ?? "" };
+        // Don't cache a failure — the next card would inherit the blank.
+        if (result.fr) await setCache(key, result);
+        return result;
+      }),
+
     suggest: protectedProcedure
       .input(z.object({ term: z.string().min(1).max(200) }))
       .mutation(async ({ input }) => {
