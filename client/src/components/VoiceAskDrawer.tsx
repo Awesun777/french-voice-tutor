@@ -33,7 +33,16 @@ function extFor(mime: string): string {
   return "webm";
 }
 
-export function VoiceAskDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function VoiceAskDrawer({
+  open,
+  onClose,
+  contextText,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** Text highlighted when the shortcut fired, so "what does it mean?" works. */
+  contextText?: string;
+}) {
   const [phase, setPhase] = useState<Phase>("recording");
   const [question, setQuestion] = useState("");
   const [reply, setReply] = useState("");
@@ -69,6 +78,7 @@ export function VoiceAskDrawer({ open, onClose }: { open: boolean; onClose: () =
           base64,
           mimeType: mime || "audio/webm",
           filename: `question.${extFor(mime)}`,
+          context: contextText || undefined,
         });
         setQuestion(res.question);
         setReply(res.reply);
@@ -80,7 +90,7 @@ export function VoiceAskDrawer({ open, onClose }: { open: boolean; onClose: () =
         setPhase("error");
       }
     },
-    [voiceAsk, utils]
+    [voiceAsk, utils, contextText]
   );
 
   const beginRecording = useCallback(async () => {
@@ -193,6 +203,15 @@ export function VoiceAskDrawer({ open, onClose }: { open: boolean; onClose: () =
             </button>
           </div>
 
+          {/* What the question is anchored to. Shown before recording so you
+              know the selection was picked up, and kept alongside the answer. */}
+          {contextText && (
+            <div className="mx-5 mb-3 rounded-xl bg-speaking-surface px-3.5 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-speaking">Asking about</p>
+              <p className="text-sm text-foreground mt-0.5 line-clamp-3">“{contextText}”</p>
+            </div>
+          )}
+
           <div className="px-5 pb-5 overflow-y-auto">
             {phase === "recording" && (
               <div className="flex flex-col items-center py-6">
@@ -205,8 +224,10 @@ export function VoiceAskDrawer({ open, onClose }: { open: boolean; onClose: () =
                   </div>
                 </div>
                 <p className="text-sm font-semibold text-foreground mt-5">Listening… {mmss}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ask in English or French — "how do I say I'm hungry?"
+                <p className="text-xs text-muted-foreground mt-1 text-center px-4">
+                  {contextText
+                    ? "Ask about the highlighted text — “what does it mean?”"
+                    : "Ask in English or French — “how do I say I'm hungry?”"}
                 </p>
                 <button
                   onClick={stopAndSend}

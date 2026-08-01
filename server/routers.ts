@@ -1160,6 +1160,8 @@ ${docText.slice(0, 20000)}`,
         base64: z.string().min(1),
         mimeType: z.string().default("audio/webm"),
         filename: z.string().max(200).default("question.webm"),
+        /** Text highlighted on the page when the shortcut fired. */
+        context: z.string().max(500).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const bytes = Buffer.from(input.base64, "base64");
@@ -1169,7 +1171,14 @@ ${docText.slice(0, 20000)}`,
         if (!question) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Didn't catch that — try again." });
         }
-        return { question, reply: await answerAsTutor(ctx.user.id, question) };
+        // Highlighted text is folded into the message rather than a separate
+        // system note, so "what does it mean?" resolves against it and the saved
+        // history still reads as a complete question later in Tutor Chat.
+        const context = input.context?.trim();
+        const message = context
+          ? `Regarding this French text: "${context}"\n\n${question}`
+          : question;
+        return { question, context: context || null, reply: await answerAsTutor(ctx.user.id, message) };
       }),
 
     clear: protectedProcedure.mutation(async ({ ctx }) => {

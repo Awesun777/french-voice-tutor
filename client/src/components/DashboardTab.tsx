@@ -393,7 +393,7 @@ function Shortcuts() {
       keys: ["Shift", "Return"],
       icon: <MessageCircle className="w-4 h-4" />,
       title: "Ask your tutor out loud",
-      body: "Starts recording immediately. Ask in English or French, press Return, and the tutor answers in writing.",
+      body: "Starts recording immediately. Highlight a phrase first and just ask “what does it mean?” — the tutor answers in writing.",
       tone: "bg-speaking-surface text-speaking",
     },
   ];

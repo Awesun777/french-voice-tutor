@@ -73,6 +73,7 @@ export default function Home() {
   // Voice question palette — Shift+Return. Records straight away, transcribes,
   // and shows the tutor's written answer.
   const [voiceAskOpen, setVoiceAskOpen] = useState(false);
+  const [voiceAskContext, setVoiceAskContext] = useState<string | undefined>(undefined);
   const voiceAskOpenRef = useRef(false);
   voiceAskOpenRef.current = voiceAskOpen;
 
@@ -86,6 +87,12 @@ export default function Home() {
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       if (voiceAskOpenRef.current) return;
       e.preventDefault();
+      // Captured here, before the palette opens: showing it takes focus, and on
+      // some browsers that collapses the selection. Same trick the dictionary
+      // shortcut uses, so highlighting a word in a transcript or an article and
+      // asking "what does it mean?" resolves against it.
+      const selected = window.getSelection()?.toString().trim() ?? "";
+      setVoiceAskContext(selected ? selected.slice(0, 500) : undefined);
       setVoiceAskOpen(true);
     };
     window.addEventListener("keydown", onKey);
@@ -153,7 +160,11 @@ export default function Home() {
       )}
       {/* Available on every tab, including Tutor Chat — asking out loud is
           useful there too, and the composer keeps Shift+Return for new lines. */}
-      <VoiceAskDrawer open={voiceAskOpen} onClose={() => setVoiceAskOpen(false)} />
+      <VoiceAskDrawer
+        open={voiceAskOpen}
+        contextText={voiceAskContext}
+        onClose={() => { setVoiceAskOpen(false); setVoiceAskContext(undefined); }}
+      />
     </div>
   );
 }
