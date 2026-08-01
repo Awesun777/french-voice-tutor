@@ -19,9 +19,10 @@ import {
   Layers,
   ClipboardCheck,
   LogOut,
-  User,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Avatar } from "@/components/SettingsTab";
 
 interface SidebarProps {
   activeTab: SidebarTab;
@@ -76,6 +77,7 @@ const NAV: NavEntry[] = [
       { id: "grammar", label: "Grammar Test", icon: <GraduationCap className={ICON} /> },
     ],
   },
+  { kind: "leaf", id: "settings", label: "Settings", icon: <Settings className={ICON} /> },
 ];
 
 export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }: SidebarProps) {
@@ -83,6 +85,11 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
     onSuccess: () => { window.location.reload(); },
     onError: () => toast.error("Logout failed"),
   });
+
+  // Google avatar, stored at sign-in. Null for non-Google sign-ins, which the
+  // Avatar component renders as an initial.
+  const { data: profile } = trpc.auth.profile.useQuery();
+  const avatar = profile?.picture ?? null;
 
   // ─── Group flyout ───────────────────────────────────────────────────────────
   // Groups open a floating panel to the right on hover rather than expanding in
@@ -253,9 +260,7 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
       <div className={cn("border-t border-sidebar-border p-2 flex-shrink-0", !open && "flex justify-center")}>
         {open ? (
           <div className="flex items-center gap-2.5 px-2 py-2">
-            <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-              <User className="w-3.5 h-3.5 text-primary" />
-            </div>
+            <Avatar src={avatar} name={user.name} className="w-7 h-7" />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-foreground truncate">{user.name ?? "User"}</p>
               {user.email && <p className="text-xs text-muted-foreground truncate">{user.email}</p>}

@@ -14,6 +14,7 @@ import ListeningTab from "@/components/ListeningTab";
 import ReadingTab from "@/components/ReadingTab";
 import TutorTab from "@/components/TutorTab";
 import ProgressTab from "@/components/ProgressTab";
+import SettingsTab from "@/components/SettingsTab";
 import VoiceAgentChooser from "@/components/VoiceAgentChooser";
 import { Loader2, BookOpen } from "lucide-react";
 
@@ -173,6 +174,7 @@ export default function Home() {
         {activeTab === "tutor" && <TutorTab />}
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}
         {activeTab === "progress" && <ProgressTab />}
+        {activeTab === "settings" && <SettingsTab user={user} />}
       </main>
       {!dictSuppressed && (
         <>

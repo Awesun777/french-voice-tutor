@@ -380,6 +380,19 @@ ${picks.map((p, i) => `${i + 1}. verb "${p.infinitive}" — tense ${tenseLabel(p
 
   auth: router({
     me: publicProcedure.query((opts) => opts.ctx.user),
+
+    /**
+     * The signed-in user's Google avatar.
+     *
+     * The picture comes back from Google's userinfo endpoint at sign-in and is
+     * stored on the google_accounts row; the users table has no avatar column.
+     * Kept separate from `google.status`, which is about the Drive connection —
+     * this is just the photo, and returns null for any non-Google sign-in.
+     */
+    profile: protectedProcedure.query(async ({ ctx }) => {
+      const account = await getGoogleAccountByUserId(ctx.user.id);
+      return { picture: account?.picture ?? null };
+    }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

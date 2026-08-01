@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
-import { Loader2, Flame, BookOpen, Brain, Star, Settings2 } from "lucide-react";
+import { Loader2, Flame, BookOpen, Brain, Star } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
 import { cn } from "@/lib/utils";
 
@@ -37,77 +37,6 @@ function SM2StatsPanel() {
       </div>
       {sm2Stats.dueToday > 0 && (
         <p className="text-xs text-accent-strong font-semibold mt-3 text-center">{sm2Stats.dueToday} words due for review today</p>
-      )}
-    </div>
-  );
-}
-
-// ─── Review Settings Panel ────────────────────────────────────────────────────
-function ReviewSettingsPanel() {
-  const { data: settings, refetch } = trpc.review.getSettings.useQuery();
-  const updateMutation = trpc.review.updateSettings.useMutation({ onSuccess: () => refetch() });
-  const [open, setOpen] = useState(false);
-  const [newWordsCap, setNewWordsCap] = useState<number | null>(null);
-  const [reviewCap, setReviewCap] = useState<number | null>(null);
-
-  const currentNew = newWordsCap ?? settings?.dailyNewWords ?? 10;
-  const currentReview = reviewCap ?? settings?.dailyReviewCap ?? 20;
-
-  const handleSave = () => {
-    updateMutation.mutate({ dailyNewWords: currentNew, dailyReviewCap: currentReview });
-    setOpen(false);
-  };
-
-  return (
-    <div className="bg-card card-float rounded-2xl overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/20 transition-colors"
-      >
-        <div className="flex items-center gap-2">
-          <Settings2 className="w-4 h-4 text-muted-foreground" />
-          <p className="text-sm font-bold text-foreground">Review Settings</p>
-        </div>
-        <p className="text-xs text-muted-foreground">{currentNew} new · {currentReview} review per day</p>
-      </button>
-      {open && (
-        <div className="px-5 pb-5 space-y-5 border-t border-border pt-4">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold text-foreground">New words per day</p>
-              <span className="text-sm font-bold text-primary">{currentNew}</span>
-            </div>
-            <input
-              type="range" min={1} max={30} step={1} value={currentNew}
-              onChange={(e) => setNewWordsCap(Number(e.target.value))}
-              className="w-full accent-primary"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>1</span><span>10</span><span>20</span><span>30</span>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold text-foreground">Review words per day</p>
-              <span className="text-sm font-bold text-primary">{currentReview}</span>
-            </div>
-            <input
-              type="range" min={5} max={100} step={5} value={currentReview}
-              onChange={(e) => setReviewCap(Number(e.target.value))}
-              className="w-full accent-primary"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-1">
-              <span>5</span><span>25</span><span>50</span><span>100</span>
-            </div>
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={updateMutation.isPending}
-            className="w-full py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
-          >
-            {updateMutation.isPending ? "Saving…" : "Save Settings"}
-          </button>
-        </div>
       )}
     </div>
   );
@@ -308,8 +237,6 @@ export default function ProgressTab() {
         {/* SM-2 Mastery Breakdown */}
         <SM2StatsPanel />
 
-        {/* Review Settings */}
-        <ReviewSettingsPanel />
       </div>
     </div>
   );
