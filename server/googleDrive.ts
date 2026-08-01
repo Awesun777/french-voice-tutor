@@ -810,7 +810,7 @@ export async function exportLibraryToGoogleDoc(
   }
 
   const lines: string[] = [
-    `Le Dictionnaire — My French Vocabulary Library`,
+    `RomainTalk — My French Vocabulary Library`,
     `Last updated: ${now}`,
     `Total words: ${vocab.length}`,
     ``,
@@ -874,7 +874,7 @@ export async function exportLibraryToGoogleDoc(
 
   // Create a new Google Doc via Drive API (multipart upload)
   const metadata = {
-    name: "Le Dictionnaire — French Vocabulary Library",
+    name: "RomainTalk — French Vocabulary Library",
     mimeType: "application/vnd.google-apps.document",
   };
 

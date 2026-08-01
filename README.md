@@ -1,4 +1,4 @@
-# Le Dictionnaire — French Dictionary & Tutor
+# RomainTalk — French Dictionary & Tutor
 
 A personal French learning app built around a tight loop: **speak with your AI tutor, save what you learn, then drill it until it sticks.** It combines a real-time voice conversation agent, an intelligent vocabulary library, a French dictionary, and an adaptive quiz and flashcard system — all in one place.
 
