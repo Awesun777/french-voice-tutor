@@ -145,6 +145,38 @@ const DETAILS_SCHEMA_PROPS = {
 // ─── AI import cache (per-chunk) ──────────────────────────────────────────────
 const importCache = new Map<string, unknown[]>();
 
+/**
+ * Save a user message, answer it as the French tutor with recent history for
+ * context, and save the reply. Shared by `tutor.chat` (typed) and
+ * `tutor.voiceAsk` (spoken) so both behave identically and land in one history.
+ */
+async function answerAsTutor(userId: number, message: string): Promise<string> {
+  await saveTutorMessage(userId, "user", message);
+
+  const history = await getTutorHistory(userId, 20);
+  const messages = history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+  const response = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert French language tutor. Help the user learn French through conversation, grammar explanations, sentence building, and vocabulary practice.
+- Always provide French examples WITH proper accents
+- Correct mistakes gently and explain why
+- Encourage the user
+- Keep responses concise but helpful
+- When showing French text, also provide the English translation`,
+      },
+      ...messages,
+    ],
+  });
+
+  const replyRaw = response.choices[0].message.content ?? "Je suis désolé, je n'ai pas pu répondre.";
+  const reply = typeof replyRaw === "string" ? replyRaw : JSON.stringify(replyRaw);
+  await saveTutorMessage(userId, "assistant", reply);
+  return reply;
+}
+
 /** One hoverable span in a cue: a single word, or a whole idiom. */
 export interface VideoToken {
   /** Character offsets into the cue text. */
@@ -262,7 +294,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // OpenAI transcription limit
 
 /** Transcribe raw audio bytes as French via OpenAI (gpt-4o-transcribe). */
-async function openaiTranscribeBytes(bytes: Buffer, filename: string, mimeType: string): Promise<string> {
+/**
+ * `language` is optional so callers can let Whisper auto-detect. Listening-lab
+ * uploads are known-French and pass "fr", but a spoken question to the tutor is
+ * as likely to be English ("how do I say I'm hungry?") — forcing French there
+ * turns the question into nonsense.
+ */
+async function openaiTranscribeBytes(
+  bytes: Buffer,
+  filename: string,
+  mimeType: string,
+  language: string | null = "fr"
+): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "OpenAI not configured" });
   if (bytes.length > MAX_AUDIO_BYTES) {
@@ -271,7 +314,7 @@ async function openaiTranscribeBytes(bytes: Buffer, filename: string, mimeType: 
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(bytes)], { type: mimeType || "audio/mpeg" }), filename);
   form.append("model", "gpt-4o-transcribe");
-  form.append("language", "fr");
+  if (language) form.append("language", language);
   form.append("response_format", "json");
   const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -1101,32 +1144,32 @@ ${docText.slice(0, 20000)}`,
     chat: protectedProcedure
       .input(z.object({ message: z.string().min(1).max(2000) }))
       .mutation(async ({ ctx, input }) => {
-        // Save user message
-        await saveTutorMessage(ctx.user.id, "user", input.message);
+        return { reply: await answerAsTutor(ctx.user.id, input.message) };
+      }),
 
-        // Get recent history for context
-        const history = await getTutorHistory(ctx.user.id, 20);
-        const messages = history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-
-        const response = await invokeLLM({
-          messages: [
-            {
-              role: "system",
-              content: `You are an expert French language tutor. Help the user learn French through conversation, grammar explanations, sentence building, and vocabulary practice. 
-- Always provide French examples WITH proper accents
-- Correct mistakes gently and explain why
-- Encourage the user
-- Keep responses concise but helpful
-- When showing French text, also provide the English translation`,
-            },
-            ...messages,
-          ],
-        });
-
-        const replyRaw = response.choices[0].message.content ?? "Je suis désolé, je n'ai pas pu répondre.";
-        const reply = typeof replyRaw === 'string' ? replyRaw : JSON.stringify(replyRaw);
-        await saveTutorMessage(ctx.user.id, "assistant", reply);
-        return { reply };
+    /**
+     * Ask the tutor by voice: transcribe, then answer, in one round-trip.
+     *
+     * Split into two calls it would be two network waits before anything
+     * appears, which is very noticeable when you have just finished speaking.
+     * The question and answer are saved to the same history as Tutor Chat, so
+     * a spoken question can be followed up there by typing.
+     */
+    voiceAsk: protectedProcedure
+      .input(z.object({
+        base64: z.string().min(1),
+        mimeType: z.string().default("audio/webm"),
+        filename: z.string().max(200).default("question.webm"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const bytes = Buffer.from(input.base64, "base64");
+        if (!bytes.length) throw new TRPCError({ code: "BAD_REQUEST", message: "No audio recorded." });
+        // No language hint: the question may be in English or French.
+        const question = (await openaiTranscribeBytes(bytes, input.filename, input.mimeType, null)).trim();
+        if (!question) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Didn't catch that — try again." });
+        }
+        return { question, reply: await answerAsTutor(ctx.user.id, question) };
       }),
 
     clear: protectedProcedure.mutation(async ({ ctx }) => {

@@ -16,7 +16,10 @@ import { cn } from "@/lib/utils";
 import { SidebarTab } from "@/types";
 import { AvatarVideo } from "@/components/AvatarVideo";
 import { usePronounce } from "@/lib/pronounce";
-import { Mic, Newspaper, Youtube, ArrowRight, Volume2 } from "lucide-react";
+import {
+  Mic, Newspaper, Youtube, ArrowRight, Volume2, BookMarked, Brain, CreditCard,
+  Search, MessageCircle, Headphones,
+} from "lucide-react";
 
 /** What the mascot says when you poke it. Short, spoken, and actually useful. */
 const MASCOT_LINES = [
@@ -284,7 +287,152 @@ export default function DashboardTab({
             </p>
           </Panel>
         </div>
+
+        <HowItWorks setActiveTab={setActiveTab} />
+        <Shortcuts />
       </div>
     </div>
+  );
+}
+
+// ─── Walkthrough ──────────────────────────────────────────────────────────────
+
+/**
+ * The one thing that isn't obvious from the two panels above: speaking,
+ * listening and reading are three doors into the same loop, and the loop is
+ * vocabulary. Laid out as numbered steps because the order is the point.
+ */
+function HowItWorks({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void }) {
+  const reduce = useReducedMotion();
+
+  const steps = [
+    {
+      n: 1,
+      title: "Meet words in the wild",
+      body: "Talking to Romain or Anna, following a video transcript, or reading an article. Real context, not a word list.",
+      icons: [<Mic key="m" className="w-3.5 h-3.5" />, <Headphones key="h" className="w-3.5 h-3.5" />, <Newspaper key="n" className="w-3.5 h-3.5" />],
+      tone: "bg-speaking-surface text-speaking",
+    },
+    {
+      n: 2,
+      title: "Save the ones you didn't know",
+      body: "Hover any underlined word for its meaning and hit save. Everything lands in My Library, tagged with where you found it.",
+      icons: [<BookMarked key="b" className="w-3.5 h-3.5" />],
+      tone: "bg-secondary text-primary",
+      tab: "library" as const,
+    },
+    {
+      n: 3,
+      title: "Let them come back to you",
+      body: "Spaced repetition schedules each word. Quiz tests recall, Flashcards drill recognition, and both pull from the same Due Today queue.",
+      icons: [<Brain key="q" className="w-3.5 h-3.5" />, <CreditCard key="f" className="w-3.5 h-3.5" />],
+      tone: "bg-secondary text-primary",
+      tab: "quiz" as const,
+    },
+  ];
+
+  return (
+    <motion.section
+      initial={reduce ? false : { opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.24, ease: [0.22, 1, 0.36, 1] }}
+      className="mt-10"
+    >
+      <h2 className="font-display text-lg font-bold text-foreground">How it fits together</h2>
+      <p className="text-sm text-muted-foreground mt-1">
+        However you meet a word, it ends up in the same place — and comes back until you know it.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+        {steps.map((s) => (
+          <div
+            key={s.n}
+            className="relative rounded-2xl bg-card p-5 shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]"
+          >
+            <div className="flex items-center gap-2">
+              <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg", s.tone)}>
+                {s.icons}
+              </span>
+              <span className="font-display text-xs font-bold text-muted-foreground">STEP {s.n}</span>
+            </div>
+            <p className="font-display text-base font-bold text-foreground mt-3">{s.title}</p>
+            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{s.body}</p>
+            {s.tab && (
+              <button
+                onClick={() => setActiveTab(s.tab)}
+                className="group mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
+              >
+                Open
+                <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+/**
+ * Neither shortcut is discoverable — one is a punctuation key, the other is a
+ * chord most apps use for "new line" — so the dashboard is the only place a
+ * user would find out they exist.
+ */
+function Shortcuts() {
+  const reduce = useReducedMotion();
+
+  const items = [
+    {
+      keys: ["Shift", "\\"],
+      icon: <Search className="w-4 h-4" />,
+      title: "Look up any word",
+      body: "Opens the dictionary from anywhere. Highlight a word first and it arrives already filled in.",
+      tone: "bg-secondary text-primary",
+    },
+    {
+      keys: ["Shift", "Return"],
+      icon: <MessageCircle className="w-4 h-4" />,
+      title: "Ask your tutor out loud",
+      body: "Starts recording immediately. Ask in English or French, press Return, and the tutor answers in writing.",
+      tone: "bg-speaking-surface text-speaking",
+    },
+  ];
+
+  return (
+    <motion.section
+      initial={reduce ? false : { opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      className="mt-10 mb-4"
+    >
+      <h2 className="font-display text-lg font-bold text-foreground">Two shortcuts worth knowing</h2>
+      <p className="text-sm text-muted-foreground mt-1">
+        Both work on every page, and both stay out of the way while you're typing.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+        {items.map((s) => (
+          <div key={s.title} className="rounded-2xl bg-card p-5 shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]">
+            <div className="flex items-center gap-3">
+              <span className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0", s.tone)}>
+                {s.icon}
+              </span>
+              <div className="flex items-center gap-1">
+                {s.keys.map((k, i) => (
+                  <span key={k} className="flex items-center gap-1">
+                    {i > 0 && <span className="text-muted-foreground text-xs">+</span>}
+                    <kbd className="px-2 py-1 rounded-md bg-muted/70 text-xs font-mono font-bold text-foreground">
+                      {k}
+                    </kbd>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <p className="font-display text-base font-bold text-foreground mt-3">{s.title}</p>
+            <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{s.body}</p>
+          </div>
+        ))}
+      </div>
+    </motion.section>
   );
 }

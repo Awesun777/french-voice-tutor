@@ -2,6 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { SidebarTab } from "@/types";
 import { DictionaryFab, DictionarySearchDrawer } from "@/components/DictionarySearchDrawer";
+import { VoiceAskDrawer } from "@/components/VoiceAskDrawer";
 import Sidebar from "@/components/Sidebar";
 import LandingPage from "@/components/LandingPage";
 import DashboardTab from "@/components/DashboardTab";
@@ -69,6 +70,28 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Voice question palette — Shift+Return. Records straight away, transcribes,
+  // and shows the tutor's written answer.
+  const [voiceAskOpen, setVoiceAskOpen] = useState(false);
+  const voiceAskOpenRef = useRef(false);
+  voiceAskOpenRef.current = voiceAskOpen;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Tutor Chat binds Shift+Return to "new line" in its composer, and any
+      // other text field may too, so a focused input always wins. While the
+      // palette is open Return means "stop and ask", handled inside it.
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (voiceAskOpenRef.current) return;
+      e.preventDefault();
+      setVoiceAskOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Read through a ref so the key listener stays mounted once rather than
   // re-binding on every tab change.
   const suppressedRef = useRef(dictSuppressed);
@@ -128,6 +151,9 @@ export default function Home() {
           <DictionarySearchDrawer open={dictOpen} onClose={closeDict} initialTerm={dictSeed} />
         </>
       )}
+      {/* Available on every tab, including Tutor Chat — asking out loud is
+          useful there too, and the composer keeps Shift+Return for new lines. */}
+      <VoiceAskDrawer open={voiceAskOpen} onClose={() => setVoiceAskOpen(false)} />
     </div>
   );
 }
