@@ -96,14 +96,17 @@ export default function LandingPage() {
               transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}
             />
           </div>
-          <img
-            src="/brand/romaintalk-wordmark.png"
-            alt="RomainTalk"
-            className="h-9 sm:h-11 w-auto mt-6"
-          />
+          {/* Real text, not the wordmark image. Google's OAuth verification
+              checks that the app name on the consent screen appears on the home
+              page, and an <img alt> does not satisfy it. Reproduces the
+              wordmark's own two-tone treatment. */}
+          <p className="font-display text-3xl sm:text-4xl font-bold tracking-tight mt-6">
+            <span className="text-primary">Romain</span>
+            <span className="text-speaking">Talk</span>
+          </p>
         </Rise>
 
-        <Rise delay={0.08} className="text-center mt-6">
+        <Rise delay={0.08} className="text-center mt-5">
           <h1 className="font-display text-3xl sm:text-5xl font-bold text-foreground leading-[1.1] max-w-2xl mx-auto">
             Stop studying French. Start using it.
           </h1>
@@ -198,12 +201,24 @@ export default function LandingPage() {
 
         <Rise delay={0.48} className="flex flex-col items-center mt-14">
           <GoogleButton />
-          <p className="text-xs text-muted-foreground mt-4">
+        </Rise>
+
+        {/* The app name in text a second time, where a reviewer checking
+            branding expects to find it. */}
+        <footer className="mt-16 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+          <p>
+            <span className="font-display font-bold text-foreground">RomainTalk</span>
+            {" — learn French by using it."}
+          </p>
+          <div className="flex items-center gap-4">
+            <a href="https://romaintalk.com" className="hover:text-foreground transition-colors">
+              romaintalk.com
+            </a>
             <a href="/privacy" className="underline underline-offset-2 hover:text-foreground transition-colors">
               Privacy Policy
             </a>
-          </p>
-        </Rise>
+          </div>
+        </footer>
       </div>
     </div>
   );
