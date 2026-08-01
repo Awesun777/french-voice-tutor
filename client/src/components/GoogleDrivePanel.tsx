@@ -12,12 +12,12 @@
  *     Level 2 — per-word accept/skip within an expanded group
  */
 import { useState, useRef, useCallback } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { getGoogleLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -25,13 +25,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -49,6 +42,7 @@ import {
   CheckCheck,
   ChevronDown,
   ChevronRight,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -90,8 +84,11 @@ function formatDateKey(dateKey: string): string {
 
 export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?: string) => void } = {}) {
   const utils = trpc.useUtils();
+  const reduceMotion = useReducedMotion();
   const [docUrl, setDocUrl] = useState("");
   const [showQueue, setShowQueue] = useState(false);
+  /** Drive settings stay folded away; the bar sits above the library. */
+  const [showDriveSettings, setShowDriveSettings] = useState(false);
   const [selectedModel, setSelectedModel] = useState<"deepseek-v4-flash" | "gemini-2.5-flash">("deepseek-v4-flash");
   // Track which groups are expanded for per-word review
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -347,211 +344,225 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
     (a, b) => dateKeyToMs(b.dateKey) - dateKeyToMs(a.dateKey)
   );
 
+  const lastSynced = status?.lastSyncedAt
+    ? new Date(status.lastSyncedAt).toLocaleString(undefined, {
+        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      })
+    : null;
+
   return (
     <div className="space-y-4">
-      <Card className="border-border bg-card">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {/* Google Drive icon */}
-              <svg width="20" height="20" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
-                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9
--3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-                <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
-                <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-                <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-                <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-              </svg>
-              <CardTitle className="text-base">Google Drive Sync</CardTitle>
-            </div>
-            {pendingCount > 0 && (
-              <Badge
-                variant="default"
-                className="cursor-pointer bg-primary text-primary-foreground"
-                onClick={() => setShowQueue(true)}
-              >
-                {pendingCount} pending
-              </Badge>
-            )}
+      {/* One compact bar. Everything that isn't "sync now" hides behind the gear:
+          this sits above the library and used to push it off the screen. */}
+      <div className="rounded-2xl bg-card shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.2)] overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center flex-shrink-0">
+            <svg width="18" height="18" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+              <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+              <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+              <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+              <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+              <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+              <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+            </svg>
           </div>
-          <CardDescription className="text-xs">
-            {status?.connected
-              ? `Connected as ${status.email}`
-              : "Connect your Google account to sync vocabulary from a Google Doc"}
-          </CardDescription>
-        </CardHeader>
 
-        <CardContent className="space-y-3">
-          {!status?.connected ? (
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-foreground leading-tight">Google Drive</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {!status?.connected
+                ? "Not connected"
+                : syncing
+                  ? (syncStatus || "Syncing…")
+                  : syncError
+                    ? <span className="text-destructive">{syncError}</span>
+                    : (
+                      <>
+                        {autoSync === "off" ? "Manual sync" : `Syncs ${autoSync}`}
+                        {lastSynced ? ` · last ${lastSynced}` : ""}
+                      </>
+                    )}
+            </p>
+          </div>
+
+          {status?.connected ? (
+            <>
+              {pendingCount > 0 && (
+                <button
+                  onClick={() => setShowQueue(true)}
+                  className="flex-shrink-0 px-2.5 py-1 rounded-full bg-speaking-surface text-speaking text-xs font-bold hover:bg-speaking/20 transition-colors"
+                >
+                  {pendingCount} pending
+                </button>
+              )}
+              <button
+                onClick={handleSyncNow}
+                disabled={syncing || (!docUrl && !status.sourceDocUrl)}
+                className="flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-[0_6px_16px_-8px_rgb(23_63_107_/_0.8)] hover:bg-primary/90 transition-colors disabled:opacity-40"
+              >
+                <RefreshCw className={cn("w-3.5 h-3.5", syncing && "animate-spin")} />
+                {syncing ? "Syncing…" : "Sync now"}
+              </button>
+              <button
+                onClick={() => setShowDriveSettings((v) => !v)}
+                aria-expanded={showDriveSettings}
+                aria-label="Drive settings"
+                className="flex-shrink-0 p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              >
+                <Settings2 className={cn("w-4 h-4 transition-transform", showDriveSettings && "rotate-90")} />
+              </button>
+            </>
+          ) : (
             <a
               href={getGoogleLoginUrl()}
-              className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-white hover:bg-gray-50 text-gray-800 font-medium rounded-lg transition-all duration-200 shadow-sm border border-gray-200 text-sm"
+              className="flex-shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card text-foreground text-xs font-bold shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.3)] hover:shadow-[0_8px_20px_-8px_rgb(23_63_107_/_0.4)] transition-shadow"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
                 <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
               </svg>
-              Connect Google Account
+              Connect
             </a>
-          ) : (
-            <>
-              {/* Source doc URL */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Source Google Doc URL</label>
-                <div className="flex gap-2">
-                  <Input
-                    value={docUrl || status.sourceDocUrl || ""}
-                    onChange={(e) => setDocUrl(e.target.value)}
-                    placeholder="https://docs.google.com/document/d/..."
-                    className="text-xs h-8"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 shrink-0"
-                    onClick={() => saveSettingsMutation.mutate({ sourceDocUrl: docUrl || status.sourceDocUrl || "" })}
-                    disabled={saveSettingsMutation.isPending}
-                  >
-                    Save
-                  </Button>
-                </div>
-              </div>
-
-              {/* Extraction model selector */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Extraction Model</label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedModel("deepseek-v4-flash");
-                      saveSettingsMutation.mutate({ extractionModel: "deepseek-v4-flash" });
-                    }}
-                    className={cn(
-                      "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all",
-                      selectedModel === "deepseek-v4-flash"
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
-                    )}
-                  >
-                    DeepSeek V4 Flash
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedModel("gemini-2.5-flash");
-                      saveSettingsMutation.mutate({ extractionModel: "gemini-2.5-flash" });
-                    }}
-                    className={cn(
-                      "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all",
-                      selectedModel === "gemini-2.5-flash"
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
-                    )}
-                  >
-                    Gemini 2.5 Flash
-                  </button>
-                </div>
-              </div>
-
-              {/* Auto-sync schedule */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Auto-Sync Schedule</label>
-                <div className="flex gap-2">
-                  {(["off", "daily", "weekly"] as const).map((freq) => (
-                    <button
-                      key={freq}
-                      type="button"
-                      onClick={() => {
-                        setAutoSync(freq);
-                        saveSettingsMutation.mutate({ autoSyncFrequency: freq });
-                      }}
-                      className={cn(
-                        "flex-1 py-1.5 px-3 rounded-md text-xs font-medium border transition-all capitalize",
-                        autoSync === freq
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-transparent text-muted-foreground border-border hover:border-primary/50"
-                      )}
-                    >
-                      {freq}
-                    </button>
-                  ))}
-                </div>
-                {autoSync !== "off" && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Syncs {autoSync} in the background (08:00 UTC). New words wait in the review
-                    queue; dates without a year are assumed to be the current year — adjust them
-                    there if needed.
-                  </p>
-                )}
-              </div>
-
-              {/* Sync Now */}
-              <div className="space-y-1">
-                <Button
-                  size="sm"
-                  className="gap-2 w-full"
-                  onClick={handleSyncNow}
-                  disabled={syncing || (!docUrl && !status.sourceDocUrl)}
-                >
-                  {syncing ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  )}
-                  {syncing ? "Syncing…" : "Sync Now"}
-                </Button>
-                {syncStatus && (
-                  <p className={cn(
-                    "text-xs text-center",
-                    syncError ? "text-destructive" : "text-muted-foreground"
-                  )}>
-                    {syncError || syncStatus}
-                  </p>
-                )}
-              </div>
-
-              {/* Export to Drive */}
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2 w-full"
-                onClick={() => exportMutation.mutate()}
-                disabled={exportMutation.isPending}
-              >
-                {exportMutation.isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Upload className="w-3.5 h-3.5" />
-                )}
-                Export Library to Drive
-              </Button>
-
-              {/* Last synced */}
-              {status.lastSyncedAt && (
-                <p className="text-xs text-muted-foreground">
-                  Last synced: {new Date(status.lastSyncedAt).toLocaleString()}
-                </p>
-              )}
-
-              {/* Disconnect */}
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-xs text-muted-foreground hover:text-destructive gap-1.5 px-2"
-                onClick={() => disconnectMutation.mutate()}
-                disabled={disconnectMutation.isPending}
-              >
-                <Unlink className="w-3 h-3" />
-                Disconnect Google
-              </Button>
-            </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Progress bar during a sync, so the bar itself reports progress rather
+            than needing a status line permanently reserved below it. */}
+        <AnimatePresence>
+          {syncing && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="h-0.5 bg-secondary overflow-hidden"
+            >
+              <motion.div
+                className="h-full w-1/3 bg-primary"
+                animate={reduceMotion ? undefined : { x: ["-100%", "400%"] }}
+                transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence initial={false}>
+          {status?.connected && showDriveSettings && (
+            <motion.div
+              initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="px-4 pb-4 pt-1 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Extraction model */}
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Model</p>
+                    <div className="flex gap-1 p-1 rounded-lg bg-muted/60">
+                      {([
+                        { id: "deepseek-v4-flash", label: "DeepSeek" },
+                        { id: "gemini-2.5-flash", label: "Gemini" },
+                      ] as const).map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => {
+                            setSelectedModel(m.id);
+                            saveSettingsMutation.mutate({ extractionModel: m.id });
+                          }}
+                          className={cn(
+                            "flex-1 py-1.5 rounded-md text-xs font-bold transition-colors",
+                            selectedModel === m.id
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Auto-sync schedule */}
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Auto-sync</p>
+                    <div className="flex gap-1 p-1 rounded-lg bg-muted/60">
+                      {(["off", "daily", "weekly"] as const).map((freq) => (
+                        <button
+                          key={freq}
+                          onClick={() => {
+                            setAutoSync(freq);
+                            saveSettingsMutation.mutate({ autoSyncFrequency: freq });
+                          }}
+                          className={cn(
+                            "flex-1 py-1.5 rounded-md text-xs font-bold capitalize transition-colors",
+                            autoSync === freq
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {freq}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Source doc */}
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Source doc</p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={docUrl || status.sourceDocUrl || ""}
+                      onChange={(e) => setDocUrl(e.target.value)}
+                      placeholder="https://docs.google.com/document/d/…"
+                      className="text-xs h-8 bg-muted/50 border-0"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 shrink-0"
+                      onClick={() => saveSettingsMutation.mutate({ sourceDocUrl: docUrl || status.sourceDocUrl || "" })}
+                      disabled={saveSettingsMutation.isPending}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                  {autoSync !== "off" && (
+                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                      Runs at 08:00 UTC. New words wait in the review queue; dates without a year are
+                      assumed to be this year.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    onClick={() => exportMutation.mutate()}
+                    disabled={exportMutation.isPending}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-primary transition-colors disabled:opacity-50"
+                  >
+                    {exportMutation.isPending
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Upload className="w-3.5 h-3.5" />}
+                    Export library to Drive
+                  </button>
+                  <button
+                    onClick={() => disconnectMutation.mutate()}
+                    disabled={disconnectMutation.isPending}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                  >
+                    <Unlink className="w-3 h-3" />
+                    Disconnect
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* Year picker dialog */}
       <Dialog open={showYearPicker} onOpenChange={(open) => { if (!open) setShowYearPicker(false); }}>
