@@ -7,6 +7,14 @@
     <title>RomainTalk – Learn French by using it</title>
     <meta name="description" content="RomainTalk — talk to a French tutor who talks back, and read the news and watch the videos you would anyway — with every word one hover from its meaning." />
     <link rel="icon" type="image/png" href="/brand/romaintalk-icon.png" />
+    <meta property="og:site_name" content="RomainTalk" />
+    <meta property="og:title" content="RomainTalk – Learn French by using it" />
+    <meta
+      property="og:description"
+      content="Talk to a French tutor who talks back, and read the news and watch the videos you would anyway — with every word one hover from its meaning." />
+    <meta property="og:url" content="https://romaintalk.com" />
+    <meta property="og:image" content="https://romaintalk.com/brand/romaintalk-icon.png" />
+    <meta property="og:type" content="website" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -15,6 +23,27 @@
   </head>
 
   <body>
+    <!--
+      The app renders client-side, so without this the served HTML body is only
+      the JS bundle — the brand name exists nowhere a non-JS reader can see it.
+      This is what someone with scripting disabled actually gets, and it states
+      the same name and purpose the rendered page does.
+    -->
+    <noscript>
+      <div style="font-family: system-ui, sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; color: #252321;">
+        <h1 style="font-size: 1.75rem; margin: 0 0 0.5rem;">RomainTalk</h1>
+        <p style="font-size: 1.05rem; line-height: 1.6; margin: 0 0 1rem;">
+          RomainTalk helps you learn French by using it: voice conversations with a tutor
+          who talks back, plus French news and videos where every word is one hover from
+          its meaning.
+        </p>
+        <p style="line-height: 1.6;">
+          RomainTalk needs JavaScript enabled. Please turn it on and reload.
+          <br />
+          <a href="/privacy" style="color: #173F6B;">Privacy Policy</a>
+        </p>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script
