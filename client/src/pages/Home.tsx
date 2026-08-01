@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SidebarTab } from "@/types";
 import { DictionaryFab, DictionarySearchDrawer } from "@/components/DictionarySearchDrawer";
 import Sidebar from "@/components/Sidebar";
+import DashboardTab from "@/components/DashboardTab";
 import DictionaryTab from "@/components/DictionaryTab";
 import LibraryTab from "@/components/LibraryTab";
 import QuizTab from "@/components/QuizTab";
@@ -18,7 +19,7 @@ import { Loader2, BookOpen } from "lucide-react";
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<SidebarTab>("dictionary");
+  const [activeTab, setActiveTab] = useState<SidebarTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // Set by an import/voice "Review these words" CTA: pre-selects a date in the
   // review launch screen. Cleared on manual sidebar navigation so it doesn't
@@ -161,6 +162,7 @@ export default function Home() {
         user={user}
       />
       <main className="flex-1 overflow-hidden flex flex-col min-w-0">
+        {activeTab === "dashboard" && <DashboardTab setActiveTab={navTab} />}
         {activeTab === "dictionary" && <DictionaryTab />}
         {activeTab === "library" && <LibraryTab setActiveTab={setActiveTab} onStartReview={startReview} />}
         {activeTab === "quiz" && <QuizTab reviewTarget={reviewTarget} />}

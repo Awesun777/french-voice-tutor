@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import {
   BookOpen,
   BookMarked,
+  LayoutDashboard,
   Brain,
   CreditCard,
   MessageCircle,
@@ -48,6 +49,7 @@ type NavEntry = NavLeaf | NavGroup;
 const ICON = "w-4.5 h-4.5";
 
 const NAV: NavEntry[] = [
+  { kind: "leaf", id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className={ICON} /> },
   { kind: "leaf", id: "dictionary", label: "Dictionary", icon: <BookOpen className={ICON} /> },
   { kind: "leaf", id: "tutor", label: "Tutor Chat", icon: <MessageCircle className={ICON} /> },
   { kind: "leaf", id: "voice-chat", label: "Voice Chat", icon: <Mic className={ICON} /> },
