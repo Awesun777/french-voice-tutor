@@ -19,6 +19,15 @@ import { PronounceButton } from "@/components/PronounceButton";
 
 type Phase = "recording" | "thinking" | "answered" | "error";
 
+/**
+ * How long after opening the palette a Return keypress is ignored. Long enough
+ * to outlast the OS auto-repeat that the opening Shift+Return chord produces.
+ */
+const STOP_GRACE_MS = 700;
+
+/** Below this there is nothing worth sending to a transcription model. */
+const MIN_RECORDING_MS = 800;
+
 /** Formats fall back in order — Safari does not support webm/opus. */
 const MIME_PREFS = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
 
@@ -54,6 +63,8 @@ export function VoiceAskDrawer({
   const streamRef = useRef<MediaStream | null>(null);
   /** Set when the user closes mid-recording, so the audio is thrown away. */
   const abortedRef = useRef(false);
+  /** When the current recording began, for the Return grace period. */
+  const openedAt = useRef(0);
 
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
@@ -95,6 +106,7 @@ export function VoiceAskDrawer({
 
   const beginRecording = useCallback(async () => {
     abortedRef.current = false;
+    openedAt.current = Date.now();
     setPhase("recording");
     setQuestion("");
     setReply("");
@@ -114,8 +126,13 @@ export function VoiceAskDrawer({
         stopTracks();
         if (abortedRef.current) return;
         const blob = new Blob(chunksRef.current, { type: mime || "audio/webm" });
-        if (blob.size < 1000) {
-          setErrorMsg("That was too short — hold the shortcut and speak.");
+        // Duration as well as size: byte counts vary wildly by codec, and a
+        // clip too short to contain speech transcribes to an empty string,
+        // which surfaces as a confusing "didn't catch that" after a needless
+        // round-trip.
+        const elapsed = Date.now() - openedAt.current;
+        if (elapsed < MIN_RECORDING_MS || blob.size < 1000) {
+          setErrorMsg("That was too short to hear — press the shortcut again and speak.");
           setPhase("error");
           return;
         }
@@ -165,13 +182,25 @@ export function VoiceAskDrawer({
     } catch { /* ignore */ }
   };
 
-  // Escape closes; Return while recording sends, matching how the shortcut was
-  // invoked in the first place.
+  // Escape closes; a plain Return while recording sends.
+  //
+  // Three guards, all for the same failure: the palette is opened WITH
+  // Shift+Return, and holding that chord even briefly makes the OS auto-repeat
+  // Enter. Those repeats land on this listener the moment it mounts and stop
+  // the recording after roughly half a second, before anything has been said.
+  //   - e.repeat  — ignores auto-repeat outright
+  //   - e.shiftKey — Shift+Return opens; only a plain Return sends
+  //   - openedAt  — covers releasing Shift while still holding Return, where
+  //                 the repeat arrives with shiftKey already false
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-      if (e.key === "Enter" && phase === "recording") { e.preventDefault(); stopAndSend(); }
+      if (e.key !== "Enter" || phase !== "recording") return;
+      if (e.repeat || e.shiftKey) return;
+      if (Date.now() - openedAt.current < STOP_GRACE_MS) return;
+      e.preventDefault();
+      stopAndSend();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
