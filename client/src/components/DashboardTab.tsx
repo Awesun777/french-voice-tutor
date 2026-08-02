@@ -18,7 +18,7 @@ import { AvatarVideo } from "@/components/AvatarVideo";
 import { usePronounce } from "@/lib/pronounce";
 import {
   Mic, Newspaper, Youtube, ArrowRight, Volume2, BookMarked, Brain, CreditCard,
-  Search, MessageCircle, Headphones,
+  Search, MessageCircle,
 } from "lucide-react";
 
 /** What the mascot says when you poke it. Short, spoken, and actually useful. */
@@ -297,6 +297,55 @@ export default function DashboardTab({
 
 // ─── Walkthrough ──────────────────────────────────────────────────────────────
 
+/** YouTube's own mark rather than a generic play glyph, so the source is obvious. */
+function YouTubeMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden focusable="false">
+      <path
+        fill="#FF0000"
+        d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8z"
+      />
+      <path fill="#FFFFFF" d="M9.6 15.6 15.8 12 9.6 8.4z" />
+    </svg>
+  );
+}
+
+/**
+ * The four things step one actually means, shown rather than described: the two
+ * tutors you can talk to, and the two kinds of material you can work through.
+ */
+function SourcesRow() {
+  return (
+    <div className="mt-4 pt-3 flex items-center gap-2">
+      {[
+        { src: "/avatars/romain.mp4", name: "Romain" },
+        { src: "/avatars/anna.mp4", name: "Anna" },
+      ].map((a) => (
+        <div
+          key={a.name}
+          title={a.name}
+          className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-card shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.35)] flex-shrink-0"
+        >
+          <AvatarVideo src={a.src} />
+        </div>
+      ))}
+      <span aria-hidden className="w-px h-5 bg-border mx-0.5" />
+      <span
+        title="YouTube videos"
+        className="w-9 h-9 rounded-xl bg-background flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.25)]"
+      >
+        <YouTubeMark className="w-5 h-5" />
+      </span>
+      <span
+        title="Articles"
+        className="w-9 h-9 rounded-xl bg-secondary text-primary flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.25)]"
+      >
+        <Newspaper className="w-4.5 h-4.5" />
+      </span>
+    </div>
+  );
+}
+
 /**
  * The one thing that isn't obvious from the two panels above: speaking,
  * listening and reading are three doors into the same loop, and the loop is
@@ -310,8 +359,11 @@ function HowItWorks({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void 
       n: 1,
       title: "Meet words in the wild",
       body: "Talking to Romain or Anna, following a video transcript, or reading an article. Real context, not a word list.",
-      icons: [<Mic key="m" className="w-3.5 h-3.5" />, <Headphones key="h" className="w-3.5 h-3.5" />, <Newspaper key="n" className="w-3.5 h-3.5" />],
+      // No icon chip: the row of real sources at the foot of this card says the
+      // same thing far better, and both would just be the same list twice.
+      icons: null,
       tone: "bg-speaking-surface text-speaking",
+      footer: <SourcesRow />,
     },
     {
       n: 2,
@@ -347,12 +399,14 @@ function HowItWorks({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void 
         {steps.map((s) => (
           <div
             key={s.n}
-            className="relative rounded-2xl bg-card p-5 shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]"
+            className="relative rounded-2xl bg-card p-5 flex flex-col shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]"
           >
             <div className="flex items-center gap-2">
-              <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg", s.tone)}>
-                {s.icons}
-              </span>
+              {s.icons && (
+                <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-lg", s.tone)}>
+                  {s.icons}
+                </span>
+              )}
               <span className="font-display text-xs font-bold text-muted-foreground">STEP {s.n}</span>
             </div>
             <p className="font-display text-base font-bold text-foreground mt-3">{s.title}</p>
@@ -366,6 +420,9 @@ function HowItWorks({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void 
                 <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
               </button>
             )}
+            {/* Pinned to the bottom so it lines up with the "Open" links on the
+                cards beside it, whatever height the copy runs to. */}
+            {s.footer && <div className="mt-auto">{s.footer}</div>}
           </div>
         ))}
       </div>
