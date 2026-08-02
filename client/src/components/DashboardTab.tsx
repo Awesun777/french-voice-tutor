@@ -313,35 +313,66 @@ function YouTubeMark({ className }: { className?: string }) {
 /**
  * The four things step one actually means, shown rather than described: the two
  * tutors you can talk to, and the two kinds of material you can work through.
+ * Each one goes where it says it does.
  */
-function SourcesRow() {
+function SourcesRow({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void }) {
+  const reduce = useReducedMotion();
+  const lift = reduce ? undefined : { y: -3 };
+  const press = reduce ? undefined : { scale: 0.94 };
+  const ring =
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-card";
+
   return (
     <div className="mt-4 pt-3 flex items-center gap-2">
       {[
         { src: "/avatars/romain.mp4", name: "Romain" },
         { src: "/avatars/anna.mp4", name: "Anna" },
       ].map((a) => (
-        <div
+        <motion.button
           key={a.name}
-          title={a.name}
-          className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-card shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.35)] flex-shrink-0"
+          onClick={() => setActiveTab("voice-chat")}
+          whileHover={lift}
+          whileTap={press}
+          title={`Talk to ${a.name}`}
+          aria-label={`Talk to ${a.name} in Voice Chat`}
+          className={cn(
+            "w-9 h-9 rounded-full overflow-hidden ring-2 ring-card shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.35)] hover:shadow-[0_8px_18px_-6px_rgb(23_63_107_/_0.5)] transition-shadow flex-shrink-0",
+            ring
+          )}
         >
           <AvatarVideo src={a.src} />
-        </div>
+        </motion.button>
       ))}
+
       <span aria-hidden className="w-px h-5 bg-border mx-0.5" />
-      <span
-        title="YouTube videos"
-        className="w-9 h-9 rounded-xl bg-background flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.25)]"
+
+      <motion.button
+        onClick={() => setActiveTab("listening")}
+        whileHover={lift}
+        whileTap={press}
+        title="Watch videos in the Listening Lab"
+        aria-label="Watch videos in the Listening Lab"
+        className={cn(
+          "w-9 h-9 rounded-xl bg-background flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.25)] hover:shadow-[0_8px_18px_-6px_rgb(23_63_107_/_0.4)] transition-shadow",
+          ring
+        )}
       >
         <YouTubeMark className="w-5 h-5" />
-      </span>
-      <span
-        title="Articles"
-        className="w-9 h-9 rounded-xl bg-secondary text-primary flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.25)]"
+      </motion.button>
+
+      <motion.button
+        onClick={() => setActiveTab("reading")}
+        whileHover={lift}
+        whileTap={press}
+        title="Read articles"
+        aria-label="Read articles"
+        className={cn(
+          "w-9 h-9 rounded-xl bg-secondary text-primary flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.25)] hover:shadow-[0_8px_18px_-6px_rgb(23_63_107_/_0.4)] transition-shadow",
+          ring
+        )}
       >
         <Newspaper className="w-4.5 h-4.5" />
-      </span>
+      </motion.button>
     </div>
   );
 }
@@ -363,7 +394,7 @@ function HowItWorks({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void 
       // same thing far better, and both would just be the same list twice.
       icons: null,
       tone: "bg-speaking-surface text-speaking",
-      footer: <SourcesRow />,
+      footer: <SourcesRow setActiveTab={setActiveTab} />,
     },
     {
       n: 2,
