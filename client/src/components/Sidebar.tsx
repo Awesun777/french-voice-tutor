@@ -45,14 +45,23 @@ interface NavGroup {
   icon: React.ReactNode;
   items: Omit<NavLeaf, "kind">[];
 }
-type NavEntry = NavLeaf | NavGroup;
+/** A hairline separating the main flow from the reference tools below it. */
+interface NavDivider {
+  kind: "divider";
+  id: string;
+}
+type NavEntry = NavLeaf | NavGroup | NavDivider;
 
 const ICON = "w-4.5 h-4.5";
 
+/**
+ * Ordered by how the app is meant to be used, not by how old each feature is.
+ * Dashboard, then the two ways of learning; Dictionary and Tutor Chat are
+ * reference tools you reach for mid-task — and both already have a keyboard
+ * shortcut — so they sit below the divider rather than competing at the top.
+ */
 const NAV: NavEntry[] = [
   { kind: "leaf", id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className={ICON} /> },
-  { kind: "leaf", id: "dictionary", label: "Dictionary", icon: <BookOpen className={ICON} /> },
-  { kind: "leaf", id: "tutor", label: "Tutor Chat", icon: <MessageCircle className={ICON} /> },
   { kind: "leaf", id: "voice-chat", label: "Voice Chat", icon: <Mic className={ICON} /> },
   {
     kind: "group",
@@ -77,6 +86,9 @@ const NAV: NavEntry[] = [
       { id: "grammar", label: "Grammar Test", icon: <GraduationCap className={ICON} /> },
     ],
   },
+  { kind: "divider", id: "tools" },
+  { kind: "leaf", id: "dictionary", label: "Dictionary", icon: <BookOpen className={ICON} /> },
+  { kind: "leaf", id: "tutor", label: "Tutor Chat", icon: <MessageCircle className={ICON} /> },
   { kind: "leaf", id: "settings", label: "Settings", icon: <Settings className={ICON} /> },
 ];
 
@@ -197,6 +209,11 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
         {NAV.map((entry) => {
+          if (entry.kind === "divider") {
+            return (
+              <div key={entry.id} className="pt-2 mt-2 border-t border-sidebar-border" aria-hidden />
+            );
+          }
           if (entry.kind === "leaf") return renderLeaf(entry, false);
           const isOpen = flyout?.id === entry.id;
           // Children never render inline, so the row itself has to show when the
