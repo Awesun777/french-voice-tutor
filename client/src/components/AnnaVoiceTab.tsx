@@ -21,6 +21,7 @@ import { AvatarVideo, avatarLayoutId, useAvatarPoster } from "@/components/Avata
 import { idleContainer, idleItem } from "@/components/idleReveal";
 import { isGoodbye } from "@/lib/voiceEndTriggers";
 import { stallQuestionInstruction } from "@/lib/conversationQuestions";
+import { REPAIR_INSTRUCTION, contentWords, candidateUpdate } from "@/lib/wordRepair";
 import {
   VoiceSessionSettings,
   useVoiceSettings,
@@ -143,6 +144,9 @@ export function AnnaVoiceTab() {
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [savedWords, setSavedWords] = useState<SavedWord[]>([]);
+  /** Debounce for the word-repair candidate list; see onMessage. */
+  const candidateTimerRef = useRef<number | null>(null);
+  const lastCandidateUpdateRef = useRef<string | null>(null);
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [endedSummary, setEndedSummary] = useState<string | null>(null);
@@ -269,6 +273,12 @@ export function AnnaVoiceTab() {
   }, [summarizeContextMutation]);
 
   const cleanup = useCallback(() => {
+    // Drop any pending candidate update first — it would otherwise fire against
+    // a connection that is being torn down.
+    if (candidateTimerRef.current !== null) {
+      window.clearTimeout(candidateTimerRef.current);
+      candidateTimerRef.current = null;
+    }
     if (conversationRef.current) {
       conversationRef.current.endSession().catch(() => {});
       conversationRef.current = null;
@@ -291,6 +301,11 @@ export function AnnaVoiceTab() {
       userStreamIdRef.current = null;
       aiStreamIdRef.current = null;
       completedTurnsRef.current = [];
+      lastCandidateUpdateRef.current = null;
+      if (candidateTimerRef.current !== null) {
+        window.clearTimeout(candidateTimerRef.current);
+        candidateTimerRef.current = null;
+      }
       annaTurnCountRef.current = 0;
       isSummarizingRef.current = false;
       aiSpeakingRef.current = false;
@@ -340,7 +355,12 @@ export function AnnaVoiceTab() {
               `[${stallInstructionRef.current}]`
             );
           }, 1100);
-          // Inject persistent user memory so Anna remembers past conversations.
+          // How to handle a word the student mispronounced badly enough that it
+          // reached her as different text entirely.
+          setTimeout(() => {
+            conversationRef.current?.sendContextualUpdate(`[${REPAIR_INSTRUCTION}]`);
+          }, 1700);
+              // Inject persistent user memory so Anna remembers past conversations.
           const memory = userMemoryRef.current;
           if (memory && memory.trim()) {
             setTimeout(() => {
@@ -399,6 +419,24 @@ export function AnnaVoiceTab() {
               ...completedTurnsRef.current.filter((t) => t !== completedTurnsRef.current[completedTurnsRef.current.length - 1] || t.role !== "assistant"),
               { role: "assistant", text },
             ];
+
+            // Hand Anna the words she just used, so a mispronounced question has
+            // an explicit shortlist to match against.
+            //
+            // Debounced rather than sent per message: AI text streams in, and
+            // this callback fires on every fragment. Waiting for the stream to
+            // settle sends one update with the finished turn — and it lands
+            // while the student is still forming their question, rather than
+            // after they have already asked it.
+            if (candidateTimerRef.current !== null) window.clearTimeout(candidateTimerRef.current);
+            candidateTimerRef.current = window.setTimeout(() => {
+              const update = candidateUpdate(contentWords(text));
+              // Skip an unchanged list: a short follow-up turn often repeats the
+              // previous one's vocabulary, and re-sending it just adds context.
+              if (!update || update === lastCandidateUpdateRef.current) return;
+              lastCandidateUpdateRef.current = update;
+              conversationRef.current?.sendContextualUpdate(update);
+            }, 1200);
           } else {
             // User turn — each onMessage for user source is a finalized utterance.
             // Show it in the live transcript (ElevenLabs already transcribes the

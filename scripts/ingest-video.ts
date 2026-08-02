@@ -35,8 +35,12 @@ const CUES_PER_GLOSS_BATCH = 25;
 /** Matches googleDrive.ts's batch concurrency. */
 const GLOSS_CONCURRENCY = 3;
 
-/** French-aware word matcher: letters plus internal apostrophes and hyphens. */
-const WORD_RE = /[A-Za-zÀ-ÿ]+(?:['’-][A-Za-zÀ-ÿ]+)*/g;
+/**
+ * French-aware word matcher: letters plus internal apostrophes and hyphens.
+ * Œ/œ and Æ/æ are named explicitly — they sit in Latin Extended-A, outside the
+ * À-ÿ range, so without them "sœur" tokenises as "s" + "ur".
+ */
+const WORD_RE = /[A-Za-zÀ-ÿŒœÆæ]+(?:['’-][A-Za-zÀ-ÿŒœÆæ]+)*/g;
 
 interface WhisperWord { word: string; start: number; end: number }
 interface WhisperSegment { start: number; end: number; text: string }
@@ -345,8 +349,8 @@ function buildTokens(
       if (at === -1) break;
       const end = at + needle.length;
       // Require whole-token boundaries so "il y a" doesn't match inside a word.
-      const before = at === 0 || !/[A-Za-zÀ-ÿ]/.test(text[at - 1]);
-      const after = end === text.length || !/[A-Za-zÀ-ÿ]/.test(text[end]);
+      const before = at === 0 || !/[A-Za-zÀ-ÿŒœÆæ]/.test(text[at - 1]);
+      const after = end === text.length || !/[A-Za-zÀ-ÿŒœÆæ]/.test(text[end]);
       if (before && after && !overlaps(at, end)) {
         claimed.push({ s: at, e: end, surface: text.slice(at, end), gloss, kind: "expression" });
       }

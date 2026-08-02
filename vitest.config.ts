@@ -14,7 +14,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["server/**/*.test.ts", "server/**/*.spec.ts"],
+    include: ["server/**/*.test.ts", "server/**/*.spec.ts", "client/src/**/*.test.ts"],
     // Live-API tests (*.live.test.ts) hit real DeepSeek/Gemini endpoints and
     // need Railway secrets. Excluded from the default run so `pnpm test` is
     // always green locally; run them via `pnpm test:live` (railway run).
