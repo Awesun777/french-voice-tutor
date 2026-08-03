@@ -16,11 +16,19 @@
  * Requires DATABASE_URL + OPENAI_API_KEY (which `railway run` supplies).
  */
 import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../server/db";
 import { invokeLLM } from "../server/_core/llm";
 import { articles, articleBlocks, dictCache } from "../drizzle/schema";
+import {
+  ambiguousNote,
+  CONTEXTUAL_SCHEMA,
+  bucketContextual,
+  type ContextualGloss,
+} from "./homographs";
 
 /** Roughly one gloss request per this many characters of article text. */
 const CHARS_PER_GLOSS_BATCH = 2500;
@@ -190,6 +198,12 @@ async function extractArticle(pageText: string): Promise<Extracted> {
 
 interface GlossPayload {
   glosses: { surface: string; lemma: string; gloss: string }[];
+  /**
+   * Per-occurrence overrides. `cue` is the 1-based numbered block within the
+   * batch. Without these one surface form gets one gloss for the whole batch,
+   * so the most frequent reading of a homograph wins everywhere.
+   */
+  contextual: ContextualGloss[];
   expressions: { phrase: string; gloss: string }[];
 }
 
@@ -209,6 +223,7 @@ const GLOSS_SCHEMA = {
         additionalProperties: false,
       },
     },
+    contextual: CONTEXTUAL_SCHEMA,
     expressions: {
       type: "array",
       items: {
@@ -222,7 +237,7 @@ const GLOSS_SCHEMA = {
       },
     },
   },
-  required: ["glosses", "expressions"],
+  required: ["glosses", "contextual", "expressions"],
   additionalProperties: false,
 };
 
@@ -391,7 +406,12 @@ function isUsefulExpression(phrase: string): boolean {
   return true;
 }
 
-async function glossBatch(text: string): Promise<GlossPayload> {
+export async function glossBatch(blockTexts: string[]): Promise<GlossPayload> {
+  // Blocks are numbered rather than newline-joined so the model can point a
+  // contextual gloss at a specific one.
+  const text = blockTexts.map((t, i) => `[${i + 1}] ${t}`).join("\n");
+  const note = ambiguousNote(blockTexts.join(" "), "block");
+
   const response = await invokeLLM({
     messages: [
       {
@@ -402,10 +422,16 @@ async function glossBatch(text: string): Promise<GlossPayload> {
       {
         role: "user",
         content:
-          `French article excerpt:\n"""${text}"""\n\n` +
+          `French article excerpt, one numbered block per line:\n"""\n${text}\n"""\n\n` +
           `1) "glosses": for every distinct French word above, give its dictionary form ` +
           `("lemma") and a concise English meaning as used here ("gloss", 1-5 words). ` +
           `Copy "surface" exactly as it appears, accents preserved.\n` +
+          `1b) "contextual": the entries in "glosses" apply to the whole excerpt, so they ` +
+          `cannot express a word that means different things in different blocks. When a ` +
+          `surface form's LEMMA or MEANING depends on where it appears, add one entry per ` +
+          `occurrence here: "cue" is the bracketed block number, "surface" copied exactly, ` +
+          `plus the lemma and gloss correct FOR THAT BLOCK. Leave this array empty only if ` +
+          `nothing in the excerpt is ambiguous.\n` +
           `2) "expressions": multi-word expressions of 2-5 words appearing VERBATIM ` +
           `above that a learner should memorise as a SINGLE UNIT rather than word by ` +
           `word. The test is "would a teacher or phrasebook present this as one chunk?" ` +
@@ -430,7 +456,8 @@ async function glossBatch(text: string): Promise<GlossPayload> {
           `- full clauses that merely describe an event ("le président a ` +
           `déclaré", "un drone filme la naissance");\n` +
           `- single words — every entry must be at least two words.\n` +
-          `Copy each phrase exactly as it appears, accents and elisions preserved.`,
+          `Copy each phrase exactly as it appears, accents and elisions preserved.` +
+          note,
       },
     ],
     response_format: {
@@ -442,10 +469,14 @@ async function glossBatch(text: string): Promise<GlossPayload> {
   const raw = response.choices[0].message.content ?? "{}";
   try {
     const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
-    return { glosses: parsed.glosses ?? [], expressions: parsed.expressions ?? [] };
+    return {
+      glosses: parsed.glosses ?? [],
+      contextual: parsed.contextual ?? [],
+      expressions: parsed.expressions ?? [],
+    };
   } catch {
     // A malformed batch costs a few missing glosses, not the whole ingest.
-    return { glosses: [], expressions: [] };
+    return { glosses: [], contextual: [], expressions: [] };
   }
 }
 
@@ -507,7 +538,9 @@ async function glossLeftovers(surfaces: string[]): Promise<Map<string, { lemma: 
 function buildTokens(
   text: string,
   glossBy: Map<string, { lemma: string; gloss: string }>,
-  expressions: { phrase: string; gloss: string }[]
+  expressions: { phrase: string; gloss: string }[],
+  /** Per-occurrence overrides for this block only; beats the batch-wide glossBy. */
+  contextualBy?: Map<string, { lemma: string; gloss: string }>
 ): Token[] {
   const claimed: Token[] = [];
   const overlaps = (s: number, e: number) => claimed.some((t) => s < t.e && e > t.s);
@@ -540,9 +573,17 @@ function buildTokens(
     // fallback — so a context-specific gloss always beats the generic one.
     const candidates = lookupCandidates(surface);
     let g: { lemma: string; gloss: string } | undefined;
+    // The block-specific reading wins over the batch-wide one, which is how
+    // "suis" can be "follow" in one block and "am" in another.
     for (const c of candidates) {
-      g = glossBy.get(c);
+      g = contextualBy?.get(c);
       if (g) break;
+    }
+    if (!g) {
+      for (const c of candidates) {
+        g = glossBy.get(c);
+        if (g) break;
+      }
     }
     const fallback = g ? undefined : candidates.map((c) => FUNCTION_WORDS[c]).find(Boolean);
     claimed.push({
@@ -714,13 +755,13 @@ async function main() {
     await Promise.all(
       batches.slice(i, i + GLOSS_CONCURRENCY).map(async (batch, k) => {
         const at = i + k;
-        const text = batch.map((b) => b.text).join("\n");
         // Bump this when the gloss prompt changes, so a re-run gets fresh
         // output instead of replaying the answers to the old question.
-        const key = `agloss::v2::${slug}::${at}`;
+        // v3: blocks are numbered and the payload gained `contextual`.
+        const key = `agloss::v3::${slug}::${at}`;
         const hit = await cachedGloss(key);
         if (hit) { payloads[at] = hit; return; }
-        const got = await glossBatch(text);
+        const got = await glossBatch(batch.map((b) => b.text));
         await putGloss(key, got);
         payloads[at] = got;
       })
@@ -730,17 +771,23 @@ async function main() {
 
   let rejected = 0;
   batches.forEach((batch, bi) => {
-    const p = payloads[bi] ?? { glosses: [], expressions: [] };
+    const p = payloads[bi] ?? { glosses: [], contextual: [], expressions: [] };
     const glossBy = new Map(
       p.glosses.map((g) => [g.surface.toLowerCase(), { lemma: g.lemma, gloss: g.gloss }])
     );
+    const contextualByBlock = bucketContextual(p.contextual, batch.length);
     // The curated lexicon is vetted and bypasses the filter; only the model's
     // suggestions have to earn their place.
     const kept = p.expressions.filter((e) => isUsefulExpression(e.phrase));
     rejected += p.expressions.length - kept.length;
-    for (const b of batch) {
-      b.tokens = buildTokens(b.text, glossBy, [...kept, ...COMMON_EXPRESSIONS]);
-    }
+    batch.forEach((b, ci) => {
+      b.tokens = buildTokens(
+        b.text,
+        glossBy,
+        [...kept, ...COMMON_EXPRESSIONS],
+        contextualByBlock.get(ci + 1)
+      );
+    });
   });
   if (rejected) console.log(`  filtered out ${rejected} one-off "expressions"`);
 
@@ -822,7 +869,14 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error("✗", err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// Only run the CLI when invoked directly, so tests can import glossBatch
+// without kicking off a fetch.
+const invokedDirectly =
+  !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error("✗", err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

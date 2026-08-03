@@ -5,7 +5,8 @@
  * the token.
  */
 import { describe, it, expect } from "vitest";
-import { buildTokens, homographsIn, HOMOGRAPHS } from "./ingest-video";
+import { buildTokens } from "./ingest-video";
+import { homographsIn, HOMOGRAPHS, bucketContextual } from "./homographs";
 
 describe("homographsIn", () => {
   it("finds ambiguous forms so the prompt can name them", () => {

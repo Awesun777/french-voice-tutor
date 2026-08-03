@@ -24,6 +24,12 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../server/db";
 import { invokeLLM } from "../server/_core/llm";
 import { videoLessons, videoCues, dictCache } from "../drizzle/schema";
+import {
+  ambiguousNote,
+  CONTEXTUAL_SCHEMA,
+  bucketContextual,
+  type ContextualGloss,
+} from "./homographs";
 
 const exec = promisify(execFile);
 
@@ -184,76 +190,10 @@ interface GlossPayload {
    * inherits whatever "je suis" (être, "am") got — the far more frequent
    * reading always wins.
    */
-  contextual: { cue: number; surface: string; lemma: string; gloss: string }[];
+  contextual: ContextualGloss[];
   expressions: { phrase: string; gloss: string }[];
 }
 
-/**
- * French surface forms that map to more than one lemma. The model will not
- * reliably volunteer that a word is ambiguous, so any of these appearing in a
- * batch are named explicitly in the prompt and required to come back as
- * per-occurrence `contextual` entries.
- *
- * Only forms where the readings are genuinely different WORDS belong here —
- * not mere tense ambiguity within one verb, which the gloss would render the
- * same way anyway. Values are the competing lemmas, purely as a hint to the model.
- */
-export const HOMOGRAPHS: Record<string, string[]> = {
-  // The one that started this: "je suis" (am) vs "tu la suis" (follow).
-  suis: ["être", "suivre"],
-  suit: ["suivre", "suite"],
-  suivant: ["suivre (following)", "suivant (next)"],
-  est: ["être", "est (east)"],
-  a: ["avoir", "à (to)"],
-  as: ["avoir", "as (ace)"],
-  sommes: ["être", "somme (sums)"],
-  somme: ["somme (sum)", "somme (nap)"],
-  été: ["être (been)", "été (summer)"],
-  fils: ["fils (son)", "fil (threads)"],
-  livre: ["livre (book)", "livre (pound)", "livrer (delivers)"],
-  livres: ["livre (book)", "livre (pound)"],
-  porte: ["porte (door)", "porter (carries/wears)"],
-  portes: ["porte (door)", "porter (carry/wear)"],
-  pas: ["pas (negation)", "pas (step)"],
-  plus: ["plus (more)", "plus (no longer)"],
-  vers: ["vers (towards)", "ver (worms)", "vers (verse)"],
-  tour: ["tour (turn)", "tour (tower)"],
-  mode: ["mode (fashion)", "mode (method)"],
-  vis: ["vivre", "voir", "vis (screw)"],
-  vit: ["vivre (lives)", "voir (saw)"],
-  vole: ["voler (flies)", "voler (steals)"],
-  volé: ["voler (flown)", "voler (stolen)"],
-  parti: ["partir (left)", "parti (political party)"],
-  partie: ["partie (part)", "partir (left, fem.)"],
-  pouvoir: ["pouvoir (to be able)", "pouvoir (power)"],
-  savoir: ["savoir (to know)", "savoir (knowledge)"],
-  cours: ["cours (class)", "courir (run)"],
-  court: ["court (short)", "courir (runs)"],
-  sens: ["sens (meaning/sense)", "sentir (feel)"],
-  car: ["car (because)", "car (coach/bus)"],
-  or: ["or (gold)", "or (now/yet)"],
-  son: ["son (his/her)", "son (sound)"],
-  temps: ["temps (time)", "temps (weather)"],
-  fait: ["faire (does/done)", "fait (fact)"],
-};
-
-/** Homograph surfaces present in this batch, for the prompt's "disambiguate these" list. */
-export function homographsIn(text: string): string[] {
-  const present = new Set<string>();
-  for (const m of text.matchAll(WORD_RE)) {
-    const w = m[0].toLowerCase();
-    if (HOMOGRAPHS[w]) present.add(w);
-    // WORD_RE keeps hyphenated and elided forms whole, so "suis-moi" and
-    // "est-ce" arrive as single tokens. Check the parts too, or the imperative
-    // "Suis-moi !" ("follow me") never gets flagged as ambiguous at all.
-    if (/['’-]/.test(w)) {
-      for (const part of w.split(/['’-]/)) {
-        if (HOMOGRAPHS[part]) present.add(part);
-      }
-    }
-  }
-  return [...present];
-}
 
 const GLOSS_SCHEMA = {
   type: "object",
@@ -271,20 +211,7 @@ const GLOSS_SCHEMA = {
         additionalProperties: false,
       },
     },
-    contextual: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          cue: { type: "integer" },
-          surface: { type: "string" },
-          lemma: { type: "string" },
-          gloss: { type: "string" },
-        },
-        required: ["cue", "surface", "lemma", "gloss"],
-        additionalProperties: false,
-      },
-    },
+    contextual: CONTEXTUAL_SCHEMA,
     expressions: {
       type: "array",
       items: {
@@ -371,16 +298,7 @@ export async function glossBatch(cueTexts: string[]): Promise<GlossPayload> {
   // Cues are numbered rather than joined into one blob so the model can point a
   // contextual gloss at a specific line, and so it can see sentence boundaries.
   const text = cueTexts.map((t, i) => `[${i + 1}] ${t}`).join("\n");
-  const ambiguous = homographsIn(cueTexts.join(" "));
-  const ambiguousNote = ambiguous.length
-    ? `\n\nAMBIGUOUS FORMS PRESENT: ${ambiguous
-        .map((w) => `"${w}" (could be ${HOMOGRAPHS[w].join(" or ")})`)
-        .join("; ")}. ` +
-      `For EVERY occurrence of each of these, emit a "contextual" entry — even if all ` +
-      `occurrences turn out to mean the same thing. Read the surrounding words to decide: ` +
-      `in "tu la suis" the object pronoun "la" makes "suis" the verb suivre ("follow"), ` +
-      `while in "je suis fatigué" it is être ("am").`
-    : "";
+  const note = ambiguousNote(cueTexts.join(" "), "cue");
 
   const response = await invokeLLM({
     messages: [
@@ -415,7 +333,7 @@ export async function glossBatch(cueTexts: string[]): Promise<GlossPayload> {
           `specific and would never be reused — e.g. "c'est un prêtre", ` +
           `"on commence pas tranquille". Copy each phrase exactly as it appears, ` +
           `accents and elisions preserved.` +
-          ambiguousNote,
+          note,
       },
     ],
     response_format: {
@@ -621,12 +539,7 @@ async function main() {
       const glossBy = new Map(p.glosses.map((g) => [g.surface.toLowerCase(), { lemma: g.lemma, gloss: g.gloss }]));
       // Contextual entries bucketed by their 1-based cue number, so each cue
       // only sees the overrides that were written for it.
-      const contextualByCue = new Map<number, Map<string, { lemma: string; gloss: string }>>();
-      for (const c of p.contextual ?? []) {
-        if (!Number.isInteger(c.cue) || c.cue < 1 || c.cue > batch.length) continue;
-        if (!contextualByCue.has(c.cue)) contextualByCue.set(c.cue, new Map());
-        contextualByCue.get(c.cue)!.set(c.surface.toLowerCase(), { lemma: c.lemma, gloss: c.gloss });
-      }
+      const contextualByCue = bucketContextual(p.contextual, batch.length);
       batch.forEach((cue, ci) => {
         const inCue = allWords.filter(
           (w) => w.start * 1000 >= cue.startMs - 250 && w.start * 1000 <= cue.endMs + 250
