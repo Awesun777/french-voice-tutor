@@ -37,6 +37,8 @@ import {
   renderBatch,
   validateParts,
   wordsOf,
+  breakdownInChunks,
+  isShortEnoughToGroup,
   type BreakdownPart,
   type BreakdownPayload,
 } from "./breakdown";
@@ -631,11 +633,11 @@ async function main() {
           // pass is still requested as the fallback for anything the breakdown
           // does not cover.
           const gKey = `vgloss::v4::${meta.id}::${at}`;
-          const bKey = `vbreak::v2::${meta.id}::${at}`;
+          const bKey = `vbreak::v3::${meta.id}::${at}`;
           const [gHit, bHit] = await Promise.all([cachedGloss(gKey), cachedBreakdown(bKey)]);
           const [got, broke] = await Promise.all([
             gHit ? Promise.resolve(gHit) : glossBatch(texts).then(async (r) => { await putGloss(gKey, r); return r; }),
-            bHit ? Promise.resolve(bHit) : breakdownBatch(texts).then(async (r) => { await putBreakdown(bKey, r); return r; }),
+            bHit ? Promise.resolve(bHit) : breakdownInChunks(texts, breakdownBatch).then(async (r) => { await putBreakdown(bKey, r); return r; }),
           ]);
           payloads[at] = got;
           breakdowns[at] = broke;
@@ -666,7 +668,7 @@ async function main() {
           // Kept even when a breakdown exists: the model under-groups at batch
           // scale (a 353-word article came back with zero groups), and this
           // list is vetted, so it stays the floor for idioms.
-          [...p.expressions, ...COMMON_EXPRESSIONS],
+          [...p.expressions.filter((e) => isShortEnoughToGroup(e.phrase)), ...COMMON_EXPRESSIONS],
           inCue,
           cue.startMs,
           contextualByCue.get(ci + 1),

@@ -158,3 +158,41 @@ export function validateParts(parts: BreakdownPart[], words: string[]): Breakdow
   }
   return kept;
 }
+
+/**
+ * Lines per breakdown request. Asked to break down 25+ lines at once the model
+ * quietly returns fewer than it was given — article coverage fell to 48% when a
+ * 29-block article went out as one request. Smaller requests come back complete;
+ * they run concurrently anyway, so the wall-clock cost is small.
+ */
+export const MAX_LINES_PER_BREAKDOWN = 10;
+
+/**
+ * Splits a batch into requests small enough to come back complete, then merges
+ * the answers with their line numbers mapped back onto the original batch.
+ */
+export async function breakdownInChunks(
+  lineTexts: string[],
+  request: (texts: string[]) => Promise<BreakdownPayload>
+): Promise<BreakdownPayload> {
+  const lines: BreakdownLine[] = [];
+  for (let start = 0; start < lineTexts.length; start += MAX_LINES_PER_BREAKDOWN) {
+    const slice = lineTexts.slice(start, start + MAX_LINES_PER_BREAKDOWN);
+    const got = await request(slice);
+    for (const l of got.lines ?? []) {
+      if (!Number.isInteger(l.line) || l.line < 1 || l.line > slice.length) continue;
+      lines.push({ ...l, line: l.line + start });
+    }
+  }
+  return { lines };
+}
+
+/**
+ * An expression is only worth grouping if it is short. The video glosser had no
+ * filter at all, which let "les gens ne rigolent pas de toi" — a whole clause —
+ * render as one underline.
+ */
+export function isShortEnoughToGroup(phrase: string): boolean {
+  const n = (phrase.match(WORD_RE) ?? []).length;
+  return n >= 2 && n <= 5;
+}

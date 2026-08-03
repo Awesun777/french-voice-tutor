@@ -36,6 +36,8 @@ import {
   renderBatch,
   validateParts,
   wordsOf,
+  breakdownInChunks,
+  isShortEnoughToGroup,
   type BreakdownPart,
   type BreakdownPayload,
 } from "./breakdown";
@@ -856,12 +858,12 @@ async function main() {
         // v5: blocks are broken down sentence-first; the per-word pass stays as
         // the fallback for anything the breakdown does not cover.
         const gKey = `agloss::v5::${slug}::${at}`;
-        const bKey = `abreak::v2::${slug}::${at}`;
+        const bKey = `abreak::v3::${slug}::${at}`;
         const texts = batch.map((b) => b.text);
         const [gHit, bHit] = await Promise.all([cachedGloss(gKey), cachedBreakdown(bKey)]);
         const [got, broke] = await Promise.all([
           gHit ? Promise.resolve(gHit) : glossBatch(texts).then(async (r) => { await putGloss(gKey, r); return r; }),
-          bHit ? Promise.resolve(bHit) : breakdownBatch(texts).then(async (r) => { await putBreakdown(bKey, r); return r; }),
+          bHit ? Promise.resolve(bHit) : breakdownInChunks(texts, breakdownBatch).then(async (r) => { await putBreakdown(bKey, r); return r; }),
         ]);
         payloads[at] = got;
         breakdowns[at] = broke;
@@ -879,7 +881,7 @@ async function main() {
     const contextualByBlock = bucketContextual(p.contextual, batch.length);
     // The curated lexicon is vetted and bypasses the filter; only the model's
     // suggestions have to earn their place.
-    const kept = p.expressions.filter((e) => isUsefulExpression(e.phrase));
+    const kept = p.expressions.filter((e) => isUsefulExpression(e.phrase) && isShortEnoughToGroup(e.phrase));
     rejected += p.expressions.length - kept.length;
     const byLine = new Map((breakdowns[bi]?.lines ?? []).map((l) => [l.line, l]));
     batch.forEach((b, ci) => {
