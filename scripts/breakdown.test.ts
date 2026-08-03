@@ -63,6 +63,14 @@ describe("validateParts", () => {
     expect(validateParts([part(1, 2, "Je  suis,")], words).length).toBe(1);
   });
 
+  it("drops a piece that swallows a clause", () => {
+    // Real output: "quand j'ai dit merci beaucoup" came back as one piece.
+    const long = ["quand", "j'ai", "dit", "merci", "beaucoup"];
+    expect(validateParts([part(1, 5, "quand j'ai dit merci beaucoup")], long)).toEqual([]);
+    // Four words is still allowed — "je me suis dit" needs them.
+    expect(validateParts([part(1, 4, "quand j'ai dit merci")], long).length).toBe(1);
+  });
+
   it("accepts a partial cover — uncovered words fall back to per-word glosses", () => {
     const kept = validateParts([part(5, 6, "la police")], words);
     expect(kept.length).toBe(1);

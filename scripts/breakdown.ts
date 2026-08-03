@@ -124,6 +124,16 @@ export function breakdownInstruction(lineCount: number, unit: string): string {
 }
 
 /**
+ * Longest piece we will accept. Told not to swallow clauses the model does it
+ * anyway — a real run produced "quand j'ai dit merci beaucoup" as ONE piece,
+ * which robs the learner of every word inside it. The constructions that
+ * genuinely need grouping all fit in four words ("je me suis dit", "ne ... pas"
+ * around a verb, "il y a"); anything longer is the model over-reaching, and
+ * splitting it back into single words loses nothing but the blob.
+ */
+const MAX_PART_WORDS = 4;
+
+/**
  * Keeps only the parts that are internally consistent and actually describe the
  * words they claim. Anything else is dropped so the caller can fall back.
  *
@@ -139,6 +149,7 @@ export function validateParts(parts: BreakdownPart[], words: string[]): Breakdow
   for (const p of [...parts].sort((a, b) => a.from - b.from)) {
     if (!Number.isInteger(p.from) || !Number.isInteger(p.to)) continue;
     if (p.from < 1 || p.to > words.length || p.from > p.to) continue;
+    if (p.to - p.from + 1 > MAX_PART_WORDS) continue;
     if (p.from <= covered) continue; // overlaps something already accepted
     const actual = words.slice(p.from - 1, p.to).join(" ");
     if (norm(actual) !== norm(p.surface)) continue;
