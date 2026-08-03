@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { buildTokens } from "./ingest-video";
-import { homographsIn, HOMOGRAPHS, bucketContextual } from "./homographs";
+import { homographsIn, HOMOGRAPHS, bucketContextual, decisiveGloss } from "./homographs";
 
 describe("homographsIn", () => {
   it("finds ambiguous forms so the prompt can name them", () => {
@@ -61,5 +61,54 @@ describe("buildTokens contextual override", () => {
     );
     expect(tokens.find((t) => t.surface === "rue")?.gloss).toBe("street");
     expect(tokens.find((t) => t.surface === "suis")?.gloss).toBe("follow");
+  });
+});
+
+describe("decisiveGloss", () => {
+  const follow = { lemma: "suivre", gloss: "follow" };
+
+  it("reads suis as suivre after a direct-object clitic", () => {
+    // The reported bug, verbatim.
+    expect(decisiveGloss("suis", ["tu", "la"])).toEqual(follow);
+    expect(decisiveGloss("suis", ["je", "la"])).toEqual(follow);
+    expect(decisiveGloss("suis", ["je", "les"])).toEqual(follow);
+  });
+
+  it("reads suis as suivre whenever the subject is tu", () => {
+    // être in the 2nd person is "tu es", so "tu suis" can only be suivre.
+    expect(decisiveGloss("suis", ["tu"])).toEqual(follow);
+    expect(decisiveGloss("suis", ["tu", "me"])).toEqual(follow);
+    expect(decisiveGloss("suis", ["tu", "ne", "me"])).toEqual(follow);
+  });
+
+  it("leaves the genuinely ambiguous and the reflexive alone", () => {
+    // "je suis" really is either verb — the model must decide, not this table.
+    expect(decisiveGloss("suis", ["je"])).toBeNull();
+    // "je me suis dit" is être; a rule that broke this would be worse than none.
+    expect(decisiveGloss("suis", ["je", "me"])).toBeNull();
+    expect(decisiveGloss("suis", ["moi", "je"])).toBeNull();
+    // Unrelated words are never touched.
+    expect(decisiveGloss("porte", ["la"])).toBeNull();
+  });
+
+  it("does not reach past an intervening non-clitic to find tu", () => {
+    expect(decisiveGloss("suis", ["tu", "vois", "je"])).toBeNull();
+  });
+});
+
+describe("bucketContextual", () => {
+  it("drops entries pointing outside the batch", () => {
+    // The real model returned cue 26 and 33 for a 25-cue batch.
+    const bucketed = bucketContextual(
+      [
+        { cue: 1, surface: "suis", lemma: "être", gloss: "am" },
+        { cue: 33, surface: "suis", lemma: "être", gloss: "am" },
+        { cue: 0, surface: "x", lemma: "y", gloss: "z" },
+      ],
+      25
+    );
+    expect(bucketed.has(1)).toBe(true);
+    expect(bucketed.has(33)).toBe(false);
+    expect(bucketed.has(0)).toBe(false);
   });
 });

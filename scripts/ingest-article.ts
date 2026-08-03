@@ -27,6 +27,7 @@ import {
   ambiguousNote,
   CONTEXTUAL_SCHEMA,
   bucketContextual,
+  decisiveGloss,
   type ContextualGloss,
 } from "./homographs";
 
@@ -409,7 +410,9 @@ function isUsefulExpression(phrase: string): boolean {
 export async function glossBatch(blockTexts: string[]): Promise<GlossPayload> {
   // Blocks are numbered rather than newline-joined so the model can point a
   // contextual gloss at a specific one.
-  const text = blockTexts.map((t, i) => `[${i + 1}] ${t}`).join("\n");
+  // Newlines inside a block would break the one-block-per-line contract the
+  // numbering depends on.
+  const text = blockTexts.map((t, i) => `[${i + 1}] ${t.replace(/\s+/g, " ").trim()}`).join("\n");
   const note = ambiguousNote(blockTexts.join(" "), "block");
 
   const response = await invokeLLM({
@@ -429,7 +432,8 @@ export async function glossBatch(blockTexts: string[]): Promise<GlossPayload> {
           `1b) "contextual": the entries in "glosses" apply to the whole excerpt, so they ` +
           `cannot express a word that means different things in different blocks. When a ` +
           `surface form's LEMMA or MEANING depends on where it appears, add one entry per ` +
-          `occurrence here: "cue" is the bracketed block number, "surface" copied exactly, ` +
+          `occurrence here: "cue" is the bracketed block number — an integer between 1 and ` +
+          `${blockTexts.length}, never any other value — "surface" copied exactly, ` +
           `plus the lemma and gloss correct FOR THAT BLOCK. Leave this array empty only if ` +
           `nothing in the excerpt is ambiguous.\n` +
           `2) "expressions": multi-word expressions of 2-5 words appearing VERBATIM ` +
@@ -564,20 +568,26 @@ function buildTokens(
     }
   }
 
+  const seen: string[] = [];
   for (const m of text.matchAll(WORD_RE)) {
     const s = m.index ?? 0;
     const e = s + m[0].length;
     const surface = m[0];
+    seen.push(surface.toLowerCase());
     if (overlaps(s, e)) continue;
     // Exact surface first, then the elided/inverted forms, then the closed-class
     // fallback — so a context-specific gloss always beats the generic one.
     const candidates = lookupCandidates(surface);
-    let g: { lemma: string; gloss: string } | undefined;
-    // The block-specific reading wins over the batch-wide one, which is how
-    // "suis" can be "follow" in one block and "am" in another.
-    for (const c of candidates) {
-      g = contextualBy?.get(c);
-      if (g) break;
+    // Grammar first: rules with no counterexample outrank the model, which
+    // demonstrably mis-reads these.
+    let g: { lemma: string; gloss: string } | undefined =
+      decisiveGloss(surface, seen.slice(0, -1)) ?? undefined;
+    // Then the block-specific reading, which beats the batch-wide one.
+    if (!g) {
+      for (const c of candidates) {
+        g = contextualBy?.get(c);
+        if (g) break;
+      }
     }
     if (!g) {
       for (const c of candidates) {
@@ -758,7 +768,7 @@ async function main() {
         // Bump this when the gloss prompt changes, so a re-run gets fresh
         // output instead of replaying the answers to the old question.
         // v3: blocks are numbered and the payload gained `contextual`.
-        const key = `agloss::v3::${slug}::${at}`;
+        const key = `agloss::v4::${slug}::${at}`;
         const hit = await cachedGloss(key);
         if (hit) { payloads[at] = hit; return; }
         const got = await glossBatch(batch.map((b) => b.text));

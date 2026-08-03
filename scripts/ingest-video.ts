@@ -28,6 +28,7 @@ import {
   ambiguousNote,
   CONTEXTUAL_SCHEMA,
   bucketContextual,
+  decisiveGloss,
   type ContextualGloss,
 } from "./homographs";
 
@@ -297,7 +298,9 @@ const COMMON_EXPRESSIONS: { phrase: string; gloss: string }[] = [
 export async function glossBatch(cueTexts: string[]): Promise<GlossPayload> {
   // Cues are numbered rather than joined into one blob so the model can point a
   // contextual gloss at a specific line, and so it can see sentence boundaries.
-  const text = cueTexts.map((t, i) => `[${i + 1}] ${t}`).join("\n");
+  // Newlines inside a cue would break the one-cue-per-line contract the
+  // numbering depends on.
+  const text = cueTexts.map((t, i) => `[${i + 1}] ${t.replace(/\s+/g, " ").trim()}`).join("\n");
   const note = ambiguousNote(cueTexts.join(" "), "cue");
 
   const response = await invokeLLM({
@@ -317,7 +320,8 @@ export async function glossBatch(cueTexts: string[]): Promise<GlossPayload> {
           `1b) "contextual": the entries in "glosses" apply to the whole excerpt, so they ` +
           `cannot express a word that means different things in different lines. When a ` +
           `surface form's LEMMA or MEANING depends on where it appears, add one entry per ` +
-          `occurrence here: "cue" is the bracketed line number, "surface" copied exactly, ` +
+          `occurrence here: "cue" is the bracketed line number — an integer between 1 and ` +
+          `${cueTexts.length}, never any other value — "surface" copied exactly, ` +
           `plus the lemma and gloss correct FOR THAT LINE. Leave this array empty only if ` +
           `nothing in the excerpt is ambiguous.\n` +
           `2) "expressions": multi-word expressions of 2-5 words appearing VERBATIM ` +
@@ -396,6 +400,7 @@ export function buildTokens(
   // Whisper's word list is in spoken order, so consume it in step with the
   // cue's own word order to attach a start time to each.
   let wordCursor = 0;
+  const seen: string[] = [];
   for (const m of text.matchAll(WORD_RE)) {
     const s = m.index ?? 0;
     const e = s + m[0].length;
@@ -405,9 +410,10 @@ export function buildTokens(
     wordCursor++;
     if (overlaps(s, e)) continue;
     const key = surface.toLowerCase();
-    // The cue-specific reading wins over the batch-wide one, which is how
-    // "suis" can be "follow" on this line and "am" three lines later.
-    const g = contextualBy?.get(key) ?? glossBy.get(key);
+    // Grammar first, then the cue-specific reading, then the batch-wide one.
+    // The decisive rules outrank the model because the model gets these wrong.
+    const g = decisiveGloss(surface, seen) ?? contextualBy?.get(key) ?? glossBy.get(key);
+    seen.push(key);
     claimed.push({
       s, e, surface,
       lemma: g?.lemma && g.lemma.toLowerCase() !== surface.toLowerCase() ? g.lemma : undefined,
@@ -521,9 +527,9 @@ async function main() {
       await Promise.all(
         batches.slice(i, i + GLOSS_CONCURRENCY).map(async (batch, k) => {
           const at = i + k;
-          // v2: payload gained `contextual`, and the prompt now numbers cues.
+          // v3: prompt now bounds the cue number and normalises whitespace.
           // A v1 hit would silently restore the one-gloss-per-word behaviour.
-          const key = `vgloss::v2::${meta.id}::${at}`;
+          const key = `vgloss::v3::${meta.id}::${at}`;
           const hit = await cachedGloss(key);
           if (hit) { payloads[at] = hit; return; }
           const got = await glossBatch(batch.map((c) => c.text));

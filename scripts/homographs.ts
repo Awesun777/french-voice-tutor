@@ -104,6 +104,55 @@ export function ambiguousNote(text: string, unit: string): string {
   );
 }
 
+/**
+ * Direct-object clitics. "être" never takes one, so anything following them is
+ * a transitive verb — that is what makes "je la suis" decidable.
+ */
+const DIRECT_OBJECT_CLITICS = new Set(["le", "la", "les", "l'", "l’"]);
+/** Clitics that may sit between a subject pronoun and its verb. */
+const INTERVENING_CLITICS = new Set([
+  "le", "la", "les", "l'", "l’", "me", "m'", "m’", "te", "t'", "t’",
+  "nous", "vous", "y", "en", "ne", "n'", "n’",
+]);
+
+/**
+ * Readings that French grammar settles outright, applied after the model has
+ * spoken because the model demonstrably gets them wrong: asked to disambiguate
+ * a real transcript it glossed "Tu la suis" as être ("am"), and pointed several
+ * of its other answers at cue numbers that did not exist.
+ *
+ * Only rules with no counterexample belong here.
+ *
+ * `prevWords` are the lowercased words before this one in the same cue/block,
+ * in order. Returns null when nothing is decidable.
+ */
+export function decisiveGloss(
+  surface: string,
+  prevWords: string[]
+): { lemma: string; gloss: string } | null {
+  const w = surface.toLowerCase();
+
+  if (w === "suis") {
+    const prev = prevWords[prevWords.length - 1];
+    // "je la suis", "tu les suis" — être takes no direct object, so this is
+    // suivre. Note the reflexive "je me suis dit" is NOT caught here: "me" is
+    // not a direct-object clitic in that construction's slot, and it really is
+    // être.
+    if (prev && DIRECT_OBJECT_CLITICS.has(prev)) {
+      return { lemma: "suivre", gloss: "follow" };
+    }
+    // "tu suis", "tu me suis" — être in the 2nd person singular is "tu es",
+    // never "tu suis", so a "tu" subject makes this suivre unconditionally.
+    for (let i = prevWords.length - 1, hops = 0; i >= 0 && hops < 3; i--, hops++) {
+      const p = prevWords[i];
+      if (p === "tu") return { lemma: "suivre", gloss: "follow" };
+      if (!INTERVENING_CLITICS.has(p)) break;
+    }
+  }
+
+  return null;
+}
+
 /** JSON-schema fragment for the per-occurrence overrides. Identical in both ingesters. */
 export const CONTEXTUAL_SCHEMA = {
   type: "array",
