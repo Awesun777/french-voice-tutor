@@ -620,14 +620,23 @@ function buildTokens(
   }
 
   const seen: string[] = [];
+  const spanOf = (from: number, to: number) => {
+    const a = matches[from], b = matches[to - 1];
+    return [a.index ?? 0, (b.index ?? 0) + b[0].length] as const;
+  };
+
   let i = 0;
   while (i < matches.length) {
     const part = partAt.get(i + 1);
-    const last = part ? Math.min(part.to, matches.length) : i + 1;
-    const first = matches[i];
-    const end = matches[last - 1];
-    const s = first.index ?? 0;
-    const e = (end.index ?? 0) + end[0].length;
+    // Only take a group whole if no expression already claimed part of it,
+    // otherwise the remainder would be silently swallowed.
+    let last = part ? Math.min(part.to, matches.length) : i + 1;
+    if (last > i + 1) {
+      const [gs, ge] = spanOf(i, last);
+      if (overlaps(gs, ge)) last = i + 1;
+    }
+    const usingPart = part !== undefined && last === Math.min(part.to, matches.length);
+    const [s, e] = spanOf(i, last);
     // Span the raw text so punctuation inside a group ("n'ont pas") is kept.
     const surface = text.slice(s, e);
     const spanned = matches.slice(i, last).map((m) => m[0]);
@@ -641,7 +650,7 @@ function buildTokens(
     const candidates = lookupCandidates(spanned[0]);
     let g: { lemma: string; gloss: string } | undefined =
       (spanned.length === 1 ? decisiveGloss(spanned[0], before) : null) ?? undefined;
-    if (!g && part) g = { lemma: part.lemma, gloss: part.gloss };
+    if (!g && usingPart && part) g = { lemma: part.lemma, gloss: part.gloss };
     if (!g) {
       for (const c of candidates) {
         g = contextualBy?.get(c);
@@ -847,7 +856,7 @@ async function main() {
         // v5: blocks are broken down sentence-first; the per-word pass stays as
         // the fallback for anything the breakdown does not cover.
         const gKey = `agloss::v5::${slug}::${at}`;
-        const bKey = `abreak::v1::${slug}::${at}`;
+        const bKey = `abreak::v2::${slug}::${at}`;
         const texts = batch.map((b) => b.text);
         const [gHit, bHit] = await Promise.all([cachedGloss(gKey), cachedBreakdown(bKey)]);
         const [got, broke] = await Promise.all([
@@ -882,9 +891,10 @@ async function main() {
       b.tokens = buildTokens(
         b.text,
         glossBy,
-        // With a breakdown in hand the model has already grouped what needs
-        // grouping, so the generic idiom list would only fight it.
-        parts.length ? [] : [...kept, ...COMMON_EXPRESSIONS],
+        // Kept even when a breakdown exists: the model under-groups at batch
+        // scale (a 353-word article came back with zero groups), and this list
+        // is vetted, so it stays the floor for idioms.
+        [...kept, ...COMMON_EXPRESSIONS],
         contextualByBlock.get(ci + 1),
         parts
       );
