@@ -19,6 +19,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["server/**/*.live.test.ts"],
+    include: ["server/**/*.live.test.ts", "scripts/**/*.live.test.ts"],
   },
 });

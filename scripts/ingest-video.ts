@@ -18,6 +18,7 @@ import { readFile, mkdtemp, rm, readdir } from "node:fs/promises";
 import { statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../server/db";
@@ -176,7 +177,82 @@ async function transcribeChunk(
 
 interface GlossPayload {
   glosses: { surface: string; lemma: string; gloss: string }[];
+  /**
+   * Per-occurrence overrides for words whose lemma or meaning changes with
+   * context. `cue` is 1-based within the batch. Without these, one surface form
+   * gets one gloss for the whole batch, so "tu la suis" (suivre, "follow")
+   * inherits whatever "je suis" (être, "am") got — the far more frequent
+   * reading always wins.
+   */
+  contextual: { cue: number; surface: string; lemma: string; gloss: string }[];
   expressions: { phrase: string; gloss: string }[];
+}
+
+/**
+ * French surface forms that map to more than one lemma. The model will not
+ * reliably volunteer that a word is ambiguous, so any of these appearing in a
+ * batch are named explicitly in the prompt and required to come back as
+ * per-occurrence `contextual` entries.
+ *
+ * Only forms where the readings are genuinely different WORDS belong here —
+ * not mere tense ambiguity within one verb, which the gloss would render the
+ * same way anyway. Values are the competing lemmas, purely as a hint to the model.
+ */
+export const HOMOGRAPHS: Record<string, string[]> = {
+  // The one that started this: "je suis" (am) vs "tu la suis" (follow).
+  suis: ["être", "suivre"],
+  suit: ["suivre", "suite"],
+  suivant: ["suivre (following)", "suivant (next)"],
+  est: ["être", "est (east)"],
+  a: ["avoir", "à (to)"],
+  as: ["avoir", "as (ace)"],
+  sommes: ["être", "somme (sums)"],
+  somme: ["somme (sum)", "somme (nap)"],
+  été: ["être (been)", "été (summer)"],
+  fils: ["fils (son)", "fil (threads)"],
+  livre: ["livre (book)", "livre (pound)", "livrer (delivers)"],
+  livres: ["livre (book)", "livre (pound)"],
+  porte: ["porte (door)", "porter (carries/wears)"],
+  portes: ["porte (door)", "porter (carry/wear)"],
+  pas: ["pas (negation)", "pas (step)"],
+  plus: ["plus (more)", "plus (no longer)"],
+  vers: ["vers (towards)", "ver (worms)", "vers (verse)"],
+  tour: ["tour (turn)", "tour (tower)"],
+  mode: ["mode (fashion)", "mode (method)"],
+  vis: ["vivre", "voir", "vis (screw)"],
+  vit: ["vivre (lives)", "voir (saw)"],
+  vole: ["voler (flies)", "voler (steals)"],
+  volé: ["voler (flown)", "voler (stolen)"],
+  parti: ["partir (left)", "parti (political party)"],
+  partie: ["partie (part)", "partir (left, fem.)"],
+  pouvoir: ["pouvoir (to be able)", "pouvoir (power)"],
+  savoir: ["savoir (to know)", "savoir (knowledge)"],
+  cours: ["cours (class)", "courir (run)"],
+  court: ["court (short)", "courir (runs)"],
+  sens: ["sens (meaning/sense)", "sentir (feel)"],
+  car: ["car (because)", "car (coach/bus)"],
+  or: ["or (gold)", "or (now/yet)"],
+  son: ["son (his/her)", "son (sound)"],
+  temps: ["temps (time)", "temps (weather)"],
+  fait: ["faire (does/done)", "fait (fact)"],
+};
+
+/** Homograph surfaces present in this batch, for the prompt's "disambiguate these" list. */
+export function homographsIn(text: string): string[] {
+  const present = new Set<string>();
+  for (const m of text.matchAll(WORD_RE)) {
+    const w = m[0].toLowerCase();
+    if (HOMOGRAPHS[w]) present.add(w);
+    // WORD_RE keeps hyphenated and elided forms whole, so "suis-moi" and
+    // "est-ce" arrive as single tokens. Check the parts too, or the imperative
+    // "Suis-moi !" ("follow me") never gets flagged as ambiguous at all.
+    if (/['’-]/.test(w)) {
+      for (const part of w.split(/['’-]/)) {
+        if (HOMOGRAPHS[part]) present.add(part);
+      }
+    }
+  }
+  return [...present];
 }
 
 const GLOSS_SCHEMA = {
@@ -195,6 +271,20 @@ const GLOSS_SCHEMA = {
         additionalProperties: false,
       },
     },
+    contextual: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          cue: { type: "integer" },
+          surface: { type: "string" },
+          lemma: { type: "string" },
+          gloss: { type: "string" },
+        },
+        required: ["cue", "surface", "lemma", "gloss"],
+        additionalProperties: false,
+      },
+    },
     expressions: {
       type: "array",
       items: {
@@ -208,7 +298,7 @@ const GLOSS_SCHEMA = {
       },
     },
   },
-  required: ["glosses", "expressions"],
+  required: ["glosses", "contextual", "expressions"],
   additionalProperties: false,
 };
 
@@ -277,7 +367,21 @@ const COMMON_EXPRESSIONS: { phrase: string; gloss: string }[] = [
   { phrase: "ça va", gloss: "it's fine / how's it going" },
 ];
 
-async function glossBatch(text: string): Promise<GlossPayload> {
+export async function glossBatch(cueTexts: string[]): Promise<GlossPayload> {
+  // Cues are numbered rather than joined into one blob so the model can point a
+  // contextual gloss at a specific line, and so it can see sentence boundaries.
+  const text = cueTexts.map((t, i) => `[${i + 1}] ${t}`).join("\n");
+  const ambiguous = homographsIn(cueTexts.join(" "));
+  const ambiguousNote = ambiguous.length
+    ? `\n\nAMBIGUOUS FORMS PRESENT: ${ambiguous
+        .map((w) => `"${w}" (could be ${HOMOGRAPHS[w].join(" or ")})`)
+        .join("; ")}. ` +
+      `For EVERY occurrence of each of these, emit a "contextual" entry — even if all ` +
+      `occurrences turn out to mean the same thing. Read the surrounding words to decide: ` +
+      `in "tu la suis" the object pronoun "la" makes "suis" the verb suivre ("follow"), ` +
+      `while in "je suis fatigué" it is être ("am").`
+    : "";
+
   const response = await invokeLLM({
     messages: [
       {
@@ -288,10 +392,16 @@ async function glossBatch(text: string): Promise<GlossPayload> {
       {
         role: "user",
         content:
-          `French transcript excerpt:\n"""${text}"""\n\n` +
+          `French transcript excerpt, one numbered cue per line:\n"""\n${text}\n"""\n\n` +
           `1) "glosses": for every distinct French word above, give its dictionary form ` +
           `("lemma") and a concise English meaning as used here ("gloss", 1-5 words). ` +
           `Copy "surface" exactly as it appears, accents preserved.\n` +
+          `1b) "contextual": the entries in "glosses" apply to the whole excerpt, so they ` +
+          `cannot express a word that means different things in different lines. When a ` +
+          `surface form's LEMMA or MEANING depends on where it appears, add one entry per ` +
+          `occurrence here: "cue" is the bracketed line number, "surface" copied exactly, ` +
+          `plus the lemma and gloss correct FOR THAT LINE. Leave this array empty only if ` +
+          `nothing in the excerpt is ambiguous.\n` +
           `2) "expressions": multi-word expressions of 2-5 words appearing VERBATIM ` +
           `above that a learner should memorise as a SINGLE UNIT rather than word by ` +
           `word. The test is "would a teacher or phrasebook present this as one chunk?" ` +
@@ -304,7 +414,8 @@ async function glossBatch(text: string): Promise<GlossPayload> {
           `"se rendre compte"). EXCLUDE full clauses that merely describe something ` +
           `specific and would never be reused — e.g. "c'est un prêtre", ` +
           `"on commence pas tranquille". Copy each phrase exactly as it appears, ` +
-          `accents and elisions preserved.`,
+          `accents and elisions preserved.` +
+          ambiguousNote,
       },
     ],
     response_format: {
@@ -316,10 +427,14 @@ async function glossBatch(text: string): Promise<GlossPayload> {
   const raw = response.choices[0].message.content ?? "{}";
   try {
     const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
-    return { glosses: parsed.glosses ?? [], expressions: parsed.expressions ?? [] };
+    return {
+      glosses: parsed.glosses ?? [],
+      contextual: parsed.contextual ?? [],
+      expressions: parsed.expressions ?? [],
+    };
   } catch {
     // A malformed batch costs a few missing glosses, not the whole ingest.
-    return { glosses: [], expressions: [] };
+    return { glosses: [], contextual: [], expressions: [] };
   }
 }
 
@@ -329,12 +444,14 @@ async function glossBatch(text: string): Promise<GlossPayload> {
  * become a single span so they render with one continuous underline and one
  * hover card rather than one per word.
  */
-function buildTokens(
+export function buildTokens(
   text: string,
   glossBy: Map<string, { lemma: string; gloss: string }>,
   expressions: { phrase: string; gloss: string }[],
   words: WhisperWord[],
-  cueStartMs: number
+  cueStartMs: number,
+  /** Per-occurrence overrides for this cue only; beats the batch-wide glossBy. */
+  contextualBy?: Map<string, { lemma: string; gloss: string }>
 ): Token[] {
   const claimed: Token[] = [];
   const overlaps = (s: number, e: number) => claimed.some((t) => s < t.e && e > t.s);
@@ -369,7 +486,10 @@ function buildTokens(
     const tMs = w ? Math.round(w.start * 1000) : undefined;
     wordCursor++;
     if (overlaps(s, e)) continue;
-    const g = glossBy.get(surface.toLowerCase());
+    const key = surface.toLowerCase();
+    // The cue-specific reading wins over the batch-wide one, which is how
+    // "suis" can be "follow" on this line and "am" three lines later.
+    const g = contextualBy?.get(key) ?? glossBy.get(key);
     claimed.push({
       s, e, surface,
       lemma: g?.lemma && g.lemma.toLowerCase() !== surface.toLowerCase() ? g.lemma : undefined,
@@ -483,11 +603,12 @@ async function main() {
       await Promise.all(
         batches.slice(i, i + GLOSS_CONCURRENCY).map(async (batch, k) => {
           const at = i + k;
-          const text = batch.map((c) => c.text).join(" ");
-          const key = `vgloss::v1::${meta.id}::${at}`;
+          // v2: payload gained `contextual`, and the prompt now numbers cues.
+          // A v1 hit would silently restore the one-gloss-per-word behaviour.
+          const key = `vgloss::v2::${meta.id}::${at}`;
           const hit = await cachedGloss(key);
           if (hit) { payloads[at] = hit; return; }
-          const got = await glossBatch(text);
+          const got = await glossBatch(batch.map((c) => c.text));
           await putGloss(key, got);
           payloads[at] = got;
         })
@@ -496,9 +617,17 @@ async function main() {
     }
 
     batches.forEach((batch, bi) => {
-      const p = payloads[bi] ?? { glosses: [], expressions: [] };
+      const p = payloads[bi] ?? { glosses: [], contextual: [], expressions: [] };
       const glossBy = new Map(p.glosses.map((g) => [g.surface.toLowerCase(), { lemma: g.lemma, gloss: g.gloss }]));
-      for (const cue of batch) {
+      // Contextual entries bucketed by their 1-based cue number, so each cue
+      // only sees the overrides that were written for it.
+      const contextualByCue = new Map<number, Map<string, { lemma: string; gloss: string }>>();
+      for (const c of p.contextual ?? []) {
+        if (!Number.isInteger(c.cue) || c.cue < 1 || c.cue > batch.length) continue;
+        if (!contextualByCue.has(c.cue)) contextualByCue.set(c.cue, new Map());
+        contextualByCue.get(c.cue)!.set(c.surface.toLowerCase(), { lemma: c.lemma, gloss: c.gloss });
+      }
+      batch.forEach((cue, ci) => {
         const inCue = allWords.filter(
           (w) => w.start * 1000 >= cue.startMs - 250 && w.start * 1000 <= cue.endMs + 250
         );
@@ -507,9 +636,10 @@ async function main() {
           glossBy,
           [...p.expressions, ...COMMON_EXPRESSIONS],
           inCue,
-          cue.startMs
+          cue.startMs,
+          contextualByCue.get(ci + 1)
         );
-      }
+      });
     });
 
     console.log("• writing to database");
@@ -557,7 +687,14 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  console.error("✗", err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// Only run the CLI when invoked directly, so tests can import glossBatch and
+// buildTokens without kicking off a download.
+const invokedDirectly =
+  !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error("✗", err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
