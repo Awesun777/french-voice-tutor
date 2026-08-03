@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Search, X, Loader2, Volume2 } from "lucide-react";
+import { Search, X, Loader2, Volume2, Plus, BookmarkCheck } from "lucide-react";
 import { toast } from "sonner";
 import type { DictWordResult, DictPhraseResult, DictQuestionResult } from "@/types";
 import { usePronounce } from "@/lib/pronounce";
@@ -77,19 +77,35 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
 
   const norm = (s: string) => s.trim().toLowerCase();
   const wordResult = result?.type === "word" ? (result as DictWordResult) : null;
-  const savedKey = wordResult ? norm(wordResult.word) : "";
+  const phraseResult = result?.type === "phrase" ? (result as DictPhraseResult) : null;
+
+  /**
+   * What the current result would save as. Phrases are as worth keeping as
+   * single words — more so, since the ⌘-style shortcut pre-fills from the page
+   * selection and a dragged selection is usually several words.
+   */
+  const savable: { term: string; translation: string; entryKind: "word" | "phrase" } | null =
+    wordResult?.found
+      ? { term: wordResult.word, translation: wordResult.translation, entryKind: "word" }
+      : phraseResult?.found
+        ? { term: phraseResult.phrase, translation: phraseResult.translation, entryKind: "phrase" }
+        : null;
+
+  const savedKey = savable ? norm(savable.term) : "";
+  // Checked against the library as well as this session's saves, so re-searching
+  // something saved weeks ago still comes back marked.
   const isSaved = !!savedKey && (saved.has(savedKey) || vocabList.some((v) => norm(v.term) === savedKey));
 
-  const addWord = async () => {
-    if (!wordResult?.found || addVocab.isPending) return;
+  const addCurrent = async () => {
+    if (!savable || addVocab.isPending) return;
     if (isSaved) { setSaved((s) => new Set(s).add(savedKey)); return; }
     try {
-      await addVocab.mutateAsync({ term: wordResult.word, translation: wordResult.translation, entryKind: "word", lessonSource: "Dictionary" });
+      await addVocab.mutateAsync({ ...savable, lessonSource: "Dictionary" });
       setSaved((s) => new Set(s).add(savedKey));
       utils.vocab.list.invalidate();
-      toast.success(`Saved “${wordResult.word}” to your library`);
+      toast.success(`Saved “${savable.term}” to your library`);
     } catch {
-      toast.error("Couldn't save the word");
+      toast.error(`Couldn't save the ${savable.entryKind}`);
     }
   };
 
@@ -149,7 +165,7 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
             <WordResultCard
               result={wordResult}
               detailsLoading={detailsLoading}
-              onAdd={addWord}
+              onAdd={addCurrent}
               isAdded={isSaved}
               adding={addVocab.isPending}
               speak={speak}
@@ -159,7 +175,15 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
           )}
 
           {result?.type === "phrase" && (result as DictPhraseResult).found && (
-            <PhraseCard result={result as DictPhraseResult} speak={speak} pronounceState={pronounceState} activeText={activeText} />
+            <PhraseCard
+              result={result as DictPhraseResult}
+              speak={speak}
+              pronounceState={pronounceState}
+              activeText={activeText}
+              onAdd={addCurrent}
+              isAdded={isSaved}
+              adding={addVocab.isPending}
+            />
           )}
 
           {result?.type === "question" && (
@@ -176,17 +200,33 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
   );
 }
 
-function PhraseCard({ result, speak, pronounceState, activeText }: {
+function PhraseCard({ result, speak, pronounceState, activeText, onAdd, isAdded, adding }: {
   result: DictPhraseResult;
   speak: (t: string) => void;
   pronounceState: import("@/lib/pronounce").PronounceState;
   activeText: string | null;
+  onAdd?: () => void;
+  isAdded?: boolean;
+  adding?: boolean;
 }) {
   return (
     <div className="bg-card card-float rounded-2xl p-5 space-y-3">
       <div className="flex items-center gap-2">
         <h2 className="font-display text-xl font-bold text-foreground">{result.phrase}</h2>
         <PronounceButton text={result.phrase} speak={speak} state={pronounceState} activeText={activeText} className="p-1.5 bg-primary/15 hover:bg-primary/25 text-primary" iconSize="w-4 h-4" />
+        {/* Same control as WordResultCard, so both result types behave alike. */}
+        {onAdd && (
+          <button
+            onClick={onAdd}
+            disabled={isAdded || adding}
+            className={cn(
+              "ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shrink-0",
+              isAdded ? "bg-emerald-500/15 text-emerald-700 cursor-default" : "bg-primary/15 hover:bg-primary/25 text-primary"
+            )}
+          >
+            {isAdded ? <><BookmarkCheck className="w-3.5 h-3.5" /> Saved</> : adding ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</> : <><Plus className="w-3.5 h-3.5" /> Add</>}
+          </button>
+        )}
       </div>
       {result.pronunciation && <p className="text-sm text-muted-foreground font-mono">[{result.pronunciation}]</p>}
       <p className="text-lg text-foreground font-medium">{result.translation}</p>
