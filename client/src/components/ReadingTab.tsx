@@ -17,7 +17,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Loader2, ArrowLeft, Check, Plus, Newspaper, ExternalLink } from "lucide-react";
+import { Loader2, ArrowLeft, Check, Plus, Newspaper, ExternalLink, Languages } from "lucide-react";
 import { toast } from "sonner";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
@@ -35,6 +35,7 @@ interface Block {
   kind: "heading" | "paragraph";
   text: string;
   tokens: Token[];
+  translationEn?: string | null;
 }
 
 /** ~200 words per minute is the usual estimate for reading in a second language. */
@@ -169,6 +170,9 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
   // ─── Hover gloss ───────────────────────────────────────────────────────────
   // One shared card positioned from the hovered span's rect, rather than a
   // popover root per token — an article runs to hundreds of tokens.
+  // English stays hidden by default: the point of the reader is to work out the
+  // French first, and a translation under every paragraph removes the work.
+  const [showEnglish, setShowEnglish] = useState(false);
   const [hover, setHover] = useState<{ token: Token; top: number; left: number } | null>(null);
   const hoverTimer = useRef<number | null>(null);
 
@@ -291,6 +295,18 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
                     Original <ExternalLink className="w-3 h-3" />
                   </a>
                 )}
+                <button
+                  onClick={() => setShowEnglish((v) => !v)}
+                  aria-pressed={showEnglish}
+                  className={cn(
+                    "ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold transition-colors",
+                    showEnglish
+                      ? "bg-primary/15 text-primary"
+                      : "hover:bg-muted/60 hover:text-foreground"
+                  )}
+                >
+                  <Languages className="w-3.5 h-3.5" /> English
+                </button>
               </div>
 
               {article?.imageUrl && (
@@ -319,6 +335,11 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
                       className="text-[1.0625rem] leading-[1.85] text-foreground"
                     >
                       <BlockText block={block} onHover={openHover} onLeave={scheduleHoverClose} />
+                      {showEnglish && block.translationEn && (
+                        <span className="block mt-1.5 text-base leading-relaxed text-muted-foreground/80 italic">
+                          {block.translationEn}
+                        </span>
+                      )}
                     </p>
                   )
                 )}

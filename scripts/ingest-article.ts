@@ -30,6 +30,15 @@ import {
   decisiveGloss,
   type ContextualGloss,
 } from "./homographs";
+import {
+  BREAKDOWN_SCHEMA,
+  breakdownInstruction,
+  renderBatch,
+  validateParts,
+  wordsOf,
+  type BreakdownPart,
+  type BreakdownPayload,
+} from "./breakdown";
 
 /** Roughly one gloss request per this many characters of article text. */
 const CHARS_PER_GLOSS_BATCH = 2500;
@@ -60,6 +69,8 @@ interface Block {
   kind: "heading" | "paragraph";
   text: string;
   tokens: Token[];
+  /** English for the whole block, from the sentence breakdown. */
+  translationEn?: string;
 }
 
 // ─── Fetching and stripping ───────────────────────────────────────────────────
@@ -407,6 +418,36 @@ function isUsefulExpression(phrase: string): boolean {
   return true;
 }
 
+/** See ingest-video.ts's breakdownBatch — same idea, "block" instead of "cue". */
+export async function breakdownBatch(blockTexts: string[]): Promise<BreakdownPayload> {
+  const response = await invokeLLM({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You help English speakers read French. Return only valid JSON matching the schema exactly.",
+      },
+      {
+        role: "user",
+        content:
+          `French article, one numbered block per line:\n"""\n${renderBatch(blockTexts)}\n"""\n\n` +
+          breakdownInstruction(blockTexts.length, "block"),
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "block_breakdown", strict: true, schema: BREAKDOWN_SCHEMA },
+    } as never,
+  });
+  const raw = response.choices[0].message.content ?? "{}";
+  try {
+    const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+    return { lines: parsed.lines ?? [] };
+  } catch {
+    return { lines: [] };
+  }
+}
+
 export async function glossBatch(blockTexts: string[]): Promise<GlossPayload> {
   // Blocks are numbered rather than newline-joined so the model can point a
   // contextual gloss at a specific one.
@@ -544,7 +585,9 @@ function buildTokens(
   glossBy: Map<string, { lemma: string; gloss: string }>,
   expressions: { phrase: string; gloss: string }[],
   /** Per-occurrence overrides for this block only; beats the batch-wide glossBy. */
-  contextualBy?: Map<string, { lemma: string; gloss: string }>
+  contextualBy?: Map<string, { lemma: string; gloss: string }>,
+  /** This block's sentence breakdown, already validated. Beats both maps. */
+  parts?: BreakdownPart[]
 ): Token[] {
   const claimed: Token[] = [];
   const overlaps = (s: number, e: number) => claimed.some((t) => s < t.e && e > t.s);
@@ -568,21 +611,37 @@ function buildTokens(
     }
   }
 
+  const matches = [...text.matchAll(WORD_RE)];
+  // Word number (1-based) -> the breakdown piece covering it, so a grouped
+  // piece like "suis allé" is emitted once as a single span.
+  const partAt = new Map<number, BreakdownPart>();
+  for (const p of parts ?? []) {
+    for (let i = p.from; i <= p.to; i++) partAt.set(i, p);
+  }
+
   const seen: string[] = [];
-  for (const m of text.matchAll(WORD_RE)) {
-    const s = m.index ?? 0;
-    const e = s + m[0].length;
-    const surface = m[0];
-    seen.push(surface.toLowerCase());
+  let i = 0;
+  while (i < matches.length) {
+    const part = partAt.get(i + 1);
+    const last = part ? Math.min(part.to, matches.length) : i + 1;
+    const first = matches[i];
+    const end = matches[last - 1];
+    const s = first.index ?? 0;
+    const e = (end.index ?? 0) + end[0].length;
+    // Span the raw text so punctuation inside a group ("n'ont pas") is kept.
+    const surface = text.slice(s, e);
+    const spanned = matches.slice(i, last).map((m) => m[0]);
+    const before = [...seen];
+    spanned.forEach((w) => seen.push(w.toLowerCase()));
+    i = last;
     if (overlaps(s, e)) continue;
-    // Exact surface first, then the elided/inverted forms, then the closed-class
-    // fallback — so a context-specific gloss always beats the generic one.
-    const candidates = lookupCandidates(surface);
-    // Grammar first: rules with no counterexample outrank the model, which
-    // demonstrably mis-reads these.
+
+    // Grammar first, then the breakdown piece (it read the sentence), then the
+    // block-specific reading, then the batch-wide one, then the closed-class map.
+    const candidates = lookupCandidates(spanned[0]);
     let g: { lemma: string; gloss: string } | undefined =
-      decisiveGloss(surface, seen.slice(0, -1)) ?? undefined;
-    // Then the block-specific reading, which beats the batch-wide one.
+      (spanned.length === 1 ? decisiveGloss(spanned[0], before) : null) ?? undefined;
+    if (!g && part) g = { lemma: part.lemma, gloss: part.gloss };
     if (!g) {
       for (const c of candidates) {
         g = contextualBy?.get(c);
@@ -600,7 +659,8 @@ function buildTokens(
       s, e, surface,
       lemma: g?.lemma && g.lemma.toLowerCase() !== surface.toLowerCase() ? g.lemma : undefined,
       gloss: g?.gloss ?? fallback ?? "",
-      kind: "word",
+      // A grouped piece renders like an idiom: one underline, one hover card.
+      kind: spanned.length > 1 ? "expression" : "word",
     });
   }
 
@@ -615,6 +675,22 @@ async function cachedGloss(key: string): Promise<GlossPayload | null> {
   const rows = await db.select().from(dictCache).where(eq(dictCache.termKey, key));
   if (!rows.length) return null;
   try { return JSON.parse(rows[0].entryJson); } catch { return null; }
+}
+
+async function cachedBreakdown(key: string): Promise<BreakdownPayload | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(dictCache).where(eq(dictCache.termKey, key));
+  if (!rows.length) return null;
+  try { return JSON.parse(rows[0].entryJson); } catch { return null; }
+}
+
+async function putBreakdown(key: string, value: BreakdownPayload) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(dictCache)
+    .values({ termKey: key, entryJson: JSON.stringify(value), createdAt: Date.now() })
+    .onDuplicateKeyUpdate({ set: { entryJson: JSON.stringify(value), createdAt: Date.now() } });
 }
 
 async function putGloss(key: string, value: GlossPayload) {
@@ -761,19 +837,25 @@ async function main() {
 
   console.log(`• glossing ${blocks.length} blocks in ${batches.length} batches`);
   const payloads = new Array<GlossPayload>(batches.length);
+  const breakdowns = new Array<BreakdownPayload>(batches.length);
   for (let i = 0; i < batches.length; i += GLOSS_CONCURRENCY) {
     await Promise.all(
       batches.slice(i, i + GLOSS_CONCURRENCY).map(async (batch, k) => {
         const at = i + k;
-        // Bump this when the gloss prompt changes, so a re-run gets fresh
-        // output instead of replaying the answers to the old question.
-        // v3: blocks are numbered and the payload gained `contextual`.
-        const key = `agloss::v4::${slug}::${at}`;
-        const hit = await cachedGloss(key);
-        if (hit) { payloads[at] = hit; return; }
-        const got = await glossBatch(batch.map((b) => b.text));
-        await putGloss(key, got);
+        // Bump these when the prompts change, so a re-run gets fresh output
+        // instead of replaying the answers to the old question.
+        // v5: blocks are broken down sentence-first; the per-word pass stays as
+        // the fallback for anything the breakdown does not cover.
+        const gKey = `agloss::v5::${slug}::${at}`;
+        const bKey = `abreak::v1::${slug}::${at}`;
+        const texts = batch.map((b) => b.text);
+        const [gHit, bHit] = await Promise.all([cachedGloss(gKey), cachedBreakdown(bKey)]);
+        const [got, broke] = await Promise.all([
+          gHit ? Promise.resolve(gHit) : glossBatch(texts).then(async (r) => { await putGloss(gKey, r); return r; }),
+          bHit ? Promise.resolve(bHit) : breakdownBatch(texts).then(async (r) => { await putBreakdown(bKey, r); return r; }),
+        ]);
         payloads[at] = got;
+        breakdowns[at] = broke;
       })
     );
     console.log(`  ${Math.min(i + GLOSS_CONCURRENCY, batches.length)}/${batches.length} batches`);
@@ -790,12 +872,21 @@ async function main() {
     // suggestions have to earn their place.
     const kept = p.expressions.filter((e) => isUsefulExpression(e.phrase));
     rejected += p.expressions.length - kept.length;
+    const byLine = new Map((breakdowns[bi]?.lines ?? []).map((l) => [l.line, l]));
     batch.forEach((b, ci) => {
+      const line = byLine.get(ci + 1);
+      // Only parts that actually describe the words they point at survive;
+      // anything else falls through to the older per-word glosses.
+      const parts = line ? validateParts(line.parts ?? [], wordsOf(b.text)) : [];
+      b.translationEn = line?.en?.trim() || undefined;
       b.tokens = buildTokens(
         b.text,
         glossBy,
-        [...kept, ...COMMON_EXPRESSIONS],
-        contextualByBlock.get(ci + 1)
+        // With a breakdown in hand the model has already grouped what needs
+        // grouping, so the generic idiom list would only fight it.
+        parts.length ? [] : [...kept, ...COMMON_EXPRESSIONS],
+        contextualByBlock.get(ci + 1),
+        parts
       );
     });
   });
@@ -867,6 +958,7 @@ async function main() {
       blocks.slice(i, i + 100).map((b) => ({
         articleId, idx: b.idx, kind: b.kind,
         text: b.text, tokensJson: JSON.stringify(b.tokens),
+        translationEn: b.translationEn ?? null,
       }))
     );
   }

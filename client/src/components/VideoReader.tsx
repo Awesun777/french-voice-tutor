@@ -10,7 +10,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Loader2, ArrowLeft, Check, Plus, Crosshair } from "lucide-react";
+import { Loader2, ArrowLeft, Check, Plus, Crosshair, Languages } from "lucide-react";
 import { toast } from "sonner";
 import { usePronounce } from "@/lib/pronounce";
 import { PronounceButton } from "@/components/PronounceButton";
@@ -25,7 +25,7 @@ interface Token {
   kind: "word" | "expression";
   tMs?: number | null;
 }
-interface Cue { idx: number; startMs: number; endMs: number; text: string; tokens: Token[] }
+interface Cue { idx: number; startMs: number; endMs: number; text: string; tokens: Token[]; translationEn?: string | null }
 
 // ─── YouTube IFrame API ───────────────────────────────────────────────────────
 
@@ -175,6 +175,9 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
   const [playerReady, setPlayerReady] = useState(false);
   /** Autoscroll follows playback until the reader scrolls by hand. */
   const [following, setFollowing] = useState(true);
+  // English stays hidden by default: the point of the reader is to work out the
+  // French first, and a translation sitting under every line removes the work.
+  const [showEnglish, setShowEnglish] = useState(false);
   const programmaticScroll = useRef(false);
 
   const cues: Cue[] = useMemo(() => (data?.cues ?? []) as Cue[], [data]);
@@ -365,6 +368,19 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
             <ArrowLeft className="w-4 h-4" /> Videos
           </button>
           <p className="text-sm font-semibold text-primary-foreground/90 truncate">{data?.lesson.title}</p>
+          <button
+            onClick={() => setShowEnglish((v) => !v)}
+            aria-pressed={showEnglish}
+            title={showEnglish ? "Hide English" : "Show English"}
+            className={cn(
+              "ml-auto flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+              showEnglish
+                ? "bg-white/20 text-primary-foreground"
+                : "text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10"
+            )}
+          >
+            <Languages className="w-4 h-4" /> English
+          </button>
         </div>
         <div className="mx-auto w-full max-w-2xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]">
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
@@ -411,6 +427,11 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
                   onHover={openHover}
                   onLeave={scheduleHoverClose}
                 />
+                {showEnglish && cue.translationEn && (
+                  <span className="block mt-0.5 text-sm leading-6 text-muted-foreground/80 italic">
+                    {cue.translationEn}
+                  </span>
+                )}
               </p>
             ))}
           </div>

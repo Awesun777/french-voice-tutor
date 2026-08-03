@@ -2065,6 +2065,7 @@ ${input.transcript}`,
             startMs: c.startMs,
             endMs: c.endMs,
             text: c.text,
+            translationEn: c.translationEn,
             // Written by the ingest script; a malformed row costs that cue's
             // glosses rather than the whole lesson.
             tokens: ((): VideoToken[] => {
@@ -2141,6 +2142,7 @@ ${input.transcript}`,
             idx: b.idx,
             kind: b.kind,
             text: b.text,
+            translationEn: b.translationEn,
             // Written by the ingest script; a malformed row costs that block's
             // glosses rather than the whole article.
             tokens: ((): ArticleToken[] => {

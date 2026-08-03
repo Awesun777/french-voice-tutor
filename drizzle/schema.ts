@@ -251,6 +251,12 @@ export const videoCues = mysqlTable("video_cues", {
   endMs: int("endMs").notNull(),
   text: text("text").notNull(),
   tokensJson: text("tokensJson").notNull(),
+  /**
+   * English translation of this whole cue. Word-by-word glosses cannot express
+   * a line whose meaning does not compose ("je suis allé" is "I went", not
+   * "I am gone"), so the reader can reveal the sentence alongside them.
+   */
+  translationEn: text("translationEn"),
 });
 export type VideoCue = typeof videoCues.$inferSelect;
 
@@ -300,5 +306,7 @@ export const articleBlocks = mysqlTable("article_blocks", {
   kind: mysqlEnum("kind", ["heading", "paragraph"]).default("paragraph").notNull(),
   text: text("text").notNull(),
   tokensJson: text("tokensJson").notNull(),
+  /** English translation of this whole block. See videoCues.translationEn. */
+  translationEn: text("translationEn"),
 });
 export type ArticleBlock = typeof articleBlocks.$inferSelect;
