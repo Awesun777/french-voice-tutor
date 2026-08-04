@@ -281,6 +281,12 @@ export const articles = mysqlTable("articles", {
   imageUrl: varchar("imageUrl", { length: 1024 }),
   /** Optional CEFR hint shown on the feed card, e.g. "B1". */
   level: varchar("level", { length: 16 }),
+  /**
+   * Which shelf this article sits on in the Reading tab, e.g.
+   * "France 24 · France". Free text rather than an enum so adding a source is
+   * an ingest argument, not a migration.
+   */
+  section: varchar("section", { length: 128 }),
   wordCount: int("wordCount").notNull(),
   publishedAt: bigint("publishedAt", { mode: "number" }),
   addedAt: bigint("addedAt", { mode: "number" }).notNull(),

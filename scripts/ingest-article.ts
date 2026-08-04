@@ -766,6 +766,9 @@ async function main() {
   }
 
   const level = flag(argv, "--level");
+  // Which shelf this lands on in the Reading tab. Free text so a new source is
+  // an argument, not a migration.
+  const section = flag(argv, "--section");
   const maxWords = Number(flag(argv, "--max-words") ?? DEFAULT_MAX_WORDS);
   if (!Number.isFinite(maxWords) || maxWords <= 0) throw new Error("--max-words needs a positive number");
 
@@ -951,6 +954,7 @@ async function main() {
     level,
     wordCount,
     publishedAt,
+    section,
   };
 
   const existing = await db.select().from(articles).where(eq(articles.slug, slug));
