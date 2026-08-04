@@ -78,6 +78,14 @@ interface Block {
 // ─── Fetching and stripping ───────────────────────────────────────────────────
 
 /** A real UA: plenty of publishers serve a stub or a 403 to obvious scripts. */
+/**
+ * Refuse anything shorter than this. One rule covers two failure modes that
+ * both return a healthy 200: a paywall teaser, and a video or show page whose
+ * only text is the blurb under the player. Three France 24 "Info éco" segments
+ * came in at 162-240 words and sat in the feed looking like real reads.
+ */
+const DEFAULT_MIN_WORDS = 350;
+
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -139,6 +147,8 @@ function htmlToText(html: string): string {
 
 interface Extracted {
   title: string;
+  /** English rendering of the headline, for the front page only. */
+  titleEn: string;
   summary: string;
   blocks: { kind: "heading" | "paragraph"; text: string }[];
 }
@@ -147,6 +157,7 @@ const EXTRACT_SCHEMA = {
   type: "object",
   properties: {
     title: { type: "string" },
+    titleEn: { type: "string" },
     summary: { type: "string" },
     blocks: {
       type: "array",
@@ -161,7 +172,7 @@ const EXTRACT_SCHEMA = {
       },
     },
   },
-  required: ["title", "summary", "blocks"],
+  required: ["title", "titleEn", "summary", "blocks"],
   additionalProperties: false,
 };
 
@@ -181,6 +192,9 @@ async function extractArticle(pageText: string): Promise<Extracted> {
           `Return the ARTICLE ONLY, in the original French, verbatim — do not ` +
           `translate, summarise, rewrite or shorten the body.\n` +
           `- "title": the article's headline.\n` +
+          `- "titleEn": that headline in natural English — what the piece is ABOUT, ` +
+          `so a learner can decide whether to read it. Not a literal word-for-word ` +
+          `rendering. This is the only English you return.\n` +
           `- "summary": one or two sentences of French introducing the piece ` +
           `(use the standfirst if there is one, otherwise write one).\n` +
           `- "blocks": the body in order, one entry per paragraph, with ` +
@@ -201,6 +215,7 @@ async function extractArticle(pageText: string): Promise<Extracted> {
   const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
   return {
     title: parsed.title ?? "",
+    titleEn: parsed.titleEn ?? "",
     summary: parsed.summary ?? "",
     blocks: (parsed.blocks ?? []).filter(
       (b: { text?: string }) => typeof b.text === "string" && b.text.trim().length > 0
@@ -771,6 +786,8 @@ async function main() {
   const section = flag(argv, "--section");
   const maxWords = Number(flag(argv, "--max-words") ?? DEFAULT_MAX_WORDS);
   if (!Number.isFinite(maxWords) || maxWords <= 0) throw new Error("--max-words needs a positive number");
+  const minWords = Number(flag(argv, "--min-words") ?? DEFAULT_MIN_WORDS);
+  if (!Number.isFinite(minWords) || minWords < 0) throw new Error("--min-words needs a non-negative number");
 
   const db = await getDb();
   if (!db) throw new Error("No DATABASE_URL — run under `railway run --`");
@@ -823,7 +840,18 @@ async function main() {
   const slug = flag(argv, "--slug") ?? slugify(title);
   const blocksIn = capToWordBudget(extracted.blocks, maxWords);
   const dropped = extracted.blocks.length - blocksIn.length;
-  console.log(`  "${title}" — ${blocksIn.length} blocks, ${countWords(blocksIn)} words${dropped ? ` (${dropped} trimmed to fit --max-words)` : ""}`);
+  const words = countWords(blocksIn);
+  console.log(`  "${title}" — ${blocksIn.length} blocks, ${words} words${dropped ? ` (${dropped} trimmed to fit --max-words)` : ""}`);
+
+  // Checked before any glossing, so a stub costs one extraction call rather
+  // than a whole pipeline run — and never reaches the feed.
+  if (words < minWords) {
+    throw new Error(
+      `only ${words} words (minimum ${minWords}) — this is a teaser, a video blurb or a paywall stub, not an article.
+` +
+      `  pass --min-words ${Math.max(0, words - 1)} to ingest it anyway.`
+    );
+  }
 
   const blocks: Block[] = blocksIn.map((b, i) => ({
     idx: i,
@@ -955,6 +983,7 @@ async function main() {
     wordCount,
     publishedAt,
     section,
+    titleEn: extracted.titleEn?.trim() || null,
   };
 
   const existing = await db.select().from(articles).where(eq(articles.slug, slug));

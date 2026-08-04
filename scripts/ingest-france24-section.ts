@@ -31,6 +31,13 @@ const UA =
 /** France 24 article URLs are /fr/<section>/<yyyymmdd>-<slug>. */
 const ARTICLE_HREF = /href=["']((?:https?:\/\/www\.france24\.com)?\/fr\/[^"'<\s]*\/20\d{6}-[^"'<\s]+)["']/gi;
 
+/**
+ * Paths that sit in a section list but are not articles. "/fr/émissions/" is a
+ * TV segment: the page has a player and a two-line blurb, which ingests as a
+ * 160-240 word stub that looks like a real read in the feed.
+ */
+const NOT_ARTICLES = /\/fr\/(émissions|emissions|vidéo|video|replay|direct|en-continu)\//i;
+
 interface Found { url: string; at: number }
 
 function articlesInOrder(html: string): Found[] {
@@ -95,7 +102,13 @@ async function main() {
 
   let found = articlesInOrder(html);
   if (!found.length) throw new Error("no article links found — the page markup may have changed");
-  console.log(`  ${found.length} article links in editorial order`);
+  console.log(`  ${found.length} links in editorial order`);
+
+  const beforeFilter = found.length;
+  found = found.filter((f) => !NOT_ARTICLES.test(decodeURIComponent(new URL(f.url).pathname)));
+  if (found.length !== beforeFilter) {
+    console.log(`  skipped ${beforeFilter - found.length} video/show pages`);
+  }
 
   if (until) {
     const cut = cutAt(html, until, found[0].at);

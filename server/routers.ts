@@ -2106,6 +2106,7 @@ ${input.transcript}`,
         .map((r) => ({
           slug: r.slug,
           title: r.title,
+          titleEn: r.titleEn,
           source: r.source,
           url: r.url,
           summary: r.summary,

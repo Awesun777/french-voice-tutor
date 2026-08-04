@@ -112,7 +112,7 @@ function SectionTabs({
 }
 
 type FeedItem = {
-  slug: string; title: string; source: string | null; summary: string | null;
+  slug: string; title: string; titleEn: string | null; source: string | null; summary: string | null;
   imageUrl: string | null; level: string | null; section: string | null;
   wordCount: number; publishedAt: number | null;
 };
@@ -155,6 +155,11 @@ function LeadStory({ item, onOpen }: { item: FeedItem; onOpen: (s: string) => vo
           <h2 className="font-serif font-bold text-foreground leading-[1.12] tracking-tight mt-1.5 text-2xl sm:text-[2rem] group-hover:underline decoration-1 underline-offset-4">
             {item.title}
           </h2>
+          {item.titleEn && (
+            <p className="text-[13px] italic text-muted-foreground/75 mt-1.5 leading-snug">
+              {item.titleEn}
+            </p>
+          )}
           {item.summary && (
             <p className="text-[15px] leading-relaxed text-muted-foreground mt-2.5 line-clamp-4">
               {item.summary}
@@ -184,6 +189,11 @@ function ColumnStory({ item, onOpen }: { item: FeedItem; onOpen: (s: string) => 
       <h3 className="font-serif font-bold text-foreground leading-snug tracking-tight mt-1 text-[1.0625rem] group-hover:underline decoration-1 underline-offset-4">
         {item.title}
       </h3>
+      {item.titleEn && (
+        <p className="text-[12px] italic text-muted-foreground/75 mt-1 leading-snug">
+          {item.titleEn}
+        </p>
+      )}
       {item.summary && (
         <p className="text-[13px] leading-relaxed text-muted-foreground mt-1.5 line-clamp-3">
           {item.summary}

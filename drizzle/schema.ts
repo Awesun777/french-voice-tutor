@@ -272,6 +272,12 @@ export const articles = mysqlTable("articles", {
   /** URL-safe id derived from the title; how the client asks for one article. */
   slug: varchar("slug", { length: 128 }).notNull().unique(),
   title: varchar("title", { length: 512 }).notNull(),
+  /**
+   * English rendering of the headline, shown under it on the front page so a
+   * reader can tell what a piece is about before committing to reading it.
+   * Headline only — the body stays French, which is the point of the tab.
+   */
+  titleEn: varchar("titleEn", { length: 512 }),
   /** Publication name, e.g. "Le Monde". */
   source: varchar("source", { length: 256 }),
   /** Canonical link, shown as an attribution link on the article. */
