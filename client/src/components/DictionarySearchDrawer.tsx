@@ -42,9 +42,23 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
 
   // Escape closes, as expected of a palette-style overlay. Bound only while
   // open so it never competes with other Escape handlers on the page.
+  //
+  // Ctrl/Cmd+A selects the query rather than the page behind the drawer. The
+  // drawer floats over whatever you were reading, so without this the shortcut
+  // reaches the article underneath and selects a whole transcript — which is
+  // never what someone means while a search box is open. The drawer has exactly
+  // one text field, so this can select unconditionally rather than trying to
+  // guess whether focus is somewhere it should be left alone.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey) && !e.altKey) {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
