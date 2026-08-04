@@ -61,28 +61,146 @@ export default function ReadingTab() {
     return <ArticleReader slug={openSlug} onBack={() => setOpenSlug(null)} />;
   }
 
+  return <ArticleFeed onOpen={setOpenSlug} />;
+}
+
+// ─── Front page ───────────────────────────────────────────────────────────────
+
+/**
+ * The masthead: a wide wordmark over a rule, newspaper-style. Deliberately
+ * serif and centred — this pane is meant to read as a front page, not as
+ * another tab in an app.
+ */
+function Masthead({ dateLabel }: { dateLabel: string }) {
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4">
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <Newspaper className="w-5 h-5 text-primary flex-shrink-0" />
-          <div className="min-w-0">
-            <h2 className="font-display text-xl font-bold text-foreground">Reading</h2>
-            <p className="text-sm text-muted-foreground truncate">
-              Recent French news and articles, glossed word by word
-            </p>
+    <div className="border-b-[3px] border-foreground pb-2">
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-muted-foreground pb-2">
+        <span className="hidden sm:inline">{dateLabel}</span>
+        <span className="hidden sm:inline">Glossed word by word</span>
+      </div>
+      <h1 className="font-serif text-center leading-none tracking-tight text-[2.75rem] sm:text-[4rem] lg:text-[5rem] font-bold">
+        <span className="text-primary">Romain</span><span className="text-speaking">Talk</span>
+      </h1>
+    </div>
+  );
+}
+
+/** Section rail under the masthead. */
+function SectionTabs({
+  sections, active, onSelect,
+}: { sections: string[]; active: string; onSelect: (s: string) => void }) {
+  return (
+    <nav className="border-b border-foreground/70 mt-px">
+      <div className="flex items-stretch justify-center gap-0 overflow-x-auto">
+        {sections.map((s) => (
+          <button
+            key={s}
+            onClick={() => onSelect(s)}
+            className={cn(
+              "px-4 sm:px-5 py-2.5 text-[11px] sm:text-xs font-semibold uppercase tracking-[0.14em] whitespace-nowrap transition-colors border-b-2 -mb-px",
+              active === s
+                ? "border-speaking text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+type FeedItem = {
+  slug: string; title: string; source: string | null; summary: string | null;
+  imageUrl: string | null; level: string | null; section: string | null;
+  wordCount: number; publishedAt: number | null;
+};
+
+/** Kicker line above a headline: source, then level. */
+function Kicker({ item }: { item: FeedItem }) {
+  return (
+    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-speaking">
+      {item.source && <span className="truncate">{item.source}</span>}
+      {item.level && <span className="text-muted-foreground">{item.level}</span>}
+    </div>
+  );
+}
+
+function Meta({ item }: { item: FeedItem }) {
+  return (
+    <p className="text-[11px] text-muted-foreground/80 mt-2">
+      {readingMinutes(item.wordCount)} min read · {item.wordCount} words
+      {fmtDate(item.publishedAt) ? ` · ${fmtDate(item.publishedAt)}` : ""}
+    </p>
+  );
+}
+
+/** The lead: one story given the width and a large picture. */
+function LeadStory({ item, onOpen }: { item: FeedItem; onOpen: (s: string) => void }) {
+  return (
+    <button onClick={() => onOpen(item.slug)} className="w-full text-left group block">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-7 items-start">
+        {item.imageUrl && (
+          <div className="overflow-hidden bg-muted order-1 md:order-none">
+            <img
+              src={item.imageUrl}
+              alt=""
+              className="w-full aspect-[4/3] object-cover group-hover:opacity-90 transition-opacity"
+            />
           </div>
+        )}
+        <div className={cn(!item.imageUrl && "md:col-span-2")}>
+          <Kicker item={item} />
+          <h2 className="font-serif font-bold text-foreground leading-[1.12] tracking-tight mt-1.5 text-2xl sm:text-[2rem] group-hover:underline decoration-1 underline-offset-4">
+            {item.title}
+          </h2>
+          {item.summary && (
+            <p className="text-[15px] leading-relaxed text-muted-foreground mt-2.5 line-clamp-4">
+              {item.summary}
+            </p>
+          )}
+          <Meta item={item} />
         </div>
       </div>
-      <ArticleFeed onOpen={setOpenSlug} />
-    </div>
+    </button>
+  );
+}
+
+/** A column story: small picture, headline, short standfirst. */
+function ColumnStory({ item, onOpen }: { item: FeedItem; onOpen: (s: string) => void }) {
+  return (
+    <button onClick={() => onOpen(item.slug)} className="w-full text-left group block">
+      {item.imageUrl && (
+        <div className="overflow-hidden bg-muted mb-2.5">
+          <img
+            src={item.imageUrl}
+            alt=""
+            className="w-full aspect-[16/10] object-cover group-hover:opacity-90 transition-opacity"
+          />
+        </div>
+      )}
+      <Kicker item={item} />
+      <h3 className="font-serif font-bold text-foreground leading-snug tracking-tight mt-1 text-[1.0625rem] group-hover:underline decoration-1 underline-offset-4">
+        {item.title}
+      </h3>
+      {item.summary && (
+        <p className="text-[13px] leading-relaxed text-muted-foreground mt-1.5 line-clamp-3">
+          {item.summary}
+        </p>
+      )}
+      <Meta item={item} />
+    </button>
   );
 }
 
 // ─── Feed ─────────────────────────────────────────────────────────────────────
 
+const ALL_SECTIONS = "All";
+
 function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
   const { data: items = [], isLoading } = trpc.articles.list.useQuery();
+  const [active, setActive] = useState<string>(ALL_SECTIONS);
 
   if (isLoading) {
     return (
@@ -93,44 +211,72 @@ function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
   }
   if (!items.length) return <EmptyReadingState />;
 
+  // Sections come from the data, so adding a source is an ingest argument
+  // rather than a code change here. Ordered by how many articles each holds so
+  // the fullest shelf leads.
+  const sections = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of items) {
+      const key = a.section?.trim();
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  }, [items]);
+
+  const tabs = useMemo(() => [ALL_SECTIONS, ...sections], [sections]);
+  // Falls back to "All" when the remembered tab no longer has anything in it.
+  const current = tabs.includes(active) ? active : ALL_SECTIONS;
+
+  const shown = useMemo(
+    () => (current === ALL_SECTIONS ? items : items.filter((a) => a.section?.trim() === current)),
+    [items, current]
+  );
+
+  const [lead, ...rest] = shown as FeedItem[];
+  const dateLabel = new Date().toLocaleDateString(undefined, {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="max-w-3xl mx-auto space-y-3">
-        {items.map((a) => (
-          <button
-            key={a.slug}
-            onClick={() => onOpen(a.slug)}
-            className="w-full text-left bg-card rounded-2xl overflow-hidden group flex transition-all duration-200 shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.18)] hover:shadow-[0_10px_28px_-10px_rgb(23_63_107_/_0.30)] hover:-translate-y-0.5"
-          >
-            {a.imageUrl && (
-              <div className="hidden sm:block w-40 flex-shrink-0 bg-muted overflow-hidden">
-                <img
-                  src={a.imageUrl}
-                  alt=""
-                  className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
-                />
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-5 pb-16">
+        <Masthead dateLabel={dateLabel} />
+        {tabs.length > 1 && (
+          <SectionTabs sections={tabs} active={current} onSelect={setActive} />
+        )}
+
+        {!shown.length ? (
+          <p className="text-sm text-muted-foreground text-center py-16">
+            Nothing in this section yet.
+          </p>
+        ) : (
+          <>
+            <div className="pt-6 pb-7">
+              <LeadStory item={lead} onOpen={onOpen} />
+            </div>
+
+            {rest.length > 0 && (
+              <div className="border-t-2 border-foreground pt-6">
+                {/* Hairline dividers between columns, the way a broadsheet sets
+                    its rules — vertical on wide screens, horizontal stacked. */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-7 divide-y sm:divide-y-0 divide-border">
+                  {rest.map((a, i) => (
+                    <div
+                      key={a.slug}
+                      className={cn(
+                        "pt-6 sm:pt-0",
+                        i % 3 !== 0 && "lg:border-l lg:border-border lg:pl-6",
+                        i % 2 !== 0 && "sm:max-lg:border-l sm:max-lg:border-border sm:max-lg:pl-6"
+                      )}
+                    >
+                      <ColumnStory item={a} onOpen={onOpen} />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            <div className="flex-1 min-w-0 p-4">
-              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-speaking">
-                {a.source && <span className="truncate">{a.source}</span>}
-                {a.level && (
-                  <span className="px-1.5 py-0.5 rounded bg-speaking-surface text-speaking">{a.level}</span>
-                )}
-              </div>
-              <p className="font-display text-base font-bold text-foreground mt-1 line-clamp-2">
-                {a.title}
-              </p>
-              {a.summary && (
-                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{a.summary}</p>
-              )}
-              <p className="text-xs text-muted-foreground/80 mt-2">
-                {readingMinutes(a.wordCount)} min read · {a.wordCount} words
-                {fmtDate(a.publishedAt) ? ` · ${fmtDate(a.publishedAt)}` : ""}
-              </p>
-            </div>
-          </button>
-        ))}
+          </>
+        )}
       </div>
     </div>
   );
