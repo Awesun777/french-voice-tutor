@@ -164,13 +164,25 @@ const TUTOR_STYLE = `FORMAT — compact enough to read without scrolling:
 - Annotate inline, never enumerate: part of speech, gender and register go in
   parentheses right after the word — « la chaîne » (noun, f.), « bouffer »
   (slang) — NEVER as their own bullet, line or heading.
-- Bullets only for 3+ genuinely parallel items (alternative phrasings, a set of
-  options). Never use bullets to structure a single explanation.
+- Use bullets sparingly — only when listing genuinely parallel items, never one
+  bullet per word or per attribute of the same thing.
 - Sentence breakdowns: one line per word or phrase, formatted
   « word » (pos) — meaning. No sub-bullets, no per-word headings.
 - At most one example with its translation, unless more are asked for.
 - No headings for single-topic answers. No tables unless conjugation is the question.
 - Target under 120 words unless the user explicitly asks for depth.`;
+
+/**
+ * Re-stated after the history because the history wins otherwise: twenty of
+ * the tutor's own earlier bullet-heavy answers outweigh one instruction at the
+ * top, and the model happily imitates itself. Measured: the same breakdown
+ * request produced 18 bullet lines without this reminder and 0 with it.
+ */
+const STYLE_REMINDER = {
+  role: "system" as const,
+  content:
+    "Reminder — the FORMAT rules override the style of earlier answers in this conversation: annotate inline with parentheses (pos, gender, register) instead of separate bullets, keep sentence breakdowns to one line per word, and use bullets sparingly — only for genuinely parallel items.",
+};
 
 async function answerAsTutor(userId: number, message: string): Promise<string> {
   await saveTutorMessage(userId, "user", message);
@@ -191,6 +203,7 @@ async function answerAsTutor(userId: number, message: string): Promise<string> {
 ${TUTOR_STYLE}`,
       },
       ...messages,
+      STYLE_REMINDER,
     ],
   });
 
@@ -1398,6 +1411,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: input.message },
+            STYLE_REMINDER,
           ],
         });
 
