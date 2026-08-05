@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { Mic, Square, Loader2, X, MessageCircle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { usePronounce } from "@/lib/pronounce";
+import { Streamdown } from "streamdown";
 import { PronounceButton } from "@/components/PronounceButton";
 
 type Phase = "recording" | "thinking" | "answered" | "error";
@@ -314,7 +315,9 @@ export function VoiceAskDrawer({
                       iconSize="w-3 h-3"
                     />
                   </div>
-                  <p className="text-sm text-foreground mt-1.5 whitespace-pre-wrap leading-relaxed">{reply}</p>
+                  <div className="prose prose-sm max-w-none text-sm text-foreground mt-1.5 leading-relaxed">
+                    <Streamdown>{reply}</Streamdown>
+                  </div>
                 </div>
                 <button
                   onClick={beginRecording}
