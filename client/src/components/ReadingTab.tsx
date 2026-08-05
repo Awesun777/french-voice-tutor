@@ -111,6 +111,36 @@ function SectionTabs({
   );
 }
 
+/**
+ * Grade rail under the section rail, shown only for the RFI shelf. RFI's
+ * "français facile" pieces are the one source graded across CEFR levels, so
+ * they get a second-tier filter where every other section is one flat list.
+ */
+function LevelTabs({
+  levels, active, onSelect,
+}: { levels: string[]; active: string; onSelect: (l: string) => void }) {
+  return (
+    <nav className="border-b border-border">
+      <div className="flex items-center justify-center gap-1.5 py-2 overflow-x-auto">
+        {levels.map((l) => (
+          <button
+            key={l}
+            onClick={() => onSelect(l)}
+            className={cn(
+              "px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] whitespace-nowrap transition-colors",
+              active === l
+                ? "bg-speaking-surface text-speaking"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {l}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 type FeedItem = {
   slug: string; title: string; titleEn: string | null; source: string | null; summary: string | null;
   imageUrl: string | null; level: string | null; section: string | null;
@@ -208,9 +238,14 @@ function ColumnStory({ item, onOpen }: { item: FeedItem; onOpen: (s: string) => 
 
 const ALL_SECTIONS = "All";
 
+/** The one graded shelf; must match the --section used by ingest-rfi-facile.ts. */
+const RFI_SECTION = "RFI";
+const RFI_LEVELS = ["A1", "A2", "B1", "B2"];
+
 function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
   const { data: items = [], isLoading } = trpc.articles.list.useQuery();
   const [active, setActive] = useState<string>(ALL_SECTIONS);
+  const [activeLevel, setActiveLevel] = useState<string>(RFI_LEVELS[0]);
 
   if (isLoading) {
     return (
@@ -237,10 +272,14 @@ function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
   // Falls back to "All" when the remembered tab no longer has anything in it.
   const current = tabs.includes(active) ? active : ALL_SECTIONS;
 
-  const shown = useMemo(
-    () => (current === ALL_SECTIONS ? items : items.filter((a) => a.section?.trim() === current)),
-    [items, current]
-  );
+  const shown = useMemo(() => {
+    const inSection =
+      current === ALL_SECTIONS ? items : items.filter((a) => a.section?.trim() === current);
+    // Second-tier filter: the RFI shelf is browsed one grade at a time.
+    return current === RFI_SECTION
+      ? inSection.filter((a) => a.level?.trim().toUpperCase() === activeLevel)
+      : inSection;
+  }, [items, current, activeLevel]);
 
   const [lead, ...rest] = shown as FeedItem[];
   const dateLabel = new Date().toLocaleDateString(undefined, {
@@ -254,10 +293,15 @@ function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
         {tabs.length > 1 && (
           <SectionTabs sections={tabs} active={current} onSelect={setActive} />
         )}
+        {current === RFI_SECTION && (
+          <LevelTabs levels={RFI_LEVELS} active={activeLevel} onSelect={setActiveLevel} />
+        )}
 
         {!shown.length ? (
           <p className="text-sm text-muted-foreground text-center py-16">
-            Nothing in this section yet.
+            {current === RFI_SECTION
+              ? `No ${activeLevel} articles yet.`
+              : "Nothing in this section yet."}
           </p>
         ) : (
           <>

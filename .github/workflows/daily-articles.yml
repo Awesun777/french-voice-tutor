@@ -1,0 +1,69 @@
+name: daily-articles
+
+# Refills the Reading tab every morning at ~8 AM Paris time:
+#   - France 24 · France        (top stories off the section front)
+#   - France 24 · Éco & Tech    (everything above "Nos émissions")
+#   - RFI                       (3 latest "français facile" pieces per grade,
+#                                A1/A2/B1/B2)
+# Both ingesters skip URLs already in the articles table, so a rerun (or the
+# second DST cron below) costs nothing when there is nothing new.
+on:
+  workflow_dispatch: {} # manual "Run workflow" button
+  schedule:
+    # GitHub cron is fixed UTC with no DST handling, but the 8 AM target is
+    # Europe/Paris, which shifts between UTC+2 (summer) and UTC+1 (winter).
+    # So: two crons, and a guard step that lets exactly the one matching the
+    # current Paris offset proceed. Minute is off :00 on purpose — GitHub
+    # delays top-of-the-hour runs the longest.
+    - cron: "5 6 * * *" # 08:05 Paris during CEST (summer)
+    - cron: "5 7 * * *" # 08:05 Paris during CET (winter)
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep only the cron that matches the current Paris UTC offset
+        id: guard
+        run: |
+          offset=$(TZ=Europe/Paris date +%z)
+          case "${{ github.event_name }}|${{ github.event.schedule }}|$offset" in
+            workflow_dispatch\|*)         run=true ;;
+            "schedule|5 6 * * *|+0200")   run=true ;;
+            "schedule|5 7 * * *|+0100")   run=true ;;
+            *)                            run=false ;;
+          esac
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "event=${{ github.event_name }} schedule='${{ github.event.schedule }}' paris_offset=$offset -> run=$run"
+
+      - uses: actions/checkout@v5
+        if: steps.guard.outputs.run == 'true'
+      - uses: actions/setup-node@v5
+        if: steps.guard.outputs.run == 'true'
+        with:
+          node-version: 20
+          # corepack enable runs inside the step below, so disable the early
+          # auto pnpm cache (it can't find pnpm yet and would fail the job).
+          package-manager-cache: false
+
+      - name: Ingest France 24 sections + RFI graded articles
+        if: steps.guard.outputs.run == 'true'
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN not configured — cannot reach the database."
+            exit 1
+          fi
+          corepack enable
+          pnpm install --frozen-lockfile
+          npm i -g @railway/cli
+
+          fail=0
+          railway run --service french-voice-tutor -- pnpm tsx scripts/ingest-france24-section.ts \
+            "https://www.france24.com/fr/france/" \
+            --section "France 24 · France" --top 4 --skip-existing || fail=1
+          railway run --service french-voice-tutor -- pnpm tsx scripts/ingest-france24-section.ts \
+            "https://www.france24.com/fr/éco-tech/" \
+            --section "France 24 · Éco & Tech" --until "Nos émissions" --skip-existing || fail=1
+          railway run --service french-voice-tutor -- pnpm tsx scripts/ingest-rfi-facile.ts || fail=1
+          exit $fail

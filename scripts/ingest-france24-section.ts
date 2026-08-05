@@ -17,12 +17,20 @@
  * article, so the cut uses the LAST occurrence before the first article link
  * rather than the first occurrence anywhere.
  *
+ * `--skip-existing` drops links already in the articles table before
+ * delegating. Section fronts keep a story pinned for days, and re-ingesting it
+ * re-runs the whole gloss pipeline — with the flag, a daily scheduled run only
+ * pays for what is actually new.
+ *
  * Delegates each article to ingest-article.ts rather than duplicating the
  * fetch/gloss pipeline.
  */
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { getDb } from "../server/db";
+import { articles } from "../drizzle/schema";
 
 const UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
@@ -88,7 +96,7 @@ async function main() {
   const top = Number(flag(argv, "--top") ?? 0);
 
   if (!pageUrl || !section) {
-    console.error('usage: tsx scripts/ingest-france24-section.ts <section-url> --section "France 24 · France" [--top 4] [--until "Nos émissions"] [--level B2]');
+    console.error('usage: tsx scripts/ingest-france24-section.ts <section-url> --section "France 24 · France" [--top 4] [--until "Nos émissions"] [--level B2] [--skip-existing]');
     process.exit(1);
   }
 
@@ -122,6 +130,21 @@ async function main() {
   }
   if (top > 0) found = found.slice(0, top);
 
+  if (argv.includes("--skip-existing")) {
+    const db = await getDb();
+    if (!db) throw new Error("--skip-existing needs a database — run under `railway run`");
+    const existing = new Set(
+      (await db.select({ url: articles.url }).from(articles)).map((r) => r.url).filter(Boolean)
+    );
+    const before = found.length;
+    found = found.filter((f) => !existing.has(f.url));
+    console.log(`  ${before - found.length} already ingested, ${found.length} new`);
+    if (!found.length) {
+      console.log(`✓ nothing new for "${section}"`);
+      process.exit(0);
+    }
+  }
+
   console.log(`• ingesting ${found.length} into "${section}"\n`);
   const here = path.dirname(fileURLToPath(import.meta.url));
   const ingest = path.join(here, "ingest-article.ts");
@@ -144,7 +167,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("✗", err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+// Explicit exit: the --skip-existing DB pool would otherwise hold the
+// process open after the last child finishes.
+main().then(
+  () => process.exit(0),
+  (err) => {
+    console.error("✗", err instanceof Error ? err.message : err);
+    process.exit(1);
+  }
+);
