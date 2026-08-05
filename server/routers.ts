@@ -150,6 +150,28 @@ const importCache = new Map<string, unknown[]>();
  * context, and save the reply. Shared by `tutor.chat` (typed) and
  * `tutor.voiceAsk` (spoken) so both behave identically and land in one history.
  */
+/**
+ * Shared style contract for every tutor answer (chat, voice, context ask).
+ *
+ * Without explicit rules the model structures everything as bullets — one for
+ * the part of speech, one for the register, one per remark — which turns a
+ * two-line answer into a scrolling list. The fix is a hard preference for
+ * inline annotation over enumeration; "concise but helpful" alone was not
+ * enough to overcome the bullet habit.
+ */
+const TUTOR_STYLE = `FORMAT — compact enough to read without scrolling:
+- Lead with the direct answer in one or two sentences. No preamble.
+- Annotate inline, never enumerate: part of speech, gender and register go in
+  parentheses right after the word — « la chaîne » (noun, f.), « bouffer »
+  (slang) — NEVER as their own bullet, line or heading.
+- Bullets only for 3+ genuinely parallel items (alternative phrasings, a set of
+  options). Never use bullets to structure a single explanation.
+- Sentence breakdowns: one line per word or phrase, formatted
+  « word » (pos) — meaning. No sub-bullets, no per-word headings.
+- At most one example with its translation, unless more are asked for.
+- No headings for single-topic answers. No tables unless conjugation is the question.
+- Target under 120 words unless the user explicitly asks for depth.`;
+
 async function answerAsTutor(userId: number, message: string): Promise<string> {
   await saveTutorMessage(userId, "user", message);
 
@@ -164,8 +186,9 @@ async function answerAsTutor(userId: number, message: string): Promise<string> {
 - Always provide French examples WITH proper accents
 - Correct mistakes gently and explain why
 - Encourage the user
-- Keep responses concise but helpful
-- When showing French text, also provide the English translation`,
+- When showing French text, also provide the English translation
+
+${TUTOR_STYLE}`,
       },
       ...messages,
     ],
@@ -1357,8 +1380,9 @@ ${docText.slice(0, 20000)}`,
         let systemPrompt = `You are an expert French language tutor. Help the user understand French vocabulary, grammar, and usage.
 - Always provide French examples WITH proper accents
 - Correct mistakes gently and explain why
-- Keep responses concise but helpful
-- When showing French text, also provide the English translation`;
+- When showing French text, also provide the English translation
+
+${TUTOR_STYLE}`;
 
         if (input.vocabContext) {
           const ctx = input.vocabContext;
