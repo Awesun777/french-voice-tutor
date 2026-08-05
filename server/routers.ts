@@ -1273,6 +1273,30 @@ ${docText.slice(0, 20000)}`,
       }),
 
     /**
+     * Transcription alone — for clients that show the transcript the moment it
+     * exists and fetch the answer separately. The browser extension's palette
+     * expands in two steps (question first, answer when ready), which needs the
+     * fast half on its own; voiceAsk below stays for single-round-trip callers
+     * like the website's palette.
+     */
+    voiceTranscribe: protectedProcedure
+      .input(z.object({
+        base64: z.string().min(1),
+        mimeType: z.string().default("audio/webm"),
+        filename: z.string().max(200).default("question.webm"),
+      }))
+      .mutation(async ({ input }) => {
+        const bytes = Buffer.from(input.base64, "base64");
+        if (!bytes.length) throw new TRPCError({ code: "BAD_REQUEST", message: "No audio recorded." });
+        // No language hint: the question may be in English or French.
+        const question = (await openaiTranscribeBytes(bytes, input.filename, input.mimeType, null)).trim();
+        if (!question) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Didn't catch that — try again." });
+        }
+        return { question };
+      }),
+
+    /**
      * Ask the tutor by voice: transcribe, then answer, in one round-trip.
      *
      * Split into two calls it would be two network waits before anything
