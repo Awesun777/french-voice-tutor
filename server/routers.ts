@@ -543,17 +543,32 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
     search: protectedProcedure
       .input(z.object({
         term: z.string().min(1).max(300),
-        // "quick" omits the heavy folded fields (conjugations/synonyms/confusing)
-        // for a much faster first paint; "full" is the complete entry (default,
-        // so existing callers are unchanged).
-        parts: z.enum(["quick", "full"]).default("full"),
+        // "meaning" is the headword and translation only — a handful of output
+        // tokens, for when something needs to paint immediately. "quick" omits
+        // the heavy folded fields (conjugations/synonyms/confusing); "full" is
+        // the complete entry (default, so existing callers are unchanged).
+        parts: z.enum(["meaning", "quick", "full"]).default("full"),
       }))
       .mutation(async ({ input }) => {
         // "v2" cache generation — bumped when the word schema gained noun gender,
         // so previously-cached entries re-fetch and pick up the gender field.
-        const key = "v2::" + input.term.toLowerCase().trim() + (input.parts === "quick" ? "::q" : "");
-        const cached = await getCached(key);
-        if (cached) return enforceLemmaHeadword(cached);
+        const base = "v2::" + input.term.toLowerCase().trim();
+        const SUFFIX = { full: "", quick: "::q", meaning: "::m" } as const;
+        // Richest variant first. A word already generated at "full" contains
+        // everything a "meaning" request needs, so it answers with no LLM call —
+        // without this, each new variant would only add another cold cache key
+        // instead of reusing work already paid for. Returning the richer entry
+        // is deliberate: it is already in hand, and the caller ignores extras.
+        const CHAIN = {
+          meaning: ["full", "quick", "meaning"],
+          quick: ["full", "quick"],
+          full: ["full"],
+        } as const;
+        for (const variant of CHAIN[input.parts]) {
+          const hit = await getCached(base + SUFFIX[variant]);
+          if (hit) return enforceLemmaHeadword(hit);
+        }
+        const key = base + SUFFIX[input.parts];
 
         const type = detectInputType(input.term);
 
@@ -627,6 +642,46 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
                   },
                 },
                 required: ["type", "found", "phrase", "translation", "pronunciation", "literalTranslation", "usage", "examples"],
+                additionalProperties: false,
+              },
+            },
+          };
+        } else if (input.parts === "meaning") {
+          // The fast path: seven short fields instead of twenty-three, several
+          // of which are prose. Strict structured output requires every property
+          // to be listed in `required`, so the only way to stop the model
+          // generating explanations nobody is reading yet is to leave them out
+          // of the schema entirely. That is the whole latency win — output
+          // tokens dominate, and this is roughly a tenth of them.
+          messages = [
+            { role: "system", content: "You are a precise French-English dictionary. Always set the \"type\" field to exactly the string \"word\". Return only valid JSON matching the schema exactly." },
+            { role: "user", content: `Look up the French word: "${input.term}". Return ONLY the core meaning — no examples, no grammar notes, no explanations.
+
+LEMMA RULE — the most important rule: BOTH "word" and "baseForm" MUST be the canonical dictionary base form: the INFINITIVE for verbs, the MASCULINE SINGULAR for adjectives, the SINGULAR for nouns. Never return a conjugated, gendered or plural form, even when the user typed exactly that. Examples: "allées"→"aller", "mangeait"→"manger", "fut"→"être", "belle"→"beau", "heureuse"→"heureux", "chevaux"→"cheval", "yeux"→"œil".
+
+"translation": a concise English gloss of a few words, not a sentence.
+"wordType": the part of speech in French (verbe, nom, adjectif, adverbe…).
+"gender": for nouns "masculine", "feminine", or "both"; "" for anything that is not a noun.
+
+The user may have omitted accents; return proper French WITH accents. If it is not a real French word, set found to false and leave the other fields as empty strings.` },
+          ];
+          responseFormat = {
+            type: "json_schema",
+            json_schema: {
+              name: "word_meaning",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  type: { type: "string", enum: ["word"] },
+                  found: { type: "boolean" },
+                  word: { type: "string" },
+                  baseForm: { type: "string" },
+                  translation: { type: "string" },
+                  wordType: { type: "string" },
+                  gender: { type: "string", enum: ["masculine", "feminine", "both", ""] },
+                },
+                required: ["type", "found", "word", "baseForm", "translation", "wordType", "gender"],
                 additionalProperties: false,
               },
             },
