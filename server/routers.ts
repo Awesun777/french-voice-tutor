@@ -1309,6 +1309,33 @@ ${docText.slice(0, 20000)}`,
       }),
 
     /**
+     * The clean half of the extension's writing helper: just the French, no
+     * prose. When a spoken question matches "how do you say …", the client
+     * calls this alongside the conversational answer and puts the result on
+     * the clipboard — the tutor's reply, with its markdown and alternatives,
+     * is the wrong thing to paste into a document.
+     */
+    toFrench: protectedProcedure
+      .input(z.object({ phrase: z.string().min(1).max(300) }))
+      .mutation(async ({ input }) => {
+        const response = await invokeLLM({
+          messages: [
+            {
+              role: "user",
+              content: `Translate to natural, idiomatic French with proper accents. Return ONLY JSON: {"french":"the French phrase"}. One best translation — no alternatives, no explanation, no quotation marks around it. If the text is already French, return it corrected.\nText: "${input.phrase}"`,
+            },
+          ],
+          response_format: { type: "json_object" } as any,
+        });
+        const raw = response.choices[0].message.content ?? '{"french":""}';
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+        } catch { /* fall through to empty */ }
+        return { french: String(parsed.french ?? "").trim() };
+      }),
+
+    /**
      * Transcription alone — for clients that show the transcript the moment it
      * exists and fetch the answer separately. The browser extension's palette
      * expands in two steps (question first, answer when ready), which needs the
