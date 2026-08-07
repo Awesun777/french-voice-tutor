@@ -825,6 +825,13 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
           result.type = type; // fall back to the detected input type
         }
         enforceLemmaHeadword(result);
+        // The model sometimes pads examples with an empty {fr:"",en:""} —
+        // structure the schema enforces, emptiness it cannot. Never cache them.
+        if (Array.isArray((result as any).examples)) {
+          (result as any).examples = (result as any).examples.filter(
+            (x: any) => x && String(x.fr ?? "").trim() && String(x.en ?? "").trim()
+          );
+        }
         await setCache(key, result);
         return result;
       }),
@@ -838,6 +845,20 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
         const key = "details::" + input.word.toLowerCase().trim();
         const cached = await getCached(key);
         if (cached) return cached;
+
+        // A "full" entry already contains everything this endpoint generates,
+        // and the precompute batch stores entries at full — answer from it
+        // rather than paying a second LLM call for data already in hand.
+        const full = (await getCached("v2::" + input.word.toLowerCase().trim())) as Record<string, unknown> | null;
+        if (full && full.conjugations) {
+          const derived = {
+            conjugations: full.conjugations,
+            synonyms: full.synonyms ?? [],
+            confusingWords: full.confusingWords ?? [],
+          };
+          await setCache(key, derived); // warm the details key for the L1 path
+          return derived;
+        }
 
         const response = await invokeLLM({
           messages: [
