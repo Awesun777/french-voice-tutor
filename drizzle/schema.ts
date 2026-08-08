@@ -117,6 +117,11 @@ export type VoiceSession = typeof voiceSessions.$inferSelect;
  * normalized term so any user's first lookup populates the cache for all.
  */
 export const dictCache = mysqlTable("dict_cache", {
+  // NOTE: term_key runs under utf8mb4_bin in production (accent-EXACT), set by
+  // drizzle/manual/2026-08-08-dict-cache-binary-collation.sql. The database
+  // default (utf8mb4_0900_ai_ci) is accent-insensitive, which made la/là one
+  // primary key and served wrong entries. Keep the collation if this table is
+  // ever recreated.
   termKey:   varchar("term_key", { length: 512 }).primaryKey(),
   entryJson: text("entry_json").notNull(),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
