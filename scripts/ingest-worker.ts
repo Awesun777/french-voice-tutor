@@ -83,6 +83,8 @@ async function main() {
       // The pipeline prints "✓ <title>" on success; the lesson row is the
       // ground truth for the dashboard's title either way.
       const [lesson] = await db.select().from(videoLessons).where(eq(videoLessons.youtubeId, job.youtubeId));
+      const cost = output.match(/^COST_USD=([\d.]+)$/m)?.[1];
+      const costCents = cost ? Math.round(parseFloat(cost) * 100) : null;
       await db
         .update(ingestJobs)
         .set({
@@ -96,8 +98,6 @@ async function main() {
         })
         .where(eq(ingestJobs.id, job.id));
       processed++;
-      const cost = output.match(/^COST_USD=([\d.]+)$/m)?.[1];
-      const costCents = cost ? Math.round(parseFloat(cost) * 100) : null;
       detailLines.push(`« ${lesson?.title ?? job.youtubeId} »${lesson?.level ? ` · ${lesson.level}` : ""}${cost ? ` · ~$${parseFloat(cost).toFixed(2)}` : ""} · ok`);
       console.log(`✓ #${job.id} done`);
     } else {
