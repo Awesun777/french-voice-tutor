@@ -6,15 +6,16 @@ import { invokeLLM } from "./_core/llm";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   dictCache as dictCacheTable,
   videoLessons as videoLessonsTable,
   videoCues as videoCuesTable,
   articles as articlesTable,
   articleBlocks as articleBlocksTable,
+  ingestJobs,
 } from "../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "./db";
 import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, assembleGrammarQuestions, type TenseKey, type VerbPick, type RawGeneratedItem } from "./grammarVerbs";
 import {
@@ -2186,6 +2187,88 @@ ${input.transcript}`,
    * These are queries (not mutations like the rest of `listening`) so
    * react-query caches them across tab switches.
    */
+
+  // ─── Listening Lab ingest queue ──────────────────────────────────────────────
+  // The dashboard writes and reads job rows; the actual download/transcribe/
+  // gloss runs on a trusted local machine polling this queue (ingest-worker.ts),
+  // because YouTube bot-blocks datacentre IPs. Admin-only: ingesting a video
+  // costs real transcription/LLM money and publishes to every user's Listening
+  // Lab.
+  ingestQueue: router({
+    submit: adminProcedure
+      .input(z.object({
+        text: z.string().min(1).max(10000),
+        level: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]).default("B1"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+
+        // Pull every YouTube link out of whatever was pasted — bare URLs, a
+        // whole watch-later page, notes with prose around them.
+        const found = Array.from(input.text.matchAll(
+          /(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?[^\s]*?v=|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/g
+        ));
+        const seen = new Set<string>();
+        const results: { youtubeId: string; outcome: string }[] = [];
+
+        const existingLessons = await db.select({ youtubeId: videoLessonsTable.youtubeId }).from(videoLessonsTable);
+        const lessonIds = new Set(existingLessons.map((r) => r.youtubeId));
+        const openJobs = await db.select().from(ingestJobs)
+          .where(inArray(ingestJobs.status, ["pending", "running"]));
+        const queuedIds = new Set(openJobs.map((j) => j.youtubeId));
+
+        for (const match of found) {
+          const youtubeId = match[1];
+          if (seen.has(youtubeId)) continue;
+          seen.add(youtubeId);
+          if (lessonIds.has(youtubeId)) { results.push({ youtubeId, outcome: "already in the Listening Lab" }); continue; }
+          if (queuedIds.has(youtubeId)) { results.push({ youtubeId, outcome: "already queued" }); continue; }
+          await db.insert(ingestJobs).values({
+            url: `https://www.youtube.com/watch?v=${youtubeId}`,
+            youtubeId,
+            level: input.level,
+            status: "pending",
+            requestedBy: ctx.user.id,
+            requestedAt: Date.now(),
+          });
+          results.push({ youtubeId, outcome: "queued" });
+        }
+        return { found: found.length, results };
+      }),
+
+    list: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      const rows = await db.select().from(ingestJobs);
+      return rows.sort((a, b) => b.requestedAt - a.requestedAt).slice(0, 60);
+    }),
+
+    retry: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        await db.update(ingestJobs)
+          .set({ status: "pending", error: null, startedAt: null, finishedAt: null })
+          .where(and(eq(ingestJobs.id, input.id), eq(ingestJobs.status, "failed")));
+        return { ok: true };
+      }),
+
+    remove: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        // Running jobs belong to the worker; everything else can go.
+        await db.delete(ingestJobs)
+          .where(and(eq(ingestJobs.id, input.id), ne(ingestJobs.status, "running")));
+        return { ok: true };
+      }),
+  }),
+
+  // ─── Listening Lab ingest queue end ─────────────────────────────────────────
+
   videos: router({
     list: protectedProcedure.query(async () => {
       const db = await getDb();

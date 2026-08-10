@@ -20,6 +20,7 @@ import {
   ClipboardCheck,
   LogOut,
   Settings,
+  UploadCloud,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/SettingsTab";
@@ -29,7 +30,7 @@ interface SidebarProps {
   setActiveTab: (tab: SidebarTab) => void;
   open: boolean;
   setOpen: (open: boolean) => void;
-  user: { name?: string | null; email?: string | null };
+  user: { name?: string | null; email?: string | null; role?: string | null };
 }
 
 interface NavLeaf {
@@ -93,6 +94,10 @@ const NAV: NavEntry[] = [
 ];
 
 export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }: SidebarProps) {
+  // Admin-only entries appended at render time — NAV itself stays static.
+  const nav: NavEntry[] = user.role === "admin"
+    ? [...NAV, { kind: "leaf", id: "ingest", label: "Ingest", icon: <UploadCloud className={ICON} /> }]
+    : NAV;
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => { window.location.reload(); },
     onError: () => toast.error("Logout failed"),
@@ -208,7 +213,7 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
 
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
-        {NAV.map((entry) => {
+        {nav.map((entry) => {
           if (entry.kind === "divider") {
             return (
               <div key={entry.id} className="pt-2 mt-2 border-t border-sidebar-border" aria-hidden />

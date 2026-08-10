@@ -129,6 +129,28 @@ export const dictCache = mysqlTable("dict_cache", {
 export type DictCacheEntry = typeof dictCache.$inferSelect;
 
 /**
+ * Queue for the Listening Lab ingest dashboard. The website only writes and
+ * reads rows here; the actual download/transcribe/gloss runs on a local
+ * machine (see scripts/ingest-worker.ts) because YouTube bot-blocks
+ * datacentre IPs — same reason ingest-video.ts has always run locally.
+ */
+export const ingestJobs = mysqlTable("ingest_jobs", {
+  id: int("id").autoincrement().primaryKey(),
+  url: varchar("url", { length: 512 }).notNull(),
+  youtubeId: varchar("youtube_id", { length: 32 }).notNull(),
+  level: varchar("level", { length: 8 }).default("B1").notNull(),
+  /** pending → running → done | failed */
+  status: varchar("status", { length: 16 }).default("pending").notNull(),
+  error: text("error"),
+  title: varchar("title", { length: 512 }),
+  requestedBy: int("requested_by").notNull(),
+  requestedAt: bigint("requested_at", { mode: "number" }).notNull(),
+  startedAt: bigint("started_at", { mode: "number" }),
+  finishedAt: bigint("finished_at", { mode: "number" }),
+});
+export type IngestJob = typeof ingestJobs.$inferSelect;
+
+/**
  * Per-user SM-2 review settings.
  */
 export const reviewSettings = mysqlTable("review_settings", {
