@@ -44,6 +44,7 @@ import {
   updateUserMemory,
   saveQuizSession,
   saveTutorMessage,
+  setVoiceChatModel,
   toggleVocabStar,
   updateVocabEntry,
   renameVocabGroup,
@@ -189,13 +190,18 @@ const STYLE_REMINDER = {
     "Reminder — the FORMAT rules override the style of earlier answers in this conversation: annotate inline with parentheses (pos, gender, register) instead of separate bullets, keep sentence breakdowns to one line per word, and use bullets sparingly — only for genuinely parallel items.",
 };
 
-async function answerAsTutor(userId: number, message: string): Promise<string> {
+async function answerAsTutor(
+  userId: number,
+  message: string,
+  opts: { preferredProvider?: "openai" | "deepseek" } = {}
+): Promise<string> {
   await saveTutorMessage(userId, "user", message);
 
   const history = await getTutorHistory(userId, 20);
   const messages = history.map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
 
   const response = await invokeLLM({
+    preferredProvider: opts.preferredProvider,
     messages: [
       {
         role: "system",
@@ -1328,10 +1334,36 @@ ${docText.slice(0, 20000)}`,
       return getTutorHistory(ctx.user.id, 40);
     }),
 
-    chat: protectedProcedure
-      .input(z.object({ message: z.string().min(1).max(2000) }))
+    /**
+     * The user's voice-answer model preference. Voice-only by design: typed
+     * chat stays on the default provider order, so `source: "voice"` is how
+     * a caller opts a chat request into the preference.
+     */
+    getVoiceModel: protectedProcedure.query(({ ctx }) => ({
+      model: (ctx.user.voiceChatModel === "deepseek" ? "deepseek" : "openai") as
+        | "openai"
+        | "deepseek",
+    })),
+
+    setVoiceModel: protectedProcedure
+      .input(z.object({ model: z.enum(["openai", "deepseek"]) }))
       .mutation(async ({ ctx, input }) => {
-        return { reply: await answerAsTutor(ctx.user.id, input.message) };
+        await setVoiceChatModel(ctx.user.id, input.model);
+        return { ok: true };
+      }),
+
+    chat: protectedProcedure
+      .input(z.object({
+        message: z.string().min(1).max(2000),
+        /** "voice" applies the user's voice-model preference; absent = typed chat. */
+        source: z.enum(["voice"]).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const preferredProvider =
+          input.source === "voice" && ctx.user.voiceChatModel === "deepseek"
+            ? ("deepseek" as const)
+            : undefined;
+        return { reply: await answerAsTutor(ctx.user.id, input.message, { preferredProvider }) };
       }),
 
     /**
@@ -1416,7 +1448,13 @@ ${docText.slice(0, 20000)}`,
         const message = context
           ? `Regarding this French text: "${context}"\n\n${question}`
           : question;
-        return { question, context: context || null, reply: await answerAsTutor(ctx.user.id, message) };
+        return {
+          question,
+          context: context || null,
+          reply: await answerAsTutor(ctx.user.id, message, {
+            preferredProvider: ctx.user.voiceChatModel === "deepseek" ? "deepseek" : undefined,
+          }),
+        };
       }),
 
     clear: protectedProcedure.mutation(async ({ ctx }) => {

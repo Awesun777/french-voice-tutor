@@ -9,7 +9,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Settings2, Loader2, User as UserIcon } from "lucide-react";
+import { Settings2, Loader2, Mic, User as UserIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 function Slider({
   label,
@@ -112,6 +113,75 @@ function ReviewSettingsCard() {
   );
 }
 
+const VOICE_MODELS = [
+  {
+    id: "openai" as const,
+    name: "GPT-4o mini",
+    hint: "OpenAI — fastest answers. The default.",
+  },
+  {
+    id: "deepseek" as const,
+    name: "DeepSeek V4 Flash",
+    hint: "Reasoning model — can answer more thoroughly, usually a bit slower.",
+  },
+];
+
+/**
+ * Which model answers voice questions (the extension's ⌥S shortcut and the
+ * voice palette). Voice only: typed Tutor chat is unaffected, and the live
+ * Romain/Anna voice conversations can't switch — they run on OpenAI's
+ * Realtime speech stack end to end.
+ */
+function VoiceModelCard() {
+  const { data, isLoading, refetch } = trpc.tutor.getVoiceModel.useQuery();
+  const setMutation = trpc.tutor.setVoiceModel.useMutation({
+    onSuccess: () => { refetch(); toast.success("Voice model saved"); },
+    onError: () => toast.error("Couldn't save the voice model"),
+  });
+
+  return (
+    <section className="bg-card rounded-2xl p-6 shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]">
+      <div className="flex items-center gap-2">
+        <Mic className="w-4 h-4 text-muted-foreground" />
+        <h2 className="font-display text-base font-bold text-foreground">Voice questions</h2>
+      </div>
+      <p className="text-sm text-muted-foreground mt-1">
+        Which model answers when you ask by voice — the browser extension's ⌥S shortcut and
+        the voice palette. Typed chat and the Romain/Anna voice calls are unaffected.
+      </p>
+
+      {isLoading ? (
+        <div className="py-10 flex justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {VOICE_MODELS.map((m) => {
+            const active = data?.model === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => !active && setMutation.mutate({ model: m.id })}
+                disabled={setMutation.isPending}
+                aria-pressed={active}
+                className={cn(
+                  "text-left rounded-xl p-4 ring-1 transition-all disabled:opacity-60",
+                  active
+                    ? "ring-2 ring-primary bg-primary/5"
+                    : "ring-border hover:ring-primary/40"
+                )}
+              >
+                <p className="text-sm font-bold text-foreground">{m.name}</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-snug">{m.hint}</p>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AccountCard({ user }: { user: { name?: string | null; email?: string | null } }) {
   const { data: profile } = trpc.auth.profile.useQuery();
 
@@ -183,6 +253,7 @@ export default function SettingsTab({
           <p className="text-sm text-muted-foreground mt-1">Your account and how reviewing works.</p>
         </div>
         <AccountCard user={user} />
+        <VoiceModelCard />
         <ReviewSettingsCard />
       </div>
     </div>

@@ -79,6 +79,12 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+export async function setVoiceChatModel(userId: number, model: "openai" | "deepseek"): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ voiceChatModel: model }).where(eq(users.id, userId));
+}
+
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) return undefined;

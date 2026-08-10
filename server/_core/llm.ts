@@ -66,6 +66,13 @@ export type InvokeParams = {
   output_schema?: OutputSchema;
   responseFormat?: ResponseFormat;
   response_format?: ResponseFormat;
+  /**
+   * Try this provider first, keeping the others as fallbacks in their usual
+   * order. A preference, not a pin: if the preferred provider errors, the
+   * call still succeeds on the next one rather than failing the request —
+   * a user-facing model switch must never turn into a user-facing outage.
+   */
+  preferredProvider?: "openai" | "deepseek" | "forge";
 };
 
 export type ToolCall = {
@@ -416,7 +423,11 @@ async function callProvider(provider: ResolvedProvider, params: InvokeParams): P
 export const llmUsage: Record<string, { prompt: number; completion: number; calls: number }> = {};
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
-  const providers = resolveProviders();
+  let providers = resolveProviders();
+  if (params.preferredProvider) {
+    const i = providers.findIndex((p) => p.name === params.preferredProvider);
+    if (i > 0) providers = [providers[i], ...providers.slice(0, i), ...providers.slice(i + 1)];
+  }
   let lastError: unknown;
 
   for (let i = 0; i < providers.length; i++) {

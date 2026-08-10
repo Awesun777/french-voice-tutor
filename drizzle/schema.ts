@@ -26,6 +26,13 @@ export const users = mysqlTable("users", {
    * voice sessions. Injected into Romain/Anna context at session start.
    */
   userMemory: text("userMemory"),
+  /**
+   * Which LLM answers this user's VOICE questions (extension ⌥S and the
+   * voice palette): "openai" (gpt-4o-mini, default) or "deepseek"
+   * (deepseek-v4-flash). A preference for invokeLLM's provider order, not a
+   * pin — the other providers stay as fallbacks. Typed tutor chat ignores it.
+   */
+  voiceChatModel: varchar("voiceChatModel", { length: 16 }),
 });
 
 export type User = typeof users.$inferSelect;
