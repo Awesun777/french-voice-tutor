@@ -57,6 +57,7 @@ async function main() {
   let runId: number | null = null;
   let processed = 0;
   let failures = 0;
+  const detailLines: string[] = [];
 
   for (;;) {
     const pending = await db.select().from(ingestJobs).where(eq(ingestJobs.status, "pending"));
@@ -94,6 +95,7 @@ async function main() {
         })
         .where(eq(ingestJobs.id, job.id));
       processed++;
+      detailLines.push(`« ${lesson?.title ?? job.youtubeId} »${lesson?.level ? ` · ${lesson.level}` : ""} · ok`);
       console.log(`✓ #${job.id} done`);
     } else {
       const tail = output.slice(-600);
@@ -103,6 +105,7 @@ async function main() {
         .where(eq(ingestJobs.id, job.id));
       processed++;
       failures++;
+      detailLines.push(`« ${job.title ?? job.youtubeId} » · FAILED`);
       console.log(`✗ #${job.id} failed:\n${tail}`);
     }
   }
@@ -112,6 +115,7 @@ async function main() {
       .set({
         status: failures > 0 ? "failed" : "ok",
         summary: `${processed - failures} video${processed - failures === 1 ? "" : "s"} ingested${failures ? `, ${failures} failed` : ""}`,
+        detail: detailLines.join("\n") || null,
         finishedAt: Date.now(),
       })
       .where(eq(jobRuns.id, runId));

@@ -134,6 +134,20 @@
       "when": 1786379245785,
       "tag": "0018_faulty_maria_hill",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1786379768315,
+      "tag": "0019_good_sally_floyd",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1786379896349,
+      "tag": "0020_smiling_blonde_phantom",
+      "breakpoints": true
     }
   ]
 }

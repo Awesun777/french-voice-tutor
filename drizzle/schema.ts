@@ -161,6 +161,8 @@ export const jobRuns = mysqlTable("job_runs", {
   /** running → ok | failed */
   status: varchar("status", { length: 16 }).default("running").notNull(),
   summary: varchar("summary", { length: 512 }),
+  /** One line per item the run produced — «title» · source — for the Ops feed. */
+  detail: text("detail"),
   startedAt: bigint("started_at", { mode: "number" }).notNull(),
   finishedAt: bigint("finished_at", { mode: "number" }),
 });
@@ -171,6 +173,10 @@ export const opsTodos = mysqlTable("ops_todos", {
   id: int("id").autoincrement().primaryKey(),
   text: varchar("text", { length: 512 }).notNull(),
   done: int("done").default(0).notNull(),
+  /** high | med | low — coarse tiers; manual order refines within a tier. */
+  priority: varchar("priority", { length: 8 }).default("med").notNull(),
+  /** Optional due date (ms epoch, date-granular). */
+  deadline: bigint("deadline", { mode: "number" }),
   position: int("position").default(0).notNull(),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
   doneAt: bigint("done_at", { mode: "number" }),

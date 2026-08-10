@@ -2236,10 +2236,13 @@ ${input.transcript}`,
         const db = await getDb();
         if (!db) return [];
         const rows = await db.select().from(opsTodos);
-        // Active by hand-set priority; done sinks below, newest finish first.
+        // Tier first (high → med → low), hand order within a tier; done sinks
+        // below everything, newest finish first.
+        const rank = (p: string) => (p === "high" ? 0 : p === "low" ? 2 : 1);
         return rows.sort((a, b) =>
           a.done !== b.done ? a.done - b.done
           : a.done ? (b.doneAt ?? 0) - (a.doneAt ?? 0)
+          : rank(a.priority) !== rank(b.priority) ? rank(a.priority) - rank(b.priority)
           : a.position - b.position
         );
       }),
@@ -2252,6 +2255,26 @@ ${input.transcript}`,
           const rows = await db.select().from(opsTodos);
           const position = Math.max(0, ...rows.map((r) => r.position)) + 1;
           await db.insert(opsTodos).values({ text: input.text, position, createdAt: Date.now() });
+          return { ok: true };
+        }),
+
+      update: adminProcedure
+        .input(z.object({
+          id: z.number(),
+          text: z.string().trim().min(1).max(512).optional(),
+          priority: z.enum(["high", "med", "low"]).optional(),
+          // null clears a deadline; a number sets it (ms epoch).
+          deadline: z.number().nullable().optional(),
+        }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          const patch: Record<string, unknown> = {};
+          if (input.text !== undefined) patch.text = input.text;
+          if (input.priority !== undefined) patch.priority = input.priority;
+          if (input.deadline !== undefined) patch.deadline = input.deadline;
+          if (Object.keys(patch).length === 0) return { ok: false };
+          await db.update(opsTodos).set(patch).where(eq(opsTodos.id, input.id));
           return { ok: true };
         }),
 
@@ -2273,8 +2296,12 @@ ${input.transcript}`,
         .mutation(async ({ input }) => {
           const db = await getDb();
           if (!db) throw new Error("DB unavailable");
+          const [self] = await db.select().from(opsTodos).where(eq(opsTodos.id, input.id));
+          if (!self) return { ok: false };
+          // Reordering happens within a tier — across tiers you change the
+          // priority instead, and the sort takes care of the rest.
           const active = (await db.select().from(opsTodos))
-            .filter((r) => !r.done)
+            .filter((r) => !r.done && r.priority === self.priority)
             .sort((a, b) => a.position - b.position);
           const i = active.findIndex((r) => r.id === input.id);
           const j = input.direction === "up" ? i - 1 : i + 1;

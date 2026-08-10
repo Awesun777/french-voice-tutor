@@ -14,9 +14,25 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
-  Activity, ArrowDown, ArrowUp, CheckCircle2, ChevronDown, Clock3,
-  ListTodo, Loader2, Plus, Trash2, XCircle,
+  Activity, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, ChevronDown, Clock3,
+  ListTodo, Loader2, Pencil, Plus, Trash2, XCircle,
 } from "lucide-react";
+
+/** high → med → low → high; a click walks the cycle. */
+const NEXT_PRIORITY: Record<string, "high" | "med" | "low"> = { high: "med", med: "low", low: "high" };
+const PRIORITY_STYLE: Record<string, string> = {
+  high: "bg-speaking text-speaking-foreground",
+  med: "bg-primary text-primary-foreground",
+  low: "bg-muted text-muted-foreground",
+};
+
+function deadlineLabel(ts: number): { text: string; cls: string } {
+  const days = Math.ceil((ts - Date.now()) / 86400000);
+  const date = new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (days < 0) return { text: `${date} · overdue`, cls: "text-destructive font-bold" };
+  if (days <= 2) return { text: `${date} · ${days === 0 ? "today" : days === 1 ? "tomorrow" : "in 2 d"}`, cls: "text-speaking font-semibold" };
+  return { text: date, cls: "text-muted-foreground" };
+}
 
 function ago(ts: number | null | undefined): string {
   if (!ts) return "never";
@@ -25,6 +41,28 @@ function ago(ts: number | null | undefined): string {
   if (m < 60) return `${m} min ago`;
   const h = Math.round(m / 60);
   return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
+
+/** The run's item list — every article or video it produced, one per line. */
+function RunDetail({ detail }: { detail: string | null }) {
+  const [open, setOpen] = useState(false);
+  if (!detail) return null;
+  const lines = detail.split("\n").filter(Boolean);
+  return (
+    <div className="mt-1">
+      <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+        <ChevronDown className={`w-3 h-3 transition-transform ${open ? "rotate-180" : ""}`} />
+        {lines.length} item{lines.length === 1 ? "" : "s"}
+      </button>
+      {open && (
+        <ul className="mt-1 pl-4 space-y-0.5">
+          {lines.map((l, i) => (
+            <li key={i} className={`text-xs ${l.includes("FAILED") ? "text-destructive" : "text-muted-foreground"}`}>{l}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function RunChip({ status }: { status: string }) {
@@ -38,6 +76,8 @@ function RunChip({ status }: { status: string }) {
 export default function OpsTab() {
   const [newTodo, setNewTodo] = useState("");
   const [openHistory, setOpenHistory] = useState<string | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
   const utils = trpc.useUtils();
 
   const jobs = trpc.ops.jobs.useQuery(undefined, { refetchInterval: 15000 });
@@ -46,6 +86,7 @@ export default function OpsTab() {
   const invalidate = () => utils.ops.todos.list.invalidate();
   const add = trpc.ops.todos.add.useMutation({ onSuccess: () => { setNewTodo(""); invalidate(); }, onError: (e) => toast.error(e.message) });
   const toggle = trpc.ops.todos.toggle.useMutation({ onSuccess: invalidate });
+  const update = trpc.ops.todos.update.useMutation({ onSuccess: () => { setEditing(null); invalidate(); }, onError: (e) => toast.error(e.message) });
   const move = trpc.ops.todos.move.useMutation({ onSuccess: invalidate });
   const remove = trpc.ops.todos.remove.useMutation({ onSuccess: invalidate });
 
@@ -88,6 +129,7 @@ export default function OpsTab() {
                     </>
                   )}
                 </div>
+                {latest && <RunDetail detail={latest.detail} />}
                 {runs.length > 1 && (
                   <button
                     onClick={() => setOpenHistory(showHistory ? null : s.job)}
@@ -100,9 +142,12 @@ export default function OpsTab() {
                 {showHistory && (
                   <div className="mt-2 space-y-1.5 border-t border-border pt-2">
                     {runs.slice(1, 8).map((r) => (
-                      <div key={r.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <RunChip status={r.status} />
-                        <span>{ago(r.startedAt)}{r.summary ? ` — ${r.summary}` : ""}</span>
+                      <div key={r.id} className="text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <RunChip status={r.status} />
+                          <span>{ago(r.startedAt)}{r.summary ? ` — ${r.summary}` : ""}</span>
+                        </div>
+                        <RunDetail detail={r.detail} />
                       </div>
                     ))}
                   </div>
@@ -148,25 +193,74 @@ export default function OpsTab() {
             )}
           </form>
 
-          {active.map((t, i) => (
-            <div key={t.id} className="group flex items-center gap-3 px-3 py-2.5">
-              <input
-                type="checkbox"
-                checked={false}
-                onChange={() => toggle.mutate({ id: t.id })}
-                className="w-4 h-4 accent-primary flex-none cursor-pointer"
-              />
-              <span className="flex-1 text-sm text-foreground">{t.text}</span>
-              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button disabled={i === 0} onClick={() => move.mutate({ id: t.id, direction: "up" })}
-                  className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
-                <button disabled={i === active.length - 1} onClick={() => move.mutate({ id: t.id, direction: "down" })}
-                  className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
-                <button onClick={() => remove.mutate({ id: t.id })}
-                  className="p-1 rounded text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+          {active.map((t, i) => {
+            const sameTier = active.filter((x) => x.priority === t.priority);
+            const tierIdx = sameTier.findIndex((x) => x.id === t.id);
+            const due = t.deadline ? deadlineLabel(t.deadline) : null;
+            return (
+              <div key={t.id} className="group flex items-center gap-2.5 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={false}
+                  onChange={() => toggle.mutate({ id: t.id })}
+                  className="w-4 h-4 accent-primary flex-none cursor-pointer"
+                />
+                <button
+                  onClick={() => update.mutate({ id: t.id, priority: NEXT_PRIORITY[t.priority] })}
+                  title="Change priority"
+                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase flex-none ${PRIORITY_STYLE[t.priority] ?? PRIORITY_STYLE.med}`}
+                >
+                  {t.priority}
+                </button>
+
+                {editing === t.id ? (
+                  <input
+                    autoFocus
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && editText.trim()) update.mutate({ id: t.id, text: editText });
+                      if (e.key === "Escape") setEditing(null);
+                    }}
+                    onBlur={() => setEditing(null)}
+                    className="flex-1 text-sm bg-background border border-border rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-ring/40"
+                  />
+                ) : (
+                  <span
+                    className="flex-1 text-sm text-foreground cursor-text"
+                    onDoubleClick={() => { setEditing(t.id); setEditText(t.text); }}
+                  >
+                    {t.text}
+                  </span>
+                )}
+
+                {due && <span className={`text-[11px] flex-none ${due.cls}`}>{due.text}</span>}
+
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <label title={t.deadline ? "Change deadline" : "Set deadline"}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground cursor-pointer relative">
+                    <CalendarDays className="w-3.5 h-3.5" />
+                    <input
+                      type="date"
+                      value={t.deadline ? new Date(t.deadline).toISOString().slice(0, 10) : ""}
+                      onChange={(e) =>
+                        update.mutate({ id: t.id, deadline: e.target.value ? new Date(`${e.target.value}T12:00:00`).getTime() : null })
+                      }
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full"
+                    />
+                  </label>
+                  <button onClick={() => { setEditing(t.id); setEditText(t.text); }} title="Edit"
+                    className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
+                  <button disabled={tierIdx === 0} onClick={() => move.mutate({ id: t.id, direction: "up" })}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowUp className="w-3.5 h-3.5" /></button>
+                  <button disabled={tierIdx === sameTier.length - 1} onClick={() => move.mutate({ id: t.id, direction: "down" })}
+                    className="p-1 rounded text-muted-foreground hover:text-foreground disabled:opacity-30"><ArrowDown className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => remove.mutate({ id: t.id })}
+                    className="p-1 rounded text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {active.length === 0 && (
             <p className="px-3 py-4 text-sm text-muted-foreground text-center">Pipeline is clear.</p>
