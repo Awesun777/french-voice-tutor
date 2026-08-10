@@ -82,7 +82,7 @@ const NAV: NavEntry[] = [
     label: "Test Prep",
     icon: <ClipboardCheck className={ICON} />,
     items: [
-      { id: "listening", label: "Listening Lab", icon: <Headphones className={ICON} /> },
+      { id: "listening", label: "RomainTube", icon: <Headphones className={ICON} /> },
       { id: "reading", label: "Reading", icon: <Newspaper className={ICON} /> },
       { id: "grammar", label: "Grammar Test", icon: <GraduationCap className={ICON} /> },
     ],

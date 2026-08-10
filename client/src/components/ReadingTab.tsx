@@ -152,7 +152,7 @@ function Kicker({ item }: { item: FeedItem }) {
   return (
     <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-speaking">
       {item.source && <span className="truncate">{item.source}</span>}
-      {item.level && <span className="text-muted-foreground">{item.level}</span>}
+      {item.level && <span className="px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold">{item.level}</span>}
     </div>
   );
 }
@@ -473,7 +473,7 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-speaking">
                 {article?.source && <span>{article.source}</span>}
                 {article?.level && (
-                  <span className="px-1.5 py-0.5 rounded bg-speaking-surface">{article.level}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-primary text-primary-foreground font-bold">{article.level}</span>
                 )}
               </div>
               <h1 className="font-display text-3xl font-bold text-foreground leading-tight mt-2">

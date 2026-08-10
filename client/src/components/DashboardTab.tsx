@@ -350,8 +350,8 @@ function SourcesRow({ setActiveTab }: { setActiveTab: (tab: SidebarTab) => void 
         onClick={() => setActiveTab("listening")}
         whileHover={lift}
         whileTap={press}
-        title="Watch videos in the Listening Lab"
-        aria-label="Watch videos in the Listening Lab"
+        title="Watch videos on RomainTube"
+        aria-label="Watch videos on RomainTube"
         className={cn(
           "w-9 h-9 rounded-xl bg-background flex items-center justify-center flex-shrink-0 shadow-[0_2px_8px_-2px_rgb(23_63_107_/_0.25)] hover:shadow-[0_8px_18px_-6px_rgb(23_63_107_/_0.4)] transition-shadow",
           ring

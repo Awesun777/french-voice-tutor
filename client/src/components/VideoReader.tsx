@@ -103,9 +103,13 @@ export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
             </div>
             <div className="p-3">
               <p className="text-sm font-semibold text-foreground line-clamp-2">{v.title}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {v.channel ? `${v.channel} · ` : ""}{fmtDuration(v.durationSec)}
-                {v.level ? ` · ${v.level}` : ""}
+              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                <span>{v.channel ? `${v.channel} · ` : ""}{fmtDuration(v.durationSec)}</span>
+                {v.level && (
+                  <span className="px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold leading-none">
+                    {v.level}
+                  </span>
+                )}
               </p>
             </div>
           </button>

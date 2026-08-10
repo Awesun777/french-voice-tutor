@@ -41,7 +41,7 @@ export default function ListeningTab() {
           <div className="flex items-center gap-2 min-w-0">
             <Headphones className="w-5 h-5 text-primary flex-shrink-0" />
             <div className="min-w-0">
-              <h2 className="font-display text-xl font-bold text-foreground">Listening Lab</h2>
+              <h2 className="font-display text-xl font-bold text-foreground">RomainTube</h2>
               <p className="text-sm text-muted-foreground truncate">
                 {mode === "videos"
                   ? "Watch with a live transcript"
@@ -371,7 +371,7 @@ function TranscriptPanel({ transcript }: { transcript: string }) {
 
   const saveOne = async (v: Vocab) => {
     try {
-      await addVocab.mutateAsync({ term: v.term, translation: v.translation, entryKind: "word", lessonSource: "Listening Lab" });
+      await addVocab.mutateAsync({ term: v.term, translation: v.translation, entryKind: "word", lessonSource: "RomainTube" });
       setSaved((s) => new Set(s).add(v.term.toLowerCase()));
       utils.vocab.list.invalidate();
     } catch { toast.error("Couldn't save the word"); }
@@ -381,7 +381,7 @@ function TranscriptPanel({ transcript }: { transcript: string }) {
     const items = (analysis?.vocab ?? []).filter((v) => !saved.has(v.term.toLowerCase()));
     if (!items.length) return;
     try {
-      await bulkAdd.mutateAsync(items.map((v) => ({ term: v.term, translation: v.translation, entryKind: "word" as const, lessonSource: "Listening Lab" })));
+      await bulkAdd.mutateAsync(items.map((v) => ({ term: v.term, translation: v.translation, entryKind: "word" as const, lessonSource: "RomainTube" })));
       setSaved((s) => { const n = new Set(s); items.forEach((v) => n.add(v.term.toLowerCase())); return n; });
       utils.vocab.list.invalidate();
       toast.success(`Saved ${items.length} words to your library`);

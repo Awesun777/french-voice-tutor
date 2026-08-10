@@ -27,7 +27,7 @@ function ago(ts: number | null | undefined): string {
 const STATUS: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
   pending: { label: "Queued", cls: "bg-muted text-muted-foreground", icon: <Clock3 className="w-3 h-3" /> },
   running: { label: "Processing", cls: "bg-secondary text-secondary-foreground", icon: <Loader2 className="w-3 h-3 animate-spin" /> },
-  done: { label: "In Listening Lab", cls: "bg-emerald-100 text-emerald-700", icon: <CheckCircle2 className="w-3 h-3" /> },
+  done: { label: "On RomainTube", cls: "bg-emerald-100 text-emerald-700", icon: <CheckCircle2 className="w-3 h-3" /> },
   failed: { label: "Failed", cls: "bg-destructive/10 text-destructive", icon: <XCircle className="w-3 h-3" /> },
 };
 
@@ -59,12 +59,12 @@ export default function IngestTab() {
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Youtube className="w-6 h-6 text-speaking" /> Listening Lab Ingest
+          <Youtube className="w-6 h-6 text-speaking" /> RomainTube Ingest
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Paste YouTube links below — any text containing links works. A local worker picks jobs up
           within ~5 minutes and runs download, transcription, and glossing; finished videos appear in
-          everyone's Listening Lab.
+          everyone's RomainTube.
         </p>
       </div>
 
