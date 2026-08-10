@@ -677,6 +677,45 @@ async function main() {
       });
     });
 
+    // "auto" means the requester couldn't judge the level — grade it from what
+    // was actually said. The transcript plus speech rate beats any human skim:
+    // vocabulary rarity and tense complexity live in the text, and words per
+    // minute separates a slow A2 story from C1 news delivery.
+    let finalLevel = level;
+    if (level === "auto") {
+      const text = cues.map((c) => c.text).join(" ").slice(0, 4500);
+      const spokenMs = cues[cues.length - 1].endMs - cues[0].startMs;
+      const wpm = Math.round(text.split(/\s+/).length / Math.max(spokenMs / 60000, 0.5));
+      const resp = await invokeLLM({
+        messages: [{
+          role: "user",
+          content: `Grade this French listening material on the CEFR scale for learners. Consider vocabulary rarity, grammatical complexity (tenses, subordination), idiom density, and the speech rate of ${wpm} words/minute. Return JSON: {"level":"A1|A2|B1|B2|C1|C2","reason":"one short sentence"}.\n\nTranscript:\n"""\n${text}\n"""`,
+        }],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "cefr_grade", strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                level: { type: "string", enum: ["A1", "A2", "B1", "B2", "C1", "C2"] },
+                reason: { type: "string" },
+              },
+              required: ["level", "reason"], additionalProperties: false,
+            },
+          },
+        } as any,
+      });
+      try {
+        const graded = JSON.parse(String(resp.choices[0].message.content ?? "{}"));
+        finalLevel = graded.level ?? "B1";
+        console.log(`• auto-graded as ${finalLevel} — ${graded.reason ?? ""}`);
+      } catch {
+        finalLevel = "B1";
+        console.log("• auto-grading unparseable — defaulting to B1");
+      }
+    }
+
     console.log("• writing to database");
     // Derived once and shared by both branches: the feed must advertise what was
     // actually transcribed, not the source video's full length.
@@ -689,14 +728,14 @@ async function main() {
       lessonId = existing[0].id;
       await db.update(videoLessons)
         .set({ title: storedTitle, channel: meta.channel, durationSec: storedDuration,
-               thumbnailUrl: meta.thumbnailUrl, level })
+               thumbnailUrl: meta.thumbnailUrl, level: finalLevel })
         .where(eq(videoLessons.id, lessonId));
       await db.delete(videoCues).where(eq(videoCues.lessonId, lessonId));
     } else {
       await db.insert(videoLessons).values({
         youtubeId: meta.id, title: storedTitle, channel: meta.channel,
         durationSec: storedDuration, thumbnailUrl: meta.thumbnailUrl,
-        level, addedAt: Date.now(),
+        level: finalLevel, addedAt: Date.now(),
       });
       const rows = await db.select().from(videoLessons).where(eq(videoLessons.youtubeId, meta.id));
       lessonId = rows[0].id;

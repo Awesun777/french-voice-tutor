@@ -73,7 +73,14 @@ async function main() {
       const [lesson] = await db.select().from(videoLessons).where(eq(videoLessons.youtubeId, job.youtubeId));
       await db
         .update(ingestJobs)
-        .set({ status: "done", title: lesson?.title ?? output.match(/✓ (.+)/)?.[1] ?? null, finishedAt: Date.now(), error: null })
+        .set({
+          status: "done",
+          title: lesson?.title ?? output.match(/✓ (.+)/)?.[1] ?? null,
+          // For "auto" jobs this is where the AI's grade becomes visible.
+          level: lesson?.level ?? job.level,
+          finishedAt: Date.now(),
+          error: null,
+        })
         .where(eq(ingestJobs.id, job.id));
       console.log(`✓ #${job.id} done`);
     } else {

@@ -13,7 +13,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { CheckCircle2, Clock3, Loader2, RotateCcw, Trash2, XCircle, Youtube } from "lucide-react";
 
-const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"] as const;
+const LEVELS = ["auto", "A1", "A2", "B1", "B2", "C1", "C2"] as const;
+const levelLabel = (l: string) => (l === "auto" ? "Auto — AI grades the transcript" : l);
 
 function ago(ts: number | null | undefined): string {
   if (!ts) return "";
@@ -33,7 +34,7 @@ const STATUS: Record<string, { label: string; cls: string; icon: React.ReactNode
 
 export default function IngestTab() {
   const [text, setText] = useState("");
-  const [level, setLevel] = useState<(typeof LEVELS)[number]>("B1");
+  const [level, setLevel] = useState<(typeof LEVELS)[number]>("auto");
   const utils = trpc.useUtils();
 
   // Poll while anything is in flight so worker progress shows up by itself.
@@ -83,7 +84,7 @@ export default function IngestTab() {
             onChange={(e) => setLevel(e.target.value as (typeof LEVELS)[number])}
             className="text-sm rounded-lg border border-border bg-background px-2 py-1.5"
           >
-            {LEVELS.map((l) => <option key={l}>{l}</option>)}
+            {LEVELS.map((l) => <option key={l} value={l}>{levelLabel(l)}</option>)}
           </select>
           <button
             onClick={() => text.trim() && submit.mutate({ text, level })}
@@ -121,7 +122,7 @@ export default function IngestTab() {
                     {j.title || j.youtubeId}
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {j.level} · {ago(j.requestedAt)}
+                    {j.level === "auto" ? "Auto" : j.level} · {ago(j.requestedAt)}
                     {j.status === "failed" && j.error ? ` — ${j.error}` : ""}
                   </p>
                 </div>
