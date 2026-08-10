@@ -1,0 +1,1 @@
+ALTER TABLE `ops_subscriptions` ADD `last_paid_at` bigint;

@@ -2238,11 +2238,8 @@ ${input.transcript}`,
         const db = await getDb();
         if (!db) return [];
         const rows = await db.select().from(opsSubscriptions);
-        // Active first, soonest renewal first; cancelled sink to the bottom.
-        return rows.sort((a, b) =>
-          b.active !== a.active ? b.active - a.active
-          : (a.renewsAt ?? Infinity) - (b.renewsAt ?? Infinity)
-        );
+        // Active first; the client sorts by computed next payment.
+        return rows.sort((a, b) => b.active - a.active || a.name.localeCompare(b.name));
       }),
 
       add: adminProcedure
@@ -2250,7 +2247,7 @@ ${input.transcript}`,
           name: z.string().trim().min(1).max(128),
           costCents: z.number().int().min(0).max(10_000_00),
           cycle: z.enum(["monthly", "yearly"]).default("monthly"),
-          renewsAt: z.number().nullable().optional(),
+          lastPaidAt: z.number().nullable().optional(),
           notes: z.string().trim().max(512).optional(),
         }))
         .mutation(async ({ input }) => {
@@ -2258,7 +2255,7 @@ ${input.transcript}`,
           if (!db) throw new Error("DB unavailable");
           await db.insert(opsSubscriptions).values({
             name: input.name, costCents: input.costCents, cycle: input.cycle,
-            renewsAt: input.renewsAt ?? null, notes: input.notes || null, createdAt: Date.now(),
+            lastPaidAt: input.lastPaidAt ?? null, notes: input.notes || null, createdAt: Date.now(),
           });
           return { ok: true };
         }),
@@ -2269,7 +2266,7 @@ ${input.transcript}`,
           name: z.string().trim().min(1).max(128).optional(),
           costCents: z.number().int().min(0).max(10_000_00).optional(),
           cycle: z.enum(["monthly", "yearly"]).optional(),
-          renewsAt: z.number().nullable().optional(),
+          lastPaidAt: z.number().nullable().optional(),
           notes: z.string().trim().max(512).nullable().optional(),
           active: z.number().min(0).max(1).optional(),
         }))

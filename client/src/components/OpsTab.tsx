@@ -75,6 +75,22 @@ function RunChip({ status }: { status: string }) {
 
 const dollars = (cents: number) => `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
 
+/**
+ * The next payment is derived, never stored: last payment plus the billing
+ * cycle, rolled forward past today for entries paid several cycles ago. The
+ * dashboard shows both ends of that arithmetic.
+ */
+function nextPayment(lastPaidAt: number, cycle: string): number {
+  const d = new Date(lastPaidAt);
+  do {
+    if (cycle === "yearly") d.setFullYear(d.getFullYear() + 1);
+    else d.setMonth(d.getMonth() + 1);
+  } while (d.getTime() <= Date.now());
+  return d.getTime();
+}
+
+const shortDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
 /** AI subscription tracker: what's running, what it costs, when it renews. */
 function Subscriptions() {
   const utils = trpc.useUtils();
@@ -84,7 +100,7 @@ function Subscriptions() {
   const update = trpc.ops.subscriptions.update.useMutation({ onSuccess: () => { setEditingId(null); invalidate(); }, onError: (e) => toast.error(e.message) });
   const remove = trpc.ops.subscriptions.remove.useMutation({ onSuccess: invalidate });
 
-  const EMPTY = { name: "", cost: "", cycle: "monthly" as "monthly" | "yearly", renews: "", notes: "" };
+  const EMPTY = { name: "", cost: "", cycle: "monthly" as "monthly" | "yearly", lastPaid: "", notes: "" };
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [edit, setEdit] = useState(EMPTY);
@@ -98,7 +114,7 @@ function Subscriptions() {
     name: r.name,
     cost: (r.costCents / 100).toString(),
     cycle: r.cycle as "monthly" | "yearly",
-    renews: r.renewsAt ? new Date(r.renewsAt).toISOString().slice(0, 10) : "",
+    lastPaid: r.lastPaidAt ? new Date(r.lastPaidAt).toISOString().slice(0, 10) : "",
     notes: r.notes ?? "",
   });
 
@@ -116,8 +132,11 @@ function Subscriptions() {
         <option value="monthly">/mo</option>
         <option value="yearly">/yr</option>
       </select>
-      <input type="date" value={f.renews} onChange={(e) => set({ ...f, renews: e.target.value })} title="Next renewal (optional)"
-        className="text-xs text-muted-foreground bg-transparent border border-border rounded px-1.5 py-1 flex-none" />
+      <label className="flex items-center gap-1 text-xs text-muted-foreground flex-none">
+        last paid
+        <input type="date" value={f.lastPaid} onChange={(e) => set({ ...f, lastPaid: e.target.value })} title="Last payment date"
+          className="text-xs text-muted-foreground bg-transparent border border-border rounded px-1.5 py-1" />
+      </label>
       <input value={f.notes} onChange={(e) => set({ ...f, notes: e.target.value })} placeholder="notes"
         className="w-24 text-xs bg-transparent focus:outline-none placeholder:text-muted-foreground/60 flex-none" />
     </>
@@ -127,7 +146,7 @@ function Subscriptions() {
     name: f.name.trim(),
     costCents: parseCost(f.cost),
     cycle: f.cycle,
-    renewsAt: f.renews ? new Date(`${f.renews}T12:00:00`).getTime() : null,
+    lastPaidAt: f.lastPaid ? new Date(`${f.lastPaid}T12:00:00`).getTime() : null,
     notes: f.notes.trim() || undefined,
   });
 
@@ -149,8 +168,14 @@ function Subscriptions() {
           {form.name.trim() && <button type="submit" disabled={add.isPending} className="text-xs font-bold text-primary hover:underline flex-none">Add</button>}
         </form>
 
-        {rows.map((r) => {
-          const renewIn = r.renewsAt ? Math.ceil((r.renewsAt - Date.now()) / 86400000) : null;
+        {[...rows].sort((a, b) => {
+          if (a.active !== b.active) return b.active - a.active;
+          const na = a.lastPaidAt ? nextPayment(a.lastPaidAt, a.cycle) : (a.renewsAt ?? Infinity);
+          const nb = b.lastPaidAt ? nextPayment(b.lastPaidAt, b.cycle) : (b.renewsAt ?? Infinity);
+          return na - nb;
+        }).map((r) => {
+          const next = r.lastPaidAt ? nextPayment(r.lastPaidAt, r.cycle) : r.renewsAt;
+          const renewIn = next ? Math.ceil((next - Date.now()) / 86400000) : null;
           return editingId === r.id ? (
             <form key={r.id} className="flex items-center gap-2 p-3 flex-wrap bg-muted/20"
               onSubmit={(e) => { e.preventDefault(); update.mutate({ id: r.id, ...payload(edit), notes: edit.notes.trim() || null }); }}>
@@ -162,14 +187,15 @@ function Subscriptions() {
             <div key={r.id} className={`group flex items-center gap-3 px-3 py-2.5 ${r.active ? "" : "opacity-60"}`}>
               <div className="min-w-0 flex-1">
                 <p className={`text-sm font-semibold ${r.active ? "text-foreground" : "text-muted-foreground line-through"}`}>{r.name}</p>
-                {(r.notes || renewIn !== null) && (
+                {(r.notes || next !== null) && (
                   <p className="text-xs text-muted-foreground truncate">
-                    {renewIn !== null && r.active && (
-                      <span className={renewIn <= 3 ? "text-speaking font-semibold" : ""}>
-                        renews {renewIn <= 0 ? "today" : `in ${renewIn} d`}
+                    {r.lastPaidAt && r.active && <span>last paid {shortDate(r.lastPaidAt)} · </span>}
+                    {next != null && r.active && (
+                      <span className={renewIn !== null && renewIn <= 3 ? "text-speaking font-semibold" : ""}>
+                        next {shortDate(next)}{renewIn !== null ? ` (${renewIn <= 0 ? "today" : `in ${renewIn} d`})` : ""}
                       </span>
                     )}
-                    {renewIn !== null && r.active && r.notes ? " · " : ""}{r.notes ?? ""}
+                    {next != null && r.active && r.notes ? " · " : ""}{r.notes ?? ""}
                   </p>
                 )}
               </div>
@@ -228,7 +254,9 @@ export default function OpsTab() {
   const done = (todos.data ?? []).filter((t) => t.done);
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-8">
+    <div className="max-w-6xl mx-auto p-4 sm:p-6">
+      <div className="grid gap-8 lg:grid-cols-2 items-start">
+      <div className="space-y-8 min-w-0">
       {/* ── Jobs ── */}
       <section>
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 mb-1">
@@ -301,7 +329,9 @@ export default function OpsTab() {
       </section>
 
       <Subscriptions />
+      </div>
 
+      <div className="min-w-0">
       {/* ── Pipeline ── */}
       <section>
         <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-3">
@@ -435,6 +465,8 @@ export default function OpsTab() {
           )}
         </div>
       </section>
+      </div>
+      </div>
     </div>
   );
 }

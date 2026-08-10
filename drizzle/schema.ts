@@ -213,8 +213,10 @@ export const opsSubscriptions = mysqlTable("ops_subscriptions", {
   costCents: int("cost_cents").default(0).notNull(),
   /** monthly | yearly */
   cycle: varchar("cycle", { length: 8 }).default("monthly").notNull(),
-  /** Next renewal date (ms epoch), if tracked. */
+  /** Next renewal date (ms epoch) — legacy; new rows track lastPaidAt instead. */
   renewsAt: bigint("renews_at", { mode: "number" }),
+  /** When the subscription was last paid; the next payment is derived from it. */
+  lastPaidAt: bigint("last_paid_at", { mode: "number" }),
   notes: varchar("notes", { length: 512 }),
   active: int("active").default(1).notNull(),
   createdAt: bigint("created_at", { mode: "number" }).notNull(),
