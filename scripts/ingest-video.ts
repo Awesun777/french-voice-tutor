@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "../server/db";
-import { invokeLLM } from "../server/_core/llm";
+import { invokeLLM, llmUsage } from "../server/_core/llm";
 import { videoLessons, videoCues, dictCache } from "../drizzle/schema";
 import {
   ambiguousNote,
@@ -756,6 +756,26 @@ async function main() {
     console.log(`✓ ${meta.title}`);
     console.log(`  ${cues.length} cues, ${tokenCount} tokens (${exprCount} expressions)`);
     console.log(`  last cue ends at ${(cues[cues.length - 1].endMs / 1000).toFixed(0)}s of ${limitSec ?? meta.durationSec}s ingested`);
+
+    // What this run cost: Whisper by the minute, LLM calls by their reported
+    // token usage (the llmUsage tally has seen every call this process made).
+    // Prices are per-1M-token approximations — update as vendors reprice.
+    const PRICE_PER_M: Record<string, { inn: number; out: number }> = {
+      "gpt-4o-mini": { inn: 0.15, out: 0.6 },
+      "deepseek-v4-flash": { inn: 0.1, out: 0.4 },
+      "gemini-2.5-flash": { inn: 0.1, out: 0.4 },
+    };
+    const WHISPER_PER_MIN = 0.006;
+    let costUsd = (storedDuration / 60) * WHISPER_PER_MIN;
+    const parts: string[] = [`whisper ${(storedDuration / 60).toFixed(1)}min`];
+    for (const [model, u] of Object.entries(llmUsage)) {
+      const p = PRICE_PER_M[model] ?? { inn: 0.15, out: 0.6 };
+      costUsd += (u.prompt / 1e6) * p.inn + (u.completion / 1e6) * p.out;
+      parts.push(`${model} ${u.prompt + u.completion} tok / ${u.calls} calls`);
+    }
+    console.log(`  cost: ~$${costUsd.toFixed(3)} (${parts.join(" · ")})`);
+    // Machine-readable, parsed by ingest-worker into the job row.
+    console.log(`COST_USD=${costUsd.toFixed(4)}`);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

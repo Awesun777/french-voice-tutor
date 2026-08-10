@@ -408,6 +408,13 @@ async function callProvider(provider: ResolvedProvider, params: InvokeParams): P
  * network failure, etc.). Returns the first successful response; throws only
  * when every provider has failed.
  */
+/**
+ * Per-process usage tally. Every successful call accumulates here so batch
+ * scripts (video ingest, precompute) can report what a run actually cost.
+ * Long-lived servers can ignore it — the numbers just grow harmlessly.
+ */
+export const llmUsage: Record<string, { prompt: number; completion: number; calls: number }> = {};
+
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   const providers = resolveProviders();
   let lastError: unknown;
@@ -415,7 +422,15 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   for (let i = 0; i < providers.length; i++) {
     const provider = providers[i];
     try {
-      return await callProvider(provider, params);
+      const result = await callProvider(provider, params);
+      const u = result.usage;
+      if (u) {
+        const m = (llmUsage[provider.model] ??= { prompt: 0, completion: 0, calls: 0 });
+        m.prompt += u.prompt_tokens ?? 0;
+        m.completion += u.completion_tokens ?? 0;
+        m.calls += 1;
+      }
+      return result;
     } catch (err) {
       lastError = err;
       const next = providers[i + 1];

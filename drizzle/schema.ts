@@ -165,6 +165,8 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
   status: varchar("status", { length: 16 }).default("pending").notNull(),
   error: text("error"),
   title: varchar("title", { length: 512 }),
+  /** Approximate ingestion cost, from Whisper minutes + measured LLM tokens. */
+  costCents: int("cost_cents"),
   requestedBy: int("requested_by").notNull(),
   requestedAt: bigint("requested_at", { mode: "number" }).notNull(),
   startedAt: bigint("started_at", { mode: "number" }),

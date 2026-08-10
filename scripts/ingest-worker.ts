@@ -90,12 +90,15 @@ async function main() {
           title: lesson?.title ?? output.match(/✓ (.+)/)?.[1] ?? null,
           // For "auto" jobs this is where the AI's grade becomes visible.
           level: lesson?.level ?? job.level,
+          costCents,
           finishedAt: Date.now(),
           error: null,
         })
         .where(eq(ingestJobs.id, job.id));
       processed++;
-      detailLines.push(`« ${lesson?.title ?? job.youtubeId} »${lesson?.level ? ` · ${lesson.level}` : ""} · ok`);
+      const cost = output.match(/^COST_USD=([\d.]+)$/m)?.[1];
+      const costCents = cost ? Math.round(parseFloat(cost) * 100) : null;
+      detailLines.push(`« ${lesson?.title ?? job.youtubeId} »${lesson?.level ? ` · ${lesson.level}` : ""}${cost ? ` · ~$${parseFloat(cost).toFixed(2)}` : ""} · ok`);
       console.log(`✓ #${job.id} done`);
     } else {
       const tail = output.slice(-600);

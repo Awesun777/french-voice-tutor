@@ -123,6 +123,7 @@ export default function IngestTab() {
                   </p>
                   <p className="text-xs text-muted-foreground truncate">
                     {j.level === "auto" ? "Auto" : j.level} · {ago(j.requestedAt)}
+                    {j.costCents != null ? ` · ~$${(j.costCents / 100).toFixed(2)}` : ""}
                     {j.status === "failed" && j.error ? ` — ${j.error}` : ""}
                   </p>
                 </div>
