@@ -15,7 +15,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Activity, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, ChevronDown, Clock3,
-  ListTodo, Loader2, Pencil, Plus, Trash2, XCircle,
+  CreditCard, ListTodo, Loader2, Pencil, Plus, Trash2, XCircle,
 } from "lucide-react";
 
 /** high → med → low → high; a click walks the cycle. */
@@ -71,6 +71,125 @@ function RunChip({ status }: { status: string }) {
   if (status === "ok")
     return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"><CheckCircle2 className="w-3 h-3" /> OK</span>;
   return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-destructive/10 text-destructive"><XCircle className="w-3 h-3" /> Failed</span>;
+}
+
+const dollars = (cents: number) => `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+
+/** AI subscription tracker: what's running, what it costs, when it renews. */
+function Subscriptions() {
+  const utils = trpc.useUtils();
+  const subs = trpc.ops.subscriptions.list.useQuery();
+  const invalidate = () => utils.ops.subscriptions.list.invalidate();
+  const add = trpc.ops.subscriptions.add.useMutation({ onSuccess: () => { setForm(EMPTY); invalidate(); }, onError: (e) => toast.error(e.message) });
+  const update = trpc.ops.subscriptions.update.useMutation({ onSuccess: () => { setEditingId(null); invalidate(); }, onError: (e) => toast.error(e.message) });
+  const remove = trpc.ops.subscriptions.remove.useMutation({ onSuccess: invalidate });
+
+  const EMPTY = { name: "", cost: "", cycle: "monthly" as "monthly" | "yearly", renews: "", notes: "" };
+  const [form, setForm] = useState(EMPTY);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [edit, setEdit] = useState(EMPTY);
+
+  const rows = subs.data ?? [];
+  const activeRows = rows.filter((r) => r.active);
+  const monthlyCents = activeRows.reduce((n, r) => n + (r.cycle === "yearly" ? r.costCents / 12 : r.costCents), 0);
+
+  const parseCost = (v: string) => Math.round(parseFloat(v || "0") * 100) || 0;
+  const toForm = (r: (typeof rows)[number]) => ({
+    name: r.name,
+    cost: (r.costCents / 100).toString(),
+    cycle: r.cycle as "monthly" | "yearly",
+    renews: r.renewsAt ? new Date(r.renewsAt).toISOString().slice(0, 10) : "",
+    notes: r.notes ?? "",
+  });
+
+  const fields = (f: typeof EMPTY, set: (f: typeof EMPTY) => void) => (
+    <>
+      <input value={f.name} onChange={(e) => set({ ...f, name: e.target.value })} placeholder="Service (Claude, OpenAI API…)"
+        className="flex-1 min-w-[8rem] text-sm bg-transparent focus:outline-none placeholder:text-muted-foreground" />
+      <div className="flex items-center gap-0.5 text-sm flex-none">
+        <span className="text-muted-foreground">$</span>
+        <input value={f.cost} onChange={(e) => set({ ...f, cost: e.target.value.replace(/[^0-9.]/g, "") })} placeholder="0"
+          inputMode="decimal" className="w-14 bg-transparent border-b border-border focus:outline-none focus:border-primary text-right" />
+      </div>
+      <select value={f.cycle} onChange={(e) => set({ ...f, cycle: e.target.value as "monthly" | "yearly" })}
+        className="text-xs bg-transparent border border-border rounded px-1 py-1 flex-none">
+        <option value="monthly">/mo</option>
+        <option value="yearly">/yr</option>
+      </select>
+      <input type="date" value={f.renews} onChange={(e) => set({ ...f, renews: e.target.value })} title="Next renewal (optional)"
+        className="text-xs text-muted-foreground bg-transparent border border-border rounded px-1.5 py-1 flex-none" />
+      <input value={f.notes} onChange={(e) => set({ ...f, notes: e.target.value })} placeholder="notes"
+        className="w-24 text-xs bg-transparent focus:outline-none placeholder:text-muted-foreground/60 flex-none" />
+    </>
+  );
+
+  const payload = (f: typeof EMPTY) => ({
+    name: f.name.trim(),
+    costCents: parseCost(f.cost),
+    cycle: f.cycle,
+    renewsAt: f.renews ? new Date(`${f.renews}T12:00:00`).getTime() : null,
+    notes: f.notes.trim() || undefined,
+  });
+
+  return (
+    <section>
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+          <CreditCard className="w-5 h-5 text-speaking" /> AI subscriptions
+        </h2>
+        {activeRows.length > 0 && (
+          <span className="text-sm font-bold text-primary">≈ {dollars(Math.round(monthlyCents))}/mo</span>
+        )}
+      </div>
+
+      <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm divide-y divide-border">
+        <form className="flex items-center gap-2 p-3 flex-wrap" onSubmit={(e) => { e.preventDefault(); if (form.name.trim()) add.mutate(payload(form)); }}>
+          <Plus className="w-4 h-4 text-muted-foreground flex-none" />
+          {fields(form, setForm)}
+          {form.name.trim() && <button type="submit" disabled={add.isPending} className="text-xs font-bold text-primary hover:underline flex-none">Add</button>}
+        </form>
+
+        {rows.map((r) => {
+          const renewIn = r.renewsAt ? Math.ceil((r.renewsAt - Date.now()) / 86400000) : null;
+          return editingId === r.id ? (
+            <form key={r.id} className="flex items-center gap-2 p-3 flex-wrap bg-muted/20"
+              onSubmit={(e) => { e.preventDefault(); update.mutate({ id: r.id, ...payload(edit), notes: edit.notes.trim() || null }); }}>
+              {fields(edit, setEdit)}
+              <button type="submit" className="text-xs font-bold text-primary hover:underline flex-none">Save</button>
+              <button type="button" onClick={() => setEditingId(null)} className="text-xs text-muted-foreground hover:underline flex-none">Cancel</button>
+            </form>
+          ) : (
+            <div key={r.id} className={`group flex items-center gap-3 px-3 py-2.5 ${r.active ? "" : "opacity-60"}`}>
+              <div className="min-w-0 flex-1">
+                <p className={`text-sm font-semibold ${r.active ? "text-foreground" : "text-muted-foreground line-through"}`}>{r.name}</p>
+                {(r.notes || renewIn !== null) && (
+                  <p className="text-xs text-muted-foreground truncate">
+                    {renewIn !== null && r.active && (
+                      <span className={renewIn <= 3 ? "text-speaking font-semibold" : ""}>
+                        renews {renewIn <= 0 ? "today" : `in ${renewIn} d`}
+                      </span>
+                    )}
+                    {renewIn !== null && r.active && r.notes ? " · " : ""}{r.notes ?? ""}
+                  </p>
+                )}
+              </div>
+              <span className="text-sm font-bold text-foreground flex-none">{dollars(r.costCents)}<span className="text-xs text-muted-foreground font-normal">/{r.cycle === "yearly" ? "yr" : "mo"}</span></span>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => { setEditingId(r.id); setEdit(toForm(r)); }} title="Edit"
+                  className="p-1 rounded text-muted-foreground hover:text-foreground"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={() => update.mutate({ id: r.id, active: r.active ? 0 : 1 })} title={r.active ? "Mark cancelled" : "Reactivate"}
+                  className="p-1 rounded text-muted-foreground hover:text-foreground"><XCircle className="w-3.5 h-3.5" /></button>
+                <button onClick={() => remove.mutate({ id: r.id })} title="Delete"
+                  className="p-1 rounded text-muted-foreground hover:text-destructive"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+          );
+        })}
+
+        {rows.length === 0 && <p className="px-3 py-4 text-sm text-muted-foreground text-center">No subscriptions tracked yet.</p>}
+      </div>
+    </section>
+  );
 }
 
 export default function OpsTab() {
@@ -180,6 +299,8 @@ export default function OpsTab() {
           )}
         </div>
       </section>
+
+      <Subscriptions />
 
       {/* ── Pipeline ── */}
       <section>

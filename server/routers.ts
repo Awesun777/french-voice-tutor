@@ -16,6 +16,7 @@ import {
   ingestJobs,
   jobRuns,
   opsTodos,
+  opsSubscriptions,
 } from "../drizzle/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "./db";
@@ -2229,6 +2230,67 @@ ${input.transcript}`,
         runs,
         queue: { pending: count("pending"), running: count("running"), failed: count("failed") },
       };
+    }),
+
+
+    subscriptions: router({
+      list: adminProcedure.query(async () => {
+        const db = await getDb();
+        if (!db) return [];
+        const rows = await db.select().from(opsSubscriptions);
+        // Active first, soonest renewal first; cancelled sink to the bottom.
+        return rows.sort((a, b) =>
+          b.active !== a.active ? b.active - a.active
+          : (a.renewsAt ?? Infinity) - (b.renewsAt ?? Infinity)
+        );
+      }),
+
+      add: adminProcedure
+        .input(z.object({
+          name: z.string().trim().min(1).max(128),
+          costCents: z.number().int().min(0).max(10_000_00),
+          cycle: z.enum(["monthly", "yearly"]).default("monthly"),
+          renewsAt: z.number().nullable().optional(),
+          notes: z.string().trim().max(512).optional(),
+        }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          await db.insert(opsSubscriptions).values({
+            name: input.name, costCents: input.costCents, cycle: input.cycle,
+            renewsAt: input.renewsAt ?? null, notes: input.notes || null, createdAt: Date.now(),
+          });
+          return { ok: true };
+        }),
+
+      update: adminProcedure
+        .input(z.object({
+          id: z.number(),
+          name: z.string().trim().min(1).max(128).optional(),
+          costCents: z.number().int().min(0).max(10_000_00).optional(),
+          cycle: z.enum(["monthly", "yearly"]).optional(),
+          renewsAt: z.number().nullable().optional(),
+          notes: z.string().trim().max(512).nullable().optional(),
+          active: z.number().min(0).max(1).optional(),
+        }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          const { id, ...rest } = input;
+          const patch = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+          if (!Object.keys(patch).length) return { ok: false };
+          await db.update(opsSubscriptions).set(patch).where(eq(opsSubscriptions.id, id));
+          return { ok: true };
+        }),
+
+      remove: adminProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          await db.delete(opsSubscriptions).where(eq(opsSubscriptions.id, input.id));
+          return { ok: true };
+        }),
     }),
 
     todos: router({

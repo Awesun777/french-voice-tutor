@@ -205,6 +205,22 @@ export const opsTodos = mysqlTable("ops_todos", {
 });
 export type OpsTodo = typeof opsTodos.$inferSelect;
 
+/** AI-related subscriptions the admin tracks on the Ops tab. */
+export const opsSubscriptions = mysqlTable("ops_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 128 }).notNull(),
+  /** Cents, so $20.00 stores exactly. */
+  costCents: int("cost_cents").default(0).notNull(),
+  /** monthly | yearly */
+  cycle: varchar("cycle", { length: 8 }).default("monthly").notNull(),
+  /** Next renewal date (ms epoch), if tracked. */
+  renewsAt: bigint("renews_at", { mode: "number" }),
+  notes: varchar("notes", { length: 512 }),
+  active: int("active").default(1).notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+export type OpsSubscription = typeof opsSubscriptions.$inferSelect;
+
 /**
  * Per-user SM-2 review settings.
  */
