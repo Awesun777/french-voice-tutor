@@ -151,7 +151,7 @@ function Subscriptions() {
   });
 
   return (
-    <section>
+    <section className="min-w-0">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
           <CreditCard className="w-5 h-5 text-speaking" /> AI subscriptions
@@ -254,17 +254,19 @@ export default function OpsTab() {
   const done = (todos.data ?? []).filter((t) => t.done);
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-6">
-      <div className="grid gap-8 lg:grid-cols-2 items-start">
-      <div className="space-y-8 min-w-0">
+    <div className="max-w-[88rem] mx-auto p-4 sm:p-6">
+      <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 mb-6">
+        <Activity className="w-6 h-6 text-speaking" /> Operations
+      </h1>
+
+      <div className="grid gap-6 lg:grid-cols-3 items-start">
       {/* ── Jobs ── */}
-      <section>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 mb-1">
-          <Activity className="w-6 h-6 text-speaking" /> Operations
-        </h1>
-        <p className="text-sm text-muted-foreground mb-4">
-          The fetchers run on the studio machine; runs report in here as they happen.
-        </p>
+      <section className="min-w-0">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <Clock3 className="w-5 h-5 text-speaking" /> Ongoing jobs
+          </h2>
+        </div>
 
         <div className="space-y-3">
           {(jobs.data?.schedules ?? []).map((s) => {
@@ -329,14 +331,14 @@ export default function OpsTab() {
       </section>
 
       <Subscriptions />
-      </div>
 
-      <div className="min-w-0">
       {/* ── Pipeline ── */}
-      <section>
-        <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-3">
-          <ListTodo className="w-5 h-5 text-speaking" /> Pipeline
-        </h2>
+      <section className="min-w-0">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+            <ListTodo className="w-5 h-5 text-speaking" /> Pipeline
+          </h2>
+        </div>
 
         <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm divide-y divide-border">
           <form
@@ -465,7 +467,6 @@ export default function OpsTab() {
           )}
         </div>
       </section>
-      </div>
       </div>
     </div>
   );
