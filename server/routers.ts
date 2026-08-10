@@ -2248,13 +2248,23 @@ ${input.transcript}`,
       }),
 
       add: adminProcedure
-        .input(z.object({ text: z.string().trim().min(1).max(512) }))
+        .input(z.object({
+          text: z.string().trim().min(1).max(512),
+          priority: z.enum(["high", "med", "low"]).default("med"),
+          deadline: z.number().nullable().optional(),
+        }))
         .mutation(async ({ input }) => {
           const db = await getDb();
           if (!db) throw new Error("DB unavailable");
           const rows = await db.select().from(opsTodos);
           const position = Math.max(0, ...rows.map((r) => r.position)) + 1;
-          await db.insert(opsTodos).values({ text: input.text, position, createdAt: Date.now() });
+          await db.insert(opsTodos).values({
+            text: input.text,
+            priority: input.priority,
+            deadline: input.deadline ?? null,
+            position,
+            createdAt: Date.now(),
+          });
           return { ok: true };
         }),
 

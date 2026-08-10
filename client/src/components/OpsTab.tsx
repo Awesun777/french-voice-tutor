@@ -75,6 +75,8 @@ function RunChip({ status }: { status: string }) {
 
 export default function OpsTab() {
   const [newTodo, setNewTodo] = useState("");
+  const [newPriority, setNewPriority] = useState<"high" | "med" | "low">("med");
+  const [newDeadline, setNewDeadline] = useState("");
   const [openHistory, setOpenHistory] = useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
@@ -84,7 +86,18 @@ export default function OpsTab() {
   const todos = trpc.ops.todos.list.useQuery();
 
   const invalidate = () => utils.ops.todos.list.invalidate();
-  const add = trpc.ops.todos.add.useMutation({ onSuccess: () => { setNewTodo(""); invalidate(); }, onError: (e) => toast.error(e.message) });
+  const add = trpc.ops.todos.add.useMutation({
+    onSuccess: () => { setNewTodo(""); setNewPriority("med"); setNewDeadline(""); invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
+  const submitNew = () => {
+    if (!newTodo.trim()) return;
+    add.mutate({
+      text: newTodo,
+      priority: newPriority,
+      deadline: newDeadline ? new Date(`${newDeadline}T12:00:00`).getTime() : null,
+    });
+  };
   const toggle = trpc.ops.todos.toggle.useMutation({ onSuccess: invalidate });
   const update = trpc.ops.todos.update.useMutation({ onSuccess: () => { setEditing(null); invalidate(); }, onError: (e) => toast.error(e.message) });
   const move = trpc.ops.todos.move.useMutation({ onSuccess: invalidate });
@@ -176,18 +189,33 @@ export default function OpsTab() {
 
         <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm divide-y divide-border">
           <form
-            className="flex items-center gap-2 p-3"
-            onSubmit={(e) => { e.preventDefault(); if (newTodo.trim()) add.mutate({ text: newTodo }); }}
+            className="flex items-center gap-2 p-3 flex-wrap"
+            onSubmit={(e) => { e.preventDefault(); submitNew(); }}
           >
             <Plus className="w-4 h-4 text-muted-foreground flex-none" />
             <input
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
               placeholder="Add to the pipeline…"
-              className="flex-1 text-sm bg-transparent focus:outline-none placeholder:text-muted-foreground"
+              className="flex-1 min-w-[10rem] text-sm bg-transparent focus:outline-none placeholder:text-muted-foreground"
+            />
+            <button
+              type="button"
+              onClick={() => setNewPriority(NEXT_PRIORITY[newPriority])}
+              title="Priority for the new item"
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase flex-none ${PRIORITY_STYLE[newPriority]}`}
+            >
+              {newPriority}
+            </button>
+            <input
+              type="date"
+              value={newDeadline}
+              onChange={(e) => setNewDeadline(e.target.value)}
+              title="Deadline (optional)"
+              className="text-xs text-muted-foreground bg-transparent border border-border rounded px-1.5 py-1 flex-none"
             />
             {newTodo.trim() && (
-              <button type="submit" disabled={add.isPending} className="text-xs font-bold text-primary hover:underline">
+              <button type="submit" disabled={add.isPending} className="text-xs font-bold text-primary hover:underline flex-none">
                 Add
               </button>
             )}
