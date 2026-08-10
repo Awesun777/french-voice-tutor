@@ -224,6 +224,22 @@ export const opsSubscriptions = mysqlTable("ops_subscriptions", {
 export type OpsSubscription = typeof opsSubscriptions.$inferSelect;
 
 /**
+ * Voice-chat test recordings, uploaded from the admin Test Logs tab. Only the
+ * storage key persists — download URLs are re-derived per request, so signed
+ * URLs can expire without stranding rows.
+ */
+export const testLogs = mysqlTable("test_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 256 }).notNull(),
+  storageKey: varchar("storage_key", { length: 512 }).notNull(),
+  mimeType: varchar("mime_type", { length: 64 }).notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+  notes: varchar("notes", { length: 512 }),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+export type TestLog = typeof testLogs.$inferSelect;
+
+/**
  * Per-user SM-2 review settings.
  */
 export const reviewSettings = mysqlTable("review_settings", {

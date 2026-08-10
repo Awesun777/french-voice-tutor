@@ -311,6 +311,74 @@ async function startServer() {
     res.json({ status: "ok", ts: Date.now() });
   });
 
+  // Test-log video uploads. Raw bytes on purpose: tRPC's JSON transport would
+  // inflate a recording by a third as base64 and hit the 50 MB body cap, so
+  // this route streams up to 500 MB and does its own auth + admin gate.
+  app.post(
+    "/api/testlogs/upload",
+    express.raw({ type: ["video/*", "application/octet-stream"], limit: "500mb" }),
+    async (req, res) => {
+      try {
+        const user = await sdk.authenticateRequest(req).catch(() => null);
+        if (!user || user.role !== "admin") {
+          res.status(403).json({ error: "admin only" });
+          return;
+        }
+        const body = req.body as Buffer;
+        if (!body?.length) {
+          res.status(400).json({ error: "empty upload" });
+          return;
+        }
+        const mime = String(req.headers["content-type"] || "video/mp4");
+        const title =
+          String(req.query.title ?? "").trim().slice(0, 256) ||
+          `Test ${new Date().toISOString().slice(0, 10)}`;
+        const ext = (mime.split("/")[1] ?? "mp4").split(";")[0].replace(/[^\w]/g, "") || "mp4";
+        const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+        // Railway volume when deployed, ./data in dev — survives redeploys,
+        // and stays private because only this server can read it.
+        const { mkdir, writeFile } = await import("node:fs/promises");
+        const path = await import("node:path");
+        const dir = path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH ?? "./data", "testlogs");
+        await mkdir(dir, { recursive: true });
+        await writeFile(path.join(dir, key), body);
+
+        const { getDb } = await import("../db");
+        const { testLogs } = await import("../../drizzle/schema");
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        await db.insert(testLogs).values({
+          title, storageKey: key, mimeType: mime, sizeBytes: body.length, createdAt: Date.now(),
+        });
+        res.json({ ok: true });
+      } catch (e) {
+        res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  );
+
+  // Playback for the Test Logs tab. Same-origin <video> tags send the session
+  // cookie, so the admin gate holds; res.sendFile handles Range requests,
+  // which is what makes scrubbing work.
+  app.get("/api/testlogs/file/:key", async (req, res) => {
+    const user = await sdk.authenticateRequest(req).catch(() => null);
+    if (!user || user.role !== "admin") {
+      res.status(403).json({ error: "admin only" });
+      return;
+    }
+    const key = String(req.params.key);
+    if (!/^[\w.-]+$/.test(key)) {
+      res.status(400).json({ error: "bad key" });
+      return;
+    }
+    const path = await import("node:path");
+    const dir = path.resolve(process.env.RAILWAY_VOLUME_MOUNT_PATH ?? "./data", "testlogs");
+    res.sendFile(path.join(dir, key), (err) => {
+      if (err && !res.headersSent) res.status(404).json({ error: "not found" });
+    });
+  });
+
   // tRPC API
   app.use(
     "/api/trpc",

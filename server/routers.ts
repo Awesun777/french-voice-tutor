@@ -17,6 +17,7 @@ import {
   jobRuns,
   opsTodos,
   opsSubscriptions,
+  testLogs,
 } from "../drizzle/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "./db";
@@ -2191,6 +2192,52 @@ ${input.transcript}`,
    * react-query caches them across tab switches.
    */
 
+
+
+  // ─── Voice-chat test logs (admin) ───────────────────────────────────────────
+  testLogs: router({
+    list: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+      const rows = (await db.select().from(testLogs)).sort((a, b) => b.createdAt - a.createdAt);
+      // Same-origin playback URLs — the express route streams from the volume
+      // behind the same admin gate, so the videos stay private.
+      return rows.map((r) => ({ ...r, url: `/api/testlogs/file/${encodeURIComponent(r.storageKey)}` }));
+    }),
+
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().trim().min(1).max(256).optional(),
+        notes: z.string().trim().max(512).nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        const patch: Record<string, unknown> = {};
+        if (input.title !== undefined) patch.title = input.title;
+        if (input.notes !== undefined) patch.notes = input.notes;
+        if (!Object.keys(patch).length) return { ok: false };
+        await db.update(testLogs).set(patch).where(eq(testLogs.id, input.id));
+        return { ok: true };
+      }),
+
+    remove: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        const [row] = await db.select().from(testLogs).where(eq(testLogs.id, input.id));
+        await db.delete(testLogs).where(eq(testLogs.id, input.id));
+        if (row) {
+          // Best-effort: a leftover file is cheaper than a failed delete.
+          const { unlink } = await import("node:fs/promises");
+          const path = await import("node:path");
+          await unlink(path.resolve(process.env.RAILWAY_VOLUME_MOUNT_PATH ?? "./data", "testlogs", row.storageKey)).catch(() => {});
+        }
+        return { ok: true };
+      }),
+  }),
 
   // ─── Ops dashboard (admin) ──────────────────────────────────────────────────
   ops: router({
