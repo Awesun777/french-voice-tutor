@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { and, eq, lt } from "drizzle-orm";
 
 import { getDb } from "../server/db";
-import { ingestJobs, videoLessons } from "../drizzle/schema";
+import { ingestJobs, jobRuns, videoLessons } from "../drizzle/schema";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.join(HERE, "..");
@@ -52,10 +52,21 @@ async function main() {
     .set({ status: "failed", error: "worker crashed or was interrupted — retry from the dashboard", finishedAt: Date.now() })
     .where(and(eq(ingestJobs.status, "running"), lt(ingestJobs.startedAt, Date.now() - STALE_MS)));
 
+  // Heartbeat row only when there is actual work — an empty drain every five
+  // minutes would bury the Ops tab's run feed in noise.
+  let runId: number | null = null;
+  let processed = 0;
+  let failures = 0;
+
   for (;;) {
     const pending = await db.select().from(ingestJobs).where(eq(ingestJobs.status, "pending"));
     const job = pending.sort((a, b) => a.requestedAt - b.requestedAt)[0];
     if (!job) break;
+
+    if (runId === null) {
+      const [hb]: any = await db.insert(jobRuns).values({ job: "ingest-worker", status: "running", startedAt: Date.now() });
+      runId = hb.insertId ?? 0;
+    }
 
     // Optimistic claim — only one worker wins this row.
     const [claim]: any = await db
@@ -82,6 +93,7 @@ async function main() {
           error: null,
         })
         .where(eq(ingestJobs.id, job.id));
+      processed++;
       console.log(`✓ #${job.id} done`);
     } else {
       const tail = output.slice(-600);
@@ -89,8 +101,20 @@ async function main() {
         .update(ingestJobs)
         .set({ status: "failed", error: tail.split("\n").slice(-4).join(" · ").slice(0, 500), finishedAt: Date.now() })
         .where(eq(ingestJobs.id, job.id));
+      processed++;
+      failures++;
       console.log(`✗ #${job.id} failed:\n${tail}`);
     }
+  }
+
+  if (runId !== null) {
+    await db.update(jobRuns)
+      .set({
+        status: failures > 0 ? "failed" : "ok",
+        summary: `${processed - failures} video${processed - failures === 1 ? "" : "s"} ingested${failures ? `, ${failures} failed` : ""}`,
+        finishedAt: Date.now(),
+      })
+      .where(eq(jobRuns.id, runId));
   }
 
   console.log("queue drained");

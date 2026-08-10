@@ -3,6 +3,7 @@ import { SidebarTab } from "@/types";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
+  Activity,
   BookOpen,
   BookMarked,
   LayoutDashboard,
@@ -96,7 +97,9 @@ const NAV: NavEntry[] = [
 export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }: SidebarProps) {
   // Admin-only entries appended at render time — NAV itself stays static.
   const nav: NavEntry[] = user.role === "admin"
-    ? [...NAV, { kind: "leaf", id: "ingest", label: "Ingest", icon: <UploadCloud className={ICON} /> }]
+    ? [...NAV,
+       { kind: "leaf", id: "ingest", label: "Ingest", icon: <UploadCloud className={ICON} /> },
+       { kind: "leaf", id: "ops", label: "Ops", icon: <Activity className={ICON} /> }]
     : NAV;
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => { window.location.reload(); },

@@ -151,6 +151,33 @@ export const ingestJobs = mysqlTable("ingest_jobs", {
 export type IngestJob = typeof ingestJobs.$inferSelect;
 
 /**
+ * Heartbeats from the local scheduled jobs (daily articles, ingest worker),
+ * written directly by the scripts so the admin Ops tab can show what launchd
+ * alone knows: whether a run started, how it ended, and what it did.
+ */
+export const jobRuns = mysqlTable("job_runs", {
+  id: int("id").autoincrement().primaryKey(),
+  job: varchar("job", { length: 64 }).notNull(),
+  /** running → ok | failed */
+  status: varchar("status", { length: 16 }).default("running").notNull(),
+  summary: varchar("summary", { length: 512 }),
+  startedAt: bigint("started_at", { mode: "number" }).notNull(),
+  finishedAt: bigint("finished_at", { mode: "number" }),
+});
+export type JobRun = typeof jobRuns.$inferSelect;
+
+/** The admin's product pipeline — the Ops tab's strikethrough checklist. */
+export const opsTodos = mysqlTable("ops_todos", {
+  id: int("id").autoincrement().primaryKey(),
+  text: varchar("text", { length: 512 }).notNull(),
+  done: int("done").default(0).notNull(),
+  position: int("position").default(0).notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  doneAt: bigint("done_at", { mode: "number" }),
+});
+export type OpsTodo = typeof opsTodos.$inferSelect;
+
+/**
  * Per-user SM-2 review settings.
  */
 export const reviewSettings = mysqlTable("review_settings", {

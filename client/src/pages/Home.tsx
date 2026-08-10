@@ -5,6 +5,7 @@ import { DictionaryFab, DictionarySearchDrawer } from "@/components/DictionarySe
 import { VoiceAskDrawer } from "@/components/VoiceAskDrawer";
 import Sidebar from "@/components/Sidebar";
 import IngestTab from "@/components/IngestTab";
+import OpsTab from "@/components/OpsTab";
 import LandingPage from "@/components/LandingPage";
 import DashboardTab from "@/components/DashboardTab";
 import DictionaryTab from "@/components/DictionaryTab";
@@ -168,6 +169,7 @@ export default function Home() {
         {activeTab === "grammar" && <GrammarTestTab />}
         {activeTab === "listening" && <ListeningTab />}
         {activeTab === "ingest" && user?.role === "admin" && <IngestTab />}
+        {activeTab === "ops" && user?.role === "admin" && <OpsTab />}
         {activeTab === "reading" && <ReadingTab />}
         {activeTab === "tutor" && <TutorTab />}
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}

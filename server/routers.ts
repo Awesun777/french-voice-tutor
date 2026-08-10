@@ -14,6 +14,8 @@ import {
   articles as articlesTable,
   articleBlocks as articleBlocksTable,
   ingestJobs,
+  jobRuns,
+  opsTodos,
 } from "../drizzle/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "./db";
@@ -2187,6 +2189,112 @@ ${input.transcript}`,
    * These are queries (not mutations like the rest of `listening`) so
    * react-query caches them across tab switches.
    */
+
+
+  // ─── Ops dashboard (admin) ──────────────────────────────────────────────────
+  ops: router({
+    /**
+     * Everything the Jobs section shows in one query: schedule metadata for
+     * the two local agents, their recent heartbeat runs, and the live state of
+     * the video queue. Schedules are described here rather than discovered —
+     * launchd is on a machine this server can't see; the heartbeats are how
+     * its work becomes visible.
+     */
+    jobs: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return { schedules: [], runs: [], queue: { pending: 0, running: 0, failed: 0 } };
+
+      const runs = (await db.select().from(jobRuns))
+        .sort((a, b) => b.startedAt - a.startedAt)
+        .slice(0, 30);
+
+      const queueRows = await db.select().from(ingestJobs);
+      const count = (st: string) => queueRows.filter((j) => j.status === st).length;
+
+      return {
+        schedules: [
+          {
+            job: "daily-articles",
+            label: "Reading fetch",
+            detail: "France 24 (two shelves) + graded RFI, into the Reading tab",
+            schedule: "Daily at 2:05 AM",
+          },
+          {
+            job: "ingest-worker",
+            label: "Video fetch",
+            detail: "Drains the RomainTube queue: download, transcribe, gloss",
+            schedule: "Every 5 minutes while the queue has work",
+          },
+        ],
+        runs,
+        queue: { pending: count("pending"), running: count("running"), failed: count("failed") },
+      };
+    }),
+
+    todos: router({
+      list: adminProcedure.query(async () => {
+        const db = await getDb();
+        if (!db) return [];
+        const rows = await db.select().from(opsTodos);
+        // Active by hand-set priority; done sinks below, newest finish first.
+        return rows.sort((a, b) =>
+          a.done !== b.done ? a.done - b.done
+          : a.done ? (b.doneAt ?? 0) - (a.doneAt ?? 0)
+          : a.position - b.position
+        );
+      }),
+
+      add: adminProcedure
+        .input(z.object({ text: z.string().trim().min(1).max(512) }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          const rows = await db.select().from(opsTodos);
+          const position = Math.max(0, ...rows.map((r) => r.position)) + 1;
+          await db.insert(opsTodos).values({ text: input.text, position, createdAt: Date.now() });
+          return { ok: true };
+        }),
+
+      toggle: adminProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          const [row] = await db.select().from(opsTodos).where(eq(opsTodos.id, input.id));
+          if (!row) return { ok: false };
+          await db.update(opsTodos)
+            .set(row.done ? { done: 0, doneAt: null } : { done: 1, doneAt: Date.now() })
+            .where(eq(opsTodos.id, input.id));
+          return { ok: true };
+        }),
+
+      move: adminProcedure
+        .input(z.object({ id: z.number(), direction: z.enum(["up", "down"]) }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          const active = (await db.select().from(opsTodos))
+            .filter((r) => !r.done)
+            .sort((a, b) => a.position - b.position);
+          const i = active.findIndex((r) => r.id === input.id);
+          const j = input.direction === "up" ? i - 1 : i + 1;
+          if (i === -1 || j < 0 || j >= active.length) return { ok: false };
+          // Swap the two positions; everything else keeps its slot.
+          await db.update(opsTodos).set({ position: active[j].position }).where(eq(opsTodos.id, active[i].id));
+          await db.update(opsTodos).set({ position: active[i].position }).where(eq(opsTodos.id, active[j].id));
+          return { ok: true };
+        }),
+
+      remove: adminProcedure
+        .input(z.object({ id: z.number() }))
+        .mutation(async ({ input }) => {
+          const db = await getDb();
+          if (!db) throw new Error("DB unavailable");
+          await db.delete(opsTodos).where(eq(opsTodos.id, input.id));
+          return { ok: true };
+        }),
+    }),
+  }),
 
   // ─── Listening Lab ingest queue ──────────────────────────────────────────────
   // The dashboard writes and reads job rows; the actual download/transcribe/
