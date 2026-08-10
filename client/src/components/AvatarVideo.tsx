@@ -67,7 +67,7 @@ export function useAvatarPoster(src: string | null): string | null {
  *  chooser split-screen and that tutor's idle session screen. Kept here (a
  *  dependency-free module) so every screen references the same id without an
  *  import cycle between the chooser and the session tabs. */
-export const avatarLayoutId = (id: "romain" | "anna") => `agent-avatar-${id}`;
+export const avatarLayoutId = (id: "romain" | "anna" | "marc") => `agent-avatar-${id}`;
 
 export function AvatarVideo({
   src,

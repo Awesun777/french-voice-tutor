@@ -1548,6 +1548,28 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       return { signedUrl: data.signed_url };
     }),
 
+    // Returns a signed WebSocket URL for a TCF mock oral exam with Marc — the
+    // ElevenLabs workflow agent whose exam phases are platform-enforced nodes.
+    marcSignedUrl: protectedProcedure.mutation(async () => {
+      const apiKey = process.env.ELEVENLABS_API_KEY;
+      // Agent ids aren't secrets (sessions still require the signed URL minted
+      // with the API key), so the workflow agent doubles as a default.
+      const agentId = process.env.ELEVENLABS_MARC_AGENT_ID ?? 'agent_8601kzpb4kqvftw8ea76qhctv998';
+      if (!apiKey) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ElevenLabs not configured' });
+      }
+      const res = await fetch(
+        `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${agentId}`,
+        { headers: { 'xi-api-key': apiKey } }
+      );
+      if (!res.ok) {
+        const err = await res.text();
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `ElevenLabs error: ${err}` });
+      }
+      const data = await res.json() as { signed_url: string };
+      return { signedUrl: data.signed_url };
+    }),
+
     // Called by the voice client when Romain invokes the web_search tool.
     // Uses the LLM to answer factual queries and returns a short plain-text
     // snippet that the client sends back to Romain as a function_call_output.

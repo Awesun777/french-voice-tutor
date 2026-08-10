@@ -65,7 +65,13 @@ const ICON = "w-4.5 h-4.5";
  */
 const NAV: NavEntry[] = [
   { kind: "leaf", id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className={ICON} /> },
-  { kind: "leaf", id: "voice-chat", label: "Voice Chat", icon: <Mic className={ICON} /> },
+  { kind: "leaf", id: "voice-chat", label: "Speaking", icon: <Mic className={ICON} /> },
+  // The three input skills sit in a row — speak, read, listen — promoted out of
+  // Test Prep because they're daily practice, not exam-day drills. The
+  // Listening page itself keeps its RomainTube branding; only the nav label
+  // names the skill.
+  { kind: "leaf", id: "reading", label: "Reading", icon: <Newspaper className={ICON} /> },
+  { kind: "leaf", id: "listening", label: "Listening", icon: <Headphones className={ICON} /> },
   {
     kind: "group",
     id: "vocab-review",
@@ -84,8 +90,6 @@ const NAV: NavEntry[] = [
     label: "Test Prep",
     icon: <ClipboardCheck className={ICON} />,
     items: [
-      { id: "listening", label: "RomainTube", icon: <Headphones className={ICON} /> },
-      { id: "reading", label: "Reading", icon: <Newspaper className={ICON} /> },
       { id: "grammar", label: "Grammar Test", icon: <GraduationCap className={ICON} /> },
     ],
   },

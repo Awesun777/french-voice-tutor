@@ -19,13 +19,15 @@
 
 import { useState } from "react";
 import { motion, LayoutGroup } from "framer-motion";
-import { ArrowLeft, Play } from "lucide-react";
+import { ArrowLeft, Play, MessageCircle, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AvatarVideo, avatarLayoutId } from "@/components/AvatarVideo";
 import VoiceChatTab from "@/components/VoiceChatTab";
 import { AnnaVoiceTab } from "@/components/AnnaVoiceTab";
+import { MarcExamTab, MarcAvatar } from "@/components/MarcExamTab";
 
-type VoiceAgent = "romain" | "anna";
+type VoiceAgent = "romain" | "anna" | "marc";
+type SpeakingMode = "casual" | "test-mock";
 
 type AgentConfig = {
   id: VoiceAgent;
@@ -67,6 +69,17 @@ const AGENTS: AgentConfig[] = [
   },
 ];
 
+/**
+ * Marc lives outside AGENTS: he belongs to the test-mock side of the flip, has
+ * no select-then-start step (clicking him goes straight into the exam), and no
+ * avatar video yet.
+ */
+const MARC = {
+  id: "marc" as const,
+  name: "Marc",
+  tag: "TCF Examiner · ElevenLabs",
+};
+
 function AgentAvatar({ agent, active }: { agent: AgentConfig; active: boolean }) {
   const ringCls = cn(
     // transition-shadow (not transition-all) so the CSS transition only animates
@@ -99,8 +112,16 @@ function AgentAvatar({ agent, active }: { agent: AgentConfig; active: boolean })
 function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string) => void }) {
   const [selected, setSelected] = useState<VoiceAgent | null>(null);
   const [started, setStarted] = useState<VoiceAgent | null>(null);
+  const [mode, setMode] = useState<SpeakingMode>("casual");
 
-  const startedAgent = started ? AGENTS.find((a) => a.id === started)! : null;
+  const startedAgent = started
+    ? (started === "marc" ? MARC : AGENTS.find((a) => a.id === started)!)
+    : null;
+
+  const flipTo = (m: SpeakingMode) => {
+    setMode(m);
+    setSelected(null);
+  };
 
   return (
     // A single, persistent LayoutGroup spans both the chooser and the session
@@ -115,18 +136,89 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Tutors
+              {started === "marc" ? "Speaking" : "Tutors"}
             </button>
             <span className="text-sm font-semibold">{startedAgent.name}</span>
             <span className="text-[10px] text-muted-foreground">{startedAgent.tag}</span>
           </div>
           <div className="flex-1 overflow-hidden">
-            {started === "romain" ? <VoiceChatTab onStartReview={onStartReview} /> : <AnnaVoiceTab />}
+            {started === "romain" ? (
+              <VoiceChatTab onStartReview={onStartReview} />
+            ) : started === "anna" ? (
+              <AnnaVoiceTab />
+            ) : (
+              <MarcExamTab />
+            )}
           </div>
         </div>
       ) : (
-        // ── Chooser: split screen, select then Start. ──
-        <div className="relative h-full w-full flex flex-col md:flex-row overflow-hidden">
+        // ── Chooser: flip between casual tutors and the mock-exam examiner. ──
+        <div className="relative h-full w-full flex flex-col overflow-hidden">
+          {/* Mode flip — a two-sided pill pinned above the chooser content. */}
+          <div className="flex-shrink-0 flex justify-center pt-5 pb-1 z-10">
+            <div className="inline-flex items-center rounded-full border border-border bg-card p-1 shadow-sm">
+              {(
+                [
+                  { id: "casual", label: "Casual", icon: <MessageCircle className="w-3.5 h-3.5" /> },
+                  { id: "test-mock", label: "Test Mock", icon: <ClipboardCheck className="w-3.5 h-3.5" /> },
+                ] as const
+              ).map((side) => (
+                <button
+                  key={side.id}
+                  onClick={() => flipTo(side.id)}
+                  aria-pressed={mode === side.id}
+                  className={cn(
+                    "relative flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-colors",
+                    mode === side.id ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {mode === side.id && (
+                    <motion.span
+                      layoutId="speaking-mode-pill"
+                      className={cn(
+                        "absolute inset-0 rounded-full",
+                        side.id === "test-mock" ? "bg-amber-600" : "bg-primary",
+                      )}
+                      transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                    />
+                  )}
+                  <span className="relative flex items-center gap-1.5">
+                    {side.icon}
+                    {side.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {mode === "test-mock" ? (
+            // ── Test mock: one examiner, one click, straight into the exam. ──
+            <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
+              <button
+                onClick={() => setStarted("marc")}
+                className="group flex flex-col items-center gap-5 outline-none"
+              >
+                <motion.div
+                  layoutId={avatarLayoutId("marc")}
+                  className="relative h-36 w-36 md:h-56 md:w-56 rounded-full overflow-hidden ring-4 ring-amber-500/40 shadow-[0_0_60px_-12px] shadow-amber-500/40 transition-transform duration-300 group-hover:scale-105"
+                >
+                  <MarcAvatar />
+                </motion.div>
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-2xl md:text-3xl font-bold tracking-tight">{MARC.name}</span>
+                  <span className="text-xs md:text-sm text-muted-foreground">{MARC.tag}</span>
+                </div>
+                <span className="flex items-center gap-2 px-7 py-3.5 rounded-full text-sm font-bold shadow-lg bg-amber-600 text-white transition-all group-hover:scale-105">
+                  <Play className="h-4 w-4 fill-current" />
+                  Enter the Mock Oral Exam
+                </span>
+              </button>
+              <p className="text-xs text-muted-foreground max-w-sm text-center leading-relaxed">
+                A ~10-minute TCF Expression Orale simulation: three tasks, French only, feedback at the end.
+              </p>
+            </div>
+          ) : (
+          <div className="relative flex-1 w-full flex flex-col md:flex-row overflow-hidden">
           {AGENTS.map((agent, i) => {
             const isSelected = selected === agent.id;
             const isDimmed = selected !== null && !isSelected;
@@ -169,7 +261,7 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
               selected ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none",
             )}
           >
-            {selected && (
+            {selected && selected !== "marc" && (
               <button
                 onClick={() => setStarted(selected)}
                 className={cn(
@@ -182,6 +274,8 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
               </button>
             )}
           </div>
+          </div>
+          )}
         </div>
       )}
     </LayoutGroup>
