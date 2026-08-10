@@ -7,10 +7,11 @@
  * does now — voice tutors, glossed video and article reading — instead of the
  * four features it shipped with.
  */
+import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { getLoginUrl } from "@/const";
 import { AvatarVideo } from "@/components/AvatarVideo";
-import { Mic, Newspaper, Youtube, BookOpen, Brain, CreditCard, GraduationCap } from "lucide-react";
+import { Loader2, Mic, Newspaper, Youtube, BookOpen, Brain, CreditCard, GraduationCap } from "lucide-react";
 
 /** Rise-in, with each element owning its delay rather than inheriting a stagger. */
 function Rise({
@@ -60,6 +61,100 @@ function GoogleButton() {
       </svg>
       Continue with Google
     </motion.a>
+  );
+}
+
+/**
+ * Email sign-in / sign-up, sharing the hero with the Google button. One card
+ * with a mode toggle rather than separate pages: the landing page is the only
+ * signed-out surface, so there is nowhere else to put a second screen.
+ * On success the app is simply reloaded — the session cookie is already set,
+ * and the root component renders the dashboard exactly as it does after the
+ * Google redirect.
+ */
+function EmailAuthCard() {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        mode === "signin" ? "/api/auth/email/login" : "/api/auth/email/register",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email, password }),
+        }
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong — try again.");
+        setBusy(false);
+        return;
+      }
+      window.location.href = "/";
+    } catch {
+      setError("Something went wrong — try again.");
+      setBusy(false);
+    }
+  };
+
+  const inputClass =
+    "w-full px-4 py-2.5 rounded-xl bg-background text-sm text-foreground " +
+    "placeholder:text-muted-foreground/60 outline-none ring-1 ring-border " +
+    "focus:ring-2 focus:ring-primary/50 transition-shadow";
+
+  return (
+    <div className="w-full max-w-sm rounded-2xl bg-card p-5 shadow-[0_10px_28px_-10px_rgb(23_63_107_/_0.45)]">
+      <form onSubmit={submit} className="space-y-3">
+        <input
+          type="email"
+          required
+          autoComplete="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className={inputClass}
+        />
+        <input
+          type="password"
+          required
+          minLength={mode === "signup" ? 8 : undefined}
+          autoComplete={mode === "signin" ? "current-password" : "new-password"}
+          placeholder={mode === "signin" ? "Password" : "Password (8+ characters)"}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className={inputClass}
+        />
+        {error && <p className="text-xs text-destructive leading-snug">{error}</p>}
+        <button
+          type="submit"
+          disabled={busy}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 disabled:opacity-60 transition-colors"
+        >
+          {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+          {mode === "signin" ? "Sign in" : "Create account"}
+        </button>
+      </form>
+      <button
+        type="button"
+        onClick={() => {
+          setMode((m) => (m === "signin" ? "signup" : "signin"));
+          setError(null);
+        }}
+        className="w-full text-center text-xs text-muted-foreground hover:text-foreground mt-3 transition-colors"
+      >
+        {mode === "signin" ? "New here? Create an account" : "Already have an account? Sign in"}
+      </button>
+    </div>
   );
 }
 
@@ -118,6 +213,12 @@ export default function LandingPage() {
 
         <Rise delay={0.16} className="flex flex-col items-center mt-8">
           <GoogleButton />
+          <div className="flex items-center gap-3 w-full max-w-sm my-4" aria-hidden>
+            <span className="flex-1 h-px bg-border" />
+            <span className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">or</span>
+            <span className="flex-1 h-px bg-border" />
+          </div>
+          <EmailAuthCard />
           <p className="text-xs text-muted-foreground mt-3">Free to use · Your data stays private</p>
         </Rise>
 

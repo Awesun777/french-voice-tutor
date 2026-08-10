@@ -5,6 +5,7 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerGoogleOAuthRoutes } from "./googleOAuth";
+import { registerEmailAuthRoutes } from "./emailAuth";
 import { registerGoogleSyncStreamRoute } from "../googleSyncStream";
 import { startCronJobs } from "../cronJobs";
 import { appRouter } from "../routers";
@@ -179,6 +180,8 @@ async function startServer() {
   registerOAuthRoutes(app);
   // Google OAuth login + callback
   registerGoogleOAuthRoutes(app);
+  // Email + password register/login
+  registerEmailAuthRoutes(app);
   // Google Drive sync SSE stream
   registerGoogleSyncStreamRoute(app);
 

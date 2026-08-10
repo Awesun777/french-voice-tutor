@@ -32,6 +32,28 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 /**
+ * Password credentials for email/password accounts, one row per user.
+ *
+ * Its own table rather than a passwordHash column on users: most rows in users
+ * are Google accounts that must never have a password path, and a separate
+ * table makes "has a password" a join hit instead of a nullable column every
+ * auth path has to remember to check. The unique email here is also what
+ * enforces one password account per address — users.email carries no unique
+ * constraint because Google accounts share it freely.
+ */
+export const emailCredentials = mysqlTable("email_credentials", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  /** Stored lowercased; lookups must lowercase before comparing. */
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  /** Format "scrypt:<salt hex>:<hash hex>" — see server/_core/emailAuth.ts. */
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type EmailCredential = typeof emailCredentials.$inferSelect;
+
+/**
  * Vocabulary entries saved by each user.
  * entryKind: 'word' | 'phrase'
  */

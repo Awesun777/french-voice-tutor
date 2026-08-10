@@ -1,9 +1,11 @@
 import { and, desc, eq, gte, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  EmailCredential,
   GoogleAccount,
   GoogleDriveSettings,
   InsertUser,
+  emailCredentials,
   PendingImport,
   QuizSession,
   TutorMessage,
@@ -75,6 +77,46 @@ export async function getUserByOpenId(openId: string) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/** First user carrying this email, regardless of login method. */
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// ─── Email credential helpers ─────────────────────────────────────────────────
+
+export async function getEmailCredentialByEmail(
+  email: string
+): Promise<EmailCredential | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select()
+    .from(emailCredentials)
+    .where(eq(emailCredentials.email, email))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createEmailCredential(cred: {
+  userId: number;
+  email: string;
+  passwordHash: string;
+}): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(emailCredentials).values(cred);
 }
 
 // ─── Vocab helpers ─────────────────────────────────────────────────────────────
