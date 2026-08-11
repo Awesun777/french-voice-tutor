@@ -198,11 +198,22 @@ async function extractArticle(pageText: string): Promise<Extracted> {
           `- "summary": one or two sentences of French introducing the piece ` +
           `(use the standfirst if there is one, otherwise write one).\n` +
           `- "blocks": the body in order, one entry per paragraph, with ` +
-          `"kind":"paragraph"; use "kind":"heading" for section headings.\n` +
+          `"kind":"paragraph".\n` +
+          `- SECTION HEADINGS: French news articles break the body up with ` +
+          `short intertitres — standalone lines of roughly 2-10 words, usually ` +
+          `without a final period and often without a conjugated verb, that ` +
+          `announce the next section (e.g. "Une réponse politique", "Vers une ` +
+          `sortie de crise ?"). Every such line MUST be its own block with ` +
+          `"kind":"heading" — never label one "paragraph" and never merge it ` +
+          `into the paragraph before or after it. A real paragraph is full ` +
+          `sentences ending in punctuation; a short verbless line between ` +
+          `paragraphs is a heading.\n` +
           `DISCARD navigation, menus, cookie and newsletter banners, share ` +
           `widgets, related-article lists, bylines, timestamps, captions, ` +
-          `advertisements and comments. If the page is a paywall stub, a consent ` +
-          `wall or otherwise has no real article body, return an empty "blocks" array.`,
+          `advertisements, comments, agency credit lines ("Avec AFP", "Avec ` +
+          `Reuters") and audio-player leftovers ("Écouter - 03:07"). If the ` +
+          `page is a paywall stub, a consent wall or otherwise has no real ` +
+          `article body, return an empty "blocks" array.`,
       },
     ],
     response_format: {
@@ -213,13 +224,34 @@ async function extractArticle(pageText: string): Promise<Extracted> {
 
   const raw = response.choices[0].message.content ?? "{}";
   const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+  const blocks = (parsed.blocks ?? []).filter(
+    (b: { text?: string }) => typeof b.text === "string" && b.text.trim().length > 0
+  );
+
+  // Deterministic backstop for intertitres the model mislabels as paragraphs:
+  // a short line with no sentence-ending punctuation isn't prose, it's a
+  // heading, and left as a paragraph it reads as a weird stray phrase in the
+  // middle of the article. Lines ending in ":" stay paragraphs — they're
+  // lead-ins to a quote, not section breaks.
+  for (const b of blocks) {
+    const text = b.text.trim();
+    if (
+      b.kind === "paragraph" &&
+      !/[.!?…»":;]$/.test(text) &&
+      (text.match(/[\p{L}\p{N}'’-]+/gu)?.length ?? 0) <= 10 &&
+      // Not everything short is an intertitre: agency credits and player
+      // leftovers are junk the prompt discards, not headings to promote.
+      !/^(avec (l')?(afp|reuters)|écouter\b)/iu.test(text)
+    ) {
+      b.kind = "heading";
+    }
+  }
+
   return {
     title: parsed.title ?? "",
     titleEn: parsed.titleEn ?? "",
     summary: parsed.summary ?? "",
-    blocks: (parsed.blocks ?? []).filter(
-      (b: { text?: string }) => typeof b.text === "string" && b.text.trim().length > 0
-    ),
+    blocks,
   };
 }
 
