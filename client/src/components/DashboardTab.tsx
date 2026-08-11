@@ -18,7 +18,7 @@ import { AvatarVideo } from "@/components/AvatarVideo";
 import { usePronounce } from "@/lib/pronounce";
 import {
   Mic, Newspaper, Youtube, ArrowRight, Volume2, BookMarked, Brain, CreditCard,
-  Search, MessageCircle,
+  Search, MessageCircle, Puzzle, Download,
 } from "lucide-react";
 
 /** What the mascot says when you poke it. Short, spoken, and actually useful. */
@@ -290,6 +290,7 @@ export default function DashboardTab({
 
         <HowItWorks setActiveTab={setActiveTab} />
         <Shortcuts />
+        <ExtensionPromo />
       </div>
     </div>
   );
@@ -520,6 +521,72 @@ function Shortcuts() {
             <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">{s.body}</p>
           </div>
         ))}
+      </div>
+    </motion.section>
+  );
+}
+
+/**
+ * Sideload pitch for the Chrome extension. The extension isn't on the Web
+ * Store yet, so the download is our own zip and the steps walk through
+ * Developer mode + "Load unpacked" — the only install path that exists today.
+ */
+function ExtensionPromo() {
+  const reduce = useReducedMotion();
+
+  const steps = [
+    <>Download the zip and double-click it — you'll get a <span className="font-semibold text-foreground">romaintalk-extension-v0.19.1</span> folder.</>,
+    <>In Chrome, open <span className="font-mono text-xs bg-muted/70 px-1.5 py-0.5 rounded">chrome://extensions</span> and switch on <span className="font-semibold text-foreground">Developer mode</span> (top right).</>,
+    <>Click <span className="font-semibold text-foreground">Load unpacked</span> and pick the unzipped folder. Romain now travels with you across the web.</>,
+  ];
+
+  return (
+    <motion.section
+      initial={reduce ? false : { opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="mt-10 mb-4"
+    >
+      <div className="rounded-2xl bg-card p-6 shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]">
+        <div className="flex items-start gap-4 flex-wrap">
+          <div className="flex items-center flex-shrink-0">
+            {/* Chrome's puzzle-piece extensions mark + our extension's own icon */}
+            <span className="w-12 h-12 rounded-2xl bg-[#4285F4]/10 flex items-center justify-center">
+              <Puzzle className="w-6 h-6 text-[#4285F4]" />
+            </span>
+            <img
+              src="/brand/extension-icon.png"
+              alt="Romain — French Lookup extension"
+              className="w-12 h-12 rounded-2xl -ml-2 ring-2 ring-card shadow-sm"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-lg font-bold text-foreground">
+              If you like your learning experience on our website, try this Google Extension Tool
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Romain — French Lookup brings the same word lookups and saving to any page you read.
+            </p>
+          </div>
+          <a
+            href="/extension/romaintalk-extension-v0.19.1.zip"
+            download
+            className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold shadow-sm hover:bg-primary/90 transition-colors"
+          >
+            <Download className="w-4 h-4" /> Download extension (.zip)
+          </a>
+        </div>
+
+        <ol className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {steps.map((body, i) => (
+            <li key={i} className="rounded-xl bg-muted/40 p-4 flex gap-3">
+              <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center flex-shrink-0">
+                {i + 1}
+              </span>
+              <p className="text-sm text-muted-foreground leading-relaxed">{body}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </motion.section>
   );
