@@ -354,6 +354,13 @@ export const videoLessons = mysqlTable("video_lessons", {
   channelAvatarUrl: varchar("channelAvatarUrl", { length: 1024 }),
   /** Optional CEFR hint shown on the feed card, e.g. "B1". */
   level: varchar("level", { length: 16 }),
+  /**
+   * JSON array of content tags (e.g. ["interview","news"]) picked by the
+   * ingest's auto-tagger from a fixed vocabulary. Admin-only for now: shown in
+   * the Ops/Ingest dashboards, deliberately NOT returned by the user-facing
+   * videos endpoints until categorization/search ships.
+   */
+  tags: text("tags"),
   addedAt: bigint("addedAt", { mode: "number" }).notNull(),
 });
 export type VideoLesson = typeof videoLessons.$inferSelect;

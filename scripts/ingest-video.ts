@@ -739,6 +739,44 @@ async function main() {
       }
     }
 
+    // Content tags for future categorization and search. Fixed vocabulary so
+    // the catalog stays queryable — free-form tags would drift into synonyms.
+    // Admin-only for now (Ops/Ingest dashboards); the learner feed doesn't
+    // receive them.
+    const TAG_VOCAB = [
+      "test prep", "interview", "news", "podcast", "kids", "animation",
+      "movie clip", "music", "vlog", "street interview", "culture", "comedy",
+      "grammar lesson", "documentary", "slow french", "story",
+    ];
+    let finalTags: string[] = [];
+    try {
+      const text = cues.map((c) => c.text).join(" ").slice(0, 3000);
+      const resp = await invokeLLM({
+        messages: [{
+          role: "user",
+          content: `Tag this French listening material for a language-learning catalog. Pick 1-4 tags, ONLY from this list: ${TAG_VOCAB.join(", ")}. "test prep" means exam-style material (TCF/TEF/DELF-like tasks, drills). Return JSON: {"tags":["..."]}.\n\nTitle: ${meta.title}\nChannel: ${meta.channel ?? "unknown"}\n\nTranscript excerpt:\n"""\n${text}\n"""`,
+        }],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "content_tags", strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                tags: { type: "array", items: { type: "string", enum: TAG_VOCAB }, maxItems: 4 },
+              },
+              required: ["tags"], additionalProperties: false,
+            },
+          },
+        } as any,
+      });
+      const parsed = JSON.parse(String(resp.choices[0].message.content ?? "{}"));
+      finalTags = (parsed.tags ?? []).filter((t: string) => TAG_VOCAB.includes(t));
+      console.log(`• tagged: ${finalTags.join(", ") || "(none)"}`);
+    } catch (e) {
+      console.log(`• auto-tagging failed (non-fatal): ${String(e).slice(0, 120)}`);
+    }
+
     console.log("• writing to database");
     // Derived once and shared by both branches: the feed must advertise what was
     // actually transcribed, not the source video's full length.
@@ -752,7 +790,7 @@ async function main() {
       await db.update(videoLessons)
         .set({ title: storedTitle, channel: meta.channel, durationSec: storedDuration,
                thumbnailUrl: meta.thumbnailUrl, channelAvatarUrl: meta.channelAvatarUrl,
-               level: finalLevel })
+               level: finalLevel, tags: JSON.stringify(finalTags) })
         .where(eq(videoLessons.id, lessonId));
       await db.delete(videoCues).where(eq(videoCues.lessonId, lessonId));
     } else {
@@ -760,7 +798,7 @@ async function main() {
         youtubeId: meta.id, title: storedTitle, channel: meta.channel,
         durationSec: storedDuration, thumbnailUrl: meta.thumbnailUrl,
         channelAvatarUrl: meta.channelAvatarUrl,
-        level: finalLevel, addedAt: Date.now(),
+        level: finalLevel, tags: JSON.stringify(finalTags), addedAt: Date.now(),
       });
       const rows = await db.select().from(videoLessons).where(eq(videoLessons.youtubeId, meta.id));
       lessonId = rows[0].id;

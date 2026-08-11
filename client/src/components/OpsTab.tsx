@@ -337,11 +337,34 @@ export default function OpsTab() {
 
           {/* Queue snapshot */}
           {q && (
-            <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm p-4 flex items-center gap-4 flex-wrap">
-              <p className="text-sm font-bold text-foreground flex-1">RomainTube queue</p>
-              <span className="text-xs text-muted-foreground">{q.pending} queued</span>
-              <span className="text-xs text-muted-foreground">{q.running} processing</span>
-              <span className={`text-xs ${q.failed ? "text-destructive font-bold" : "text-muted-foreground"}`}>{q.failed} failed</span>
+            <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm p-4">
+              <div className="flex items-center gap-4 flex-wrap">
+                <p className="text-sm font-bold text-foreground flex-1">RomainTube queue</p>
+                <span className="text-xs text-muted-foreground">{q.pending} queued</span>
+                <span className="text-xs text-muted-foreground">{q.running} processing</span>
+                <span className={`text-xs ${q.failed ? "text-destructive font-bold" : "text-muted-foreground"}`}>{q.failed} failed</span>
+              </div>
+              {/* Content tags are admin-only until they power user-facing
+                  categorization/search; the learner feed never sees them. */}
+              {(jobs.data?.recentVideos ?? []).length > 0 && (
+                <div className="mt-3 pt-3 border-t border-border space-y-1.5">
+                  {(jobs.data?.recentVideos ?? []).map((v) => (
+                    <div key={v.youtubeId} className="flex items-center gap-2 min-w-0">
+                      <p className="text-xs text-foreground truncate flex-1">{v.title}</p>
+                      {v.level && (
+                        <span className="px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold leading-none flex-none">{v.level}</span>
+                      )}
+                      {v.tags.length > 0 ? (
+                        v.tags.map((t) => (
+                          <span key={t} className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-semibold leading-none flex-none">{t}</span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground/60 flex-none">no tags</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

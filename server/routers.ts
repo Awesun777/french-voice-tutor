@@ -338,6 +338,17 @@ const TV5_HEADERS: Record<string, string> = {
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** video_lessons.tags is a JSON-array string written by the ingest auto-tagger. */
+function parseTags(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((t) => typeof t === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024; // OpenAI transcription limit
 
 /** Transcribe raw audio bytes as French via OpenAI (gpt-4o-transcribe). */
@@ -2317,7 +2328,15 @@ ${input.transcript}`,
       const queueRows = await db.select().from(ingestJobs);
       const count = (st: string) => queueRows.filter((j) => j.status === st).length;
 
+      // Latest ingested videos with their content tags — admin-only visibility
+      // until tags graduate into user-facing categorization/search.
+      const recentVideos = (await db.select().from(videoLessonsTable))
+        .sort((a, b) => b.addedAt - a.addedAt)
+        .slice(0, 8)
+        .map((v) => ({ youtubeId: v.youtubeId, title: v.title, level: v.level, tags: parseTags(v.tags) }));
+
       return {
+        recentVideos,
         schedules: [
           {
             job: "daily-articles",
@@ -2550,7 +2569,16 @@ ${input.transcript}`,
       const db = await getDb();
       if (!db) return [];
       const rows = await db.select().from(ingestJobs);
-      return rows.sort((a, b) => b.requestedAt - a.requestedAt).slice(0, 60);
+      // Content tags live on the ingested lesson, not the job — join them in
+      // so the admin dashboards can show what the auto-tagger decided.
+      const lessons = await db
+        .select({ youtubeId: videoLessonsTable.youtubeId, tags: videoLessonsTable.tags })
+        .from(videoLessonsTable);
+      const tagsById = new Map(lessons.map((l) => [l.youtubeId, parseTags(l.tags)]));
+      return rows
+        .sort((a, b) => b.requestedAt - a.requestedAt)
+        .slice(0, 60)
+        .map((j) => ({ ...j, tags: tagsById.get(j.youtubeId) ?? [] }));
     }),
 
     retry: adminProcedure

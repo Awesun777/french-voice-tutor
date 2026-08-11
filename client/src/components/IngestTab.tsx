@@ -128,6 +128,15 @@ export default function IngestTab() {
                     {j.costCents != null ? ` · ~$${(j.costCents / 100).toFixed(2)}` : ""}
                     {j.status === "failed" && j.error ? ` — ${j.error}` : ""}
                   </p>
+                  {j.tags.length > 0 && (
+                    <div className="flex items-center gap-1 mt-1 flex-wrap">
+                      {j.tags.map((t) => (
+                        <span key={t} className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[10px] font-semibold leading-none">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full flex-none ${st.cls}`}>
                   {st.icon} {st.label}
