@@ -25,6 +25,14 @@ export async function setupVite(app: Express, server: Server) {
     appType: "custom",
   });
 
+  // The privacy policy is a static no-JS page (client/public/privacy.html):
+  // automated reviewers (Google OAuth verification, the Chrome Web Store
+  // checker) fetch /privacy without running the SPA, so the policy text must
+  // be in the initial HTML. Registered before the SPA catch-all.
+  app.get("/privacy", (_req, res) => {
+    res.sendFile(path.resolve(__dirname_safe, "../..", "client", "public", "privacy.html"));
+  });
+
   app.use(vite.middlewares);
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
@@ -67,6 +75,12 @@ export function serveStatic(app: Express) {
   }
 
   app.use(express.static(distPath));
+
+  // Same static privacy page as in dev — see the comment in setupVite. Vite
+  // copies client/public/privacy.html into distPath at build time.
+  app.get("/privacy", (_req, res) => {
+    res.sendFile(path.resolve(distPath, "privacy.html"));
+  });
 
   // fall through to index.html if the file doesn't exist
   app.use("*", (_req, res) => {
