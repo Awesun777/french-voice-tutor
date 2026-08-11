@@ -548,21 +548,26 @@ function ExtensionPromo() {
       className="mt-10 mb-4"
     >
       <div className="rounded-2xl bg-card p-6 shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]">
-        <div className="flex items-start gap-4 flex-wrap">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Chrome's puzzle-piece extensions mark + our extension's own icon,
+              sized to span the title's two lines so the pair reads as one
+              block beside it rather than floating above the first line. */}
           <div className="flex items-center flex-shrink-0">
-            {/* Chrome's puzzle-piece extensions mark + our extension's own icon */}
-            <span className="w-12 h-12 rounded-2xl bg-[#4285F4]/10 flex items-center justify-center">
-              <Puzzle className="w-6 h-6 text-[#4285F4]" />
+            <span className="w-14 h-14 rounded-2xl bg-[#4285F4]/10 flex items-center justify-center">
+              <Puzzle className="w-7 h-7 text-[#4285F4]" />
             </span>
             <img
               src="/brand/extension-icon.png"
               alt="Romain — French Lookup extension"
-              className="w-12 h-12 rounded-2xl -ml-2 ring-2 ring-card shadow-sm"
+              className="w-14 h-14 rounded-2xl -ml-2.5 ring-2 ring-card shadow-sm"
             />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-lg font-bold text-foreground">
-              If you like your learning experience on our website, try this Google Extension Tool
+            {/* The break is authored, not incidental: the sentence splits into
+                two even lines instead of orphaning "Extension Tool". */}
+            <h2 className="font-display text-lg font-bold text-foreground leading-snug">
+              <span className="block">If you like your learning experience on our website,</span>
+              <span className="block">try this Google Extension Tool</span>
             </h2>
             <p className="text-sm text-muted-foreground mt-1">
               Romain — French Lookup brings the same word lookups and saving to any page you read.
