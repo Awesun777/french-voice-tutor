@@ -86,6 +86,28 @@ interface VideoMeta {
   channel: string | null;
   durationSec: number;
   thumbnailUrl: string | null;
+  channelAvatarUrl: string | null;
+}
+
+/**
+ * The channel's profile picture. yt-dlp's video JSON has no avatar field, so
+ * this scrapes the channel page's og:image, which YouTube serves as the avatar.
+ * Best-effort: a null just means the feed card falls back to the initial badge.
+ */
+async function fetchChannelAvatar(channelId: string | null): Promise<string | null> {
+  if (!channelId) return null;
+  try {
+    const res = await fetch(`https://www.youtube.com/channel/${channelId}`, {
+      headers: { "user-agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const m = html.match(/<meta property="og:image" content="([^"]+)"/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchMeta(url: string): Promise<VideoMeta> {
@@ -100,6 +122,7 @@ async function fetchMeta(url: string): Promise<VideoMeta> {
     channel: j.channel ?? j.uploader ?? null,
     durationSec: Math.round(j.duration ?? 0),
     thumbnailUrl: j.thumbnail ?? null,
+    channelAvatarUrl: await fetchChannelAvatar(j.channel_id ?? null),
   };
 }
 
@@ -728,13 +751,15 @@ async function main() {
       lessonId = existing[0].id;
       await db.update(videoLessons)
         .set({ title: storedTitle, channel: meta.channel, durationSec: storedDuration,
-               thumbnailUrl: meta.thumbnailUrl, level: finalLevel })
+               thumbnailUrl: meta.thumbnailUrl, channelAvatarUrl: meta.channelAvatarUrl,
+               level: finalLevel })
         .where(eq(videoLessons.id, lessonId));
       await db.delete(videoCues).where(eq(videoCues.lessonId, lessonId));
     } else {
       await db.insert(videoLessons).values({
         youtubeId: meta.id, title: storedTitle, channel: meta.channel,
         durationSec: storedDuration, thumbnailUrl: meta.thumbnailUrl,
+        channelAvatarUrl: meta.channelAvatarUrl,
         level: finalLevel, addedAt: Date.now(),
       });
       const rows = await db.select().from(videoLessons).where(eq(videoLessons.youtubeId, meta.id));

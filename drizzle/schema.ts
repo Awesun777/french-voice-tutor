@@ -350,6 +350,8 @@ export const videoLessons = mysqlTable("video_lessons", {
   channel: varchar("channel", { length: 256 }),
   durationSec: int("durationSec").notNull(),
   thumbnailUrl: varchar("thumbnailUrl", { length: 1024 }),
+  /** The YouTube channel's profile picture, shown on the feed card. */
+  channelAvatarUrl: varchar("channelAvatarUrl", { length: 1024 }),
   /** Optional CEFR hint shown on the feed card, e.g. "B1". */
   level: varchar("level", { length: 16 }),
   addedAt: bigint("addedAt", { mode: "number" }).notNull(),

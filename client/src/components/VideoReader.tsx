@@ -104,14 +104,25 @@ export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
                   className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-200"
                 />
               )}
-              <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-black/80 text-white text-[11px] font-semibold leading-none tabular-nums">
+              <span className="absolute bottom-2 right-2 px-2 py-1 rounded-md bg-black/85 text-white text-[13px] font-bold leading-none tabular-nums">
                 {fmtDuration(v.durationSec)}
               </span>
             </div>
             <div className="mt-2.5 flex gap-3">
-              {/* No channel avatars in the data, so the initial stands in. */}
-              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+              {/* The channel's real avatar when the ingest captured one; the
+                  initial stays underneath as the fallback if it's missing or
+                  the image 404s. */}
+              <div className="relative flex-shrink-0 w-9 h-9 rounded-full overflow-hidden bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
                 {(v.channel || "R").charAt(0).toUpperCase()}
+                {v.channelAvatarUrl && (
+                  <img
+                    src={v.channelAvatarUrl}
+                    alt=""
+                    loading="lazy"
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => e.currentTarget.remove()}
+                  />
+                )}
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2 group-hover:text-primary transition-colors">

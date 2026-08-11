@@ -40,20 +40,29 @@ export default function ListeningTab() {
           pane, so a centered max-w-3xl header would sit visibly off-grid. */}
       <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4">
         <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
             <img
               src="/brand/romaintube-logo.png"
-              alt="RomainTube"
+              alt=""
               // multiply melts the PNG's baked-in cream background into the
               // page's warm cream, which is one shade darker — without it the
               // logo sits in a visibly lighter rectangle.
-              className="h-10 sm:h-12 w-auto mix-blend-multiply"
+              className="h-10 sm:h-12 w-auto mix-blend-multiply flex-shrink-0"
             />
-            <p className="text-sm text-muted-foreground truncate mt-1">
-              {mode === "videos"
-                ? "Watch with a live transcript"
-                : "Transcribe your own audio"}
-            </p>
+            <div className="min-w-0">
+              <h2 className="font-display text-xl sm:text-2xl font-extrabold leading-none tracking-tight">
+                {/* Real text beside the icon-only logo mark; "Tube" matches the
+                    mark's red rather than a palette token so the lockup reads
+                    as one piece. */}
+                <span className="text-foreground">Romain</span>
+                <span className="text-[#DA362A]">Tube</span>
+              </h2>
+              <p className="text-sm text-muted-foreground truncate mt-1">
+                {mode === "videos"
+                  ? "Watch with a live transcript"
+                  : "Transcribe your own audio"}
+              </p>
+            </div>
           </div>
 
           {/* Secondary entries. Videos is the main event, so the other sources

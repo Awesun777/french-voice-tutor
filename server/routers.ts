@@ -2591,6 +2591,7 @@ ${input.transcript}`,
           channel: r.channel,
           durationSec: r.durationSec,
           thumbnailUrl: r.thumbnailUrl,
+          channelAvatarUrl: r.channelAvatarUrl,
           level: r.level,
         }));
     }),
