@@ -69,6 +69,11 @@ export function registerGoogleOAuthRoutes(app: Express) {
     url.searchParams.set("response_type", "code");
     url.searchParams.set("scope", scopes);
     url.searchParams.set("access_type", "offline");   // request refresh token
+    // Incremental auth: merge this grant with the user's earlier grants
+    // instead of replacing them, so a plain sign-in after a Drive connect
+    // keeps the Drive scopes on the token. Also what Project Checkup's
+    // "incremental authorization" check looks for.
+    url.searchParams.set("include_granted_scopes", "true");
     url.searchParams.set("prompt", prompt);
     url.searchParams.set("state", state);
 
