@@ -84,33 +84,48 @@ export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
   if (!videos.length) return <EmptyVideoState />;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3">
+    // YouTube-style feed: full pane width, bare rounded thumbnails with a
+    // duration pill, and the meta row below the image instead of a card box —
+    // the grid reads as content, not chrome.
+    <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-x-4 gap-y-7">
         {videos.map((v) => (
           <button
             key={v.youtubeId}
             onClick={() => onOpen(v.youtubeId)}
-            className="text-left bg-card rounded-2xl overflow-hidden group transition-all duration-200 shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.18)] hover:shadow-[0_10px_28px_-10px_rgb(23_63_107_/_0.30)] hover:-translate-y-0.5"
+            className="text-left group"
           >
-            <div className="aspect-video bg-muted overflow-hidden">
+            <div className="relative aspect-video bg-muted overflow-hidden rounded-xl">
               {v.thumbnailUrl && (
                 <img
                   src={v.thumbnailUrl}
                   alt=""
-                  className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
+                  loading="lazy"
+                  className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-200"
                 />
               )}
+              <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-black/80 text-white text-[11px] font-semibold leading-none tabular-nums">
+                {fmtDuration(v.durationSec)}
+              </span>
             </div>
-            <div className="p-3">
-              <p className="text-sm font-semibold text-foreground line-clamp-2">{v.title}</p>
-              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
-                <span>{v.channel ? `${v.channel} · ` : ""}{fmtDuration(v.durationSec)}</span>
-                {v.level && (
-                  <span className="px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold leading-none">
-                    {v.level}
-                  </span>
-                )}
-              </p>
+            <div className="mt-2.5 flex gap-3">
+              {/* No channel avatars in the data, so the initial stands in. */}
+              <div className="flex-shrink-0 w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+                {(v.channel || "R").charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+                  {v.title}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+                  <span className="truncate">{v.channel || "RomainTube"}</span>
+                  {v.level && (
+                    <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold leading-none">
+                      {v.level}
+                    </span>
+                  )}
+                </p>
+              </div>
             </div>
           </button>
         ))}
@@ -364,7 +379,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           and mode switcher are hidden while a video is open — so this bar owns
           the only way back. */}
       <div className="flex-shrink-0 bg-primary relative z-10 shadow-[0_12px_28px_-14px_rgb(23_63_107_/_0.65)]">
-        <div className="mx-auto w-full max-w-2xl flex items-center gap-3 px-1 py-2.5">
+        <div className="mx-auto w-full max-w-4xl flex items-center gap-3 px-1 py-2.5">
           <button
             onClick={onBack}
             className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10 transition-colors"
@@ -386,7 +401,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
             <Languages className="w-4 h-4" /> English
           </button>
         </div>
-        <div className="mx-auto w-full max-w-2xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]">
+        <div className="mx-auto w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]">
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
         <div className="h-3" />
@@ -404,7 +419,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           </button>
         )}
         <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-4">
-          <div className="max-w-2xl mx-auto space-y-0.5 pb-32">
+          <div className="max-w-3xl mx-auto space-y-0.5 pb-32">
             {cues.map((cue, i) => (
               <p
                 key={cue.idx}

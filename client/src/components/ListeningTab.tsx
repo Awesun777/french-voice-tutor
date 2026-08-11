@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { VideoFeed, VideoReader } from "@/components/VideoReader";
 import { toast } from "sonner";
 import {
-  Headphones, Link2, Upload, Loader2, Plus, Check, Languages, ListPlus, Mic, Square, Youtube,
+  Link2, Upload, Loader2, Plus, Check, Languages, ListPlus, Mic, Square, Youtube,
 } from "lucide-react";
 
 type Vocab = { term: string; translation: string };
@@ -36,18 +36,21 @@ export default function ListeningTab() {
     // their own scrolling and need the full height, which they can't get
     // inside the max-w-2xl scrolling wrapper the other modes use.
     <div className="flex-1 flex flex-col min-h-0">
+      {/* Full-width like the feed below it — the YouTube-style grid spans the
+          pane, so a centered max-w-3xl header would sit visibly off-grid. */}
       <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4">
-        <div className="max-w-3xl mx-auto flex items-start justify-between gap-4">
-          <div className="flex items-center gap-2 min-w-0">
-            <Headphones className="w-5 h-5 text-primary flex-shrink-0" />
-            <div className="min-w-0">
-              <h2 className="font-display text-xl font-bold text-foreground">RomainTube</h2>
-              <p className="text-sm text-muted-foreground truncate">
-                {mode === "videos"
-                  ? "Watch with a live transcript"
-                  : "Transcribe your own audio"}
-              </p>
-            </div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <img
+              src="/brand/romaintube-logo.png"
+              alt="RomainTube"
+              className="h-10 sm:h-12 w-auto"
+            />
+            <p className="text-sm text-muted-foreground truncate mt-1">
+              {mode === "videos"
+                ? "Watch with a live transcript"
+                : "Transcribe your own audio"}
+            </p>
           </div>
 
           {/* Secondary entries. Videos is the main event, so the other sources
