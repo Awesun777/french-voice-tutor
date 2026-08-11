@@ -72,6 +72,17 @@ export default function PrivacyPolicy() {
                 audio you record in order to transcribe it and give you feedback.
               </li>
               <li>
+                <span className="font-medium">Browser extension data.</span> If you use
+                the RomainTalk browser extension, the text you highlight for lookup, the
+                sentence around it, the page's title and web address, and any audio you
+                record with the push-to-talk shortcut are sent to our service to produce
+                the definition, explanation, or transcription you asked for. The
+                extension only sends data when you actively invoke it (a shortcut, a
+                right-click menu, or its side panel) — it does not read or collect
+                browsing activity in the background, and it stores no personal data
+                locally beyond its own display preferences.
+              </li>
+              <li>
                 <span className="font-medium">Technical data.</span> Standard information
                 such as your session cookie and basic request logs needed to operate and
                 secure the service.

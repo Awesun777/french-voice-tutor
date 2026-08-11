@@ -1590,10 +1590,8 @@ The user is asking about this specific word/phrase. Answer in the context of thi
     // ElevenLabs workflow agent whose exam phases are platform-enforced nodes.
     marcSignedUrl: protectedProcedure.mutation(async () => {
       const apiKey = process.env.ELEVENLABS_API_KEY;
-      // Agent ids aren't secrets (sessions still require the signed URL minted
-      // with the API key), so the workflow agent doubles as a default.
-      const agentId = process.env.ELEVENLABS_MARC_AGENT_ID ?? 'agent_8601kzpb4kqvftw8ea76qhctv998';
-      if (!apiKey) {
+      const agentId = process.env.ELEVENLABS_MARC_AGENT_ID;
+      if (!apiKey || !agentId) {
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'ElevenLabs not configured' });
       }
       const res = await fetch(
