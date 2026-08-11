@@ -18,7 +18,21 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 
-const SCOPES = [
+/**
+ * Two scope tiers, so signing in never asks for Drive access.
+ *
+ * Sign-in requests only the non-sensitive identity scopes — that keeps the
+ * Google Auth Platform app free of sensitive scopes, which is what lets it
+ * sit "In production" with no scope verification and no "unverified app"
+ * interstitial for ordinary users (and Chrome Web Store reviewers).
+ *
+ * The Drive scopes are requested only by /api/auth/google/connect-drive, the
+ * flow behind the Google Drive sync panel. Those scopes are sensitive and
+ * unverified, so THAT flow shows Google's warning screen — acceptable, since
+ * Drive sync is an opt-in power feature, not the front door.
+ */
+const LOGIN_SCOPES = ["openid", "email", "profile"].join(" ");
+const DRIVE_SCOPES = [
   "openid",
   "email",
   "profile",
@@ -43,8 +57,7 @@ function getRedirectUri(req: Request): string {
 }
 
 export function registerGoogleOAuthRoutes(app: Express) {
-  // ── Step 1: Redirect user to Google ─────────────────────────────────────────
-  app.get("/api/auth/google/login", (req: Request, res: Response) => {
+  const authRedirect = (req: Request, res: Response, scopes: string, prompt: string) => {
     const redirectUri = getRedirectUri(req);
     // Encode the return path so we can redirect back after login
     const returnPath = (req.query.returnPath as string) ?? "/";
@@ -54,13 +67,27 @@ export function registerGoogleOAuthRoutes(app: Express) {
     url.searchParams.set("client_id", ENV.googleClientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("scope", SCOPES);
+    url.searchParams.set("scope", scopes);
     url.searchParams.set("access_type", "offline");   // request refresh token
-    url.searchParams.set("prompt", "consent");         // always show consent to get refresh token
+    url.searchParams.set("prompt", prompt);
     url.searchParams.set("state", state);
 
     res.redirect(302, url.toString());
-  });
+  };
+
+  // ── Step 1: Redirect user to Google ─────────────────────────────────────────
+  // Identity only. select_account rather than consent: sign-in needs no
+  // refresh token, and the callback's upsert keeps an existing Drive refresh
+  // token when the new response carries none.
+  app.get("/api/auth/google/login", (req, res) =>
+    authRedirect(req, res, LOGIN_SCOPES, "select_account")
+  );
+
+  // Drive sync connect/reconnect. prompt=consent forces a fresh refresh token
+  // and shows BOTH Drive checkboxes — the user must tick both or sync fails.
+  app.get("/api/auth/google/connect-drive", (req, res) =>
+    authRedirect(req, res, DRIVE_SCOPES, "consent")
+  );
 
   // ── Step 2: Handle callback from Google ──────────────────────────────────────
   app.get("/api/auth/google/callback", async (req: Request, res: Response) => {

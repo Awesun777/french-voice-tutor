@@ -15,7 +15,7 @@ import { useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { getGoogleLoginUrl } from "@/const";
+import { getDriveConnectUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -414,7 +414,7 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
             </>
           ) : (
             <a
-              href={getGoogleLoginUrl()}
+              href={getDriveConnectUrl()}
               className="flex-shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-card text-foreground text-xs font-bold shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.3)] hover:shadow-[0_8px_20px_-8px_rgb(23_63_107_/_0.4)] transition-shadow"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
