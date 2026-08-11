@@ -15,8 +15,9 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import {
   Activity, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, ChevronDown, Clock3,
-  CreditCard, ListTodo, Loader2, Pencil, Plus, Trash2, XCircle,
+  CreditCard, ListTodo, Loader2, Palette, Pencil, Plus, Trash2, XCircle,
 } from "lucide-react";
+import { PaletteClut } from "@/components/PaletteClut";
 
 /** high → med → low → high; a click walks the cycle. */
 const NEXT_PRIORITY: Record<string, "high" | "med" | "low"> = { high: "med", med: "low", low: "high" };
@@ -223,6 +224,7 @@ export default function OpsTab() {
   const [newPriority, setNewPriority] = useState<"high" | "med" | "low">("med");
   const [newDeadline, setNewDeadline] = useState("");
   const [openHistory, setOpenHistory] = useState<string | null>(null);
+  const [showClut, setShowClut] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [editText, setEditText] = useState("");
   const utils = trpc.useUtils();
@@ -255,9 +257,20 @@ export default function OpsTab() {
 
   return (
     <div className="max-w-[88rem] mx-auto p-4 sm:p-6">
-      <h1 className="text-2xl font-bold text-foreground flex items-center gap-2 mb-6">
-        <Activity className="w-6 h-6 text-speaking" /> Operations
-      </h1>
+      <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <Activity className="w-6 h-6 text-speaking" /> Operations
+        </h1>
+        <button
+          onClick={() => setShowClut(true)}
+          className="flex items-center gap-2 px-3.5 py-2 bg-card ring-1 ring-black/5 shadow-sm hover:bg-muted/50 text-sm font-semibold text-foreground rounded-xl transition-colors"
+          title="Brand color lookup table"
+        >
+          <Palette className="w-4 h-4 text-speaking" />
+          Color Palette
+        </button>
+      </div>
+      <PaletteClut open={showClut} onClose={() => setShowClut(false)} />
 
       <div className="grid gap-6 lg:grid-cols-3 items-start">
       {/* ── Jobs ── */}
