@@ -256,6 +256,10 @@ export default function OpsTab() {
   const done = (todos.data ?? []).filter((t) => t.done);
 
   return (
+    // The Home shell's <main> is overflow-hidden, so every tab brings its own
+    // scroller (same pattern as SettingsTab/ProgressTab) — without this outer
+    // div the page simply clips instead of scrolling.
+    <div className="flex-1 min-h-0 overflow-y-auto">
     <div className="max-w-[88rem] mx-auto p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-6 flex-wrap">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -481,6 +485,7 @@ export default function OpsTab() {
         </div>
       </section>
       </div>
+    </div>
     </div>
   );
 }

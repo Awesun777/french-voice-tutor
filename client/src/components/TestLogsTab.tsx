@@ -62,6 +62,8 @@ export default function TestLogsTab() {
   }
 
   return (
+    // Home's <main> is overflow-hidden; the tab owns its scrolling.
+    <div className="flex-1 min-h-0 overflow-y-auto">
     <div className="max-w-6xl mx-auto p-4 sm:p-6">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -163,6 +165,7 @@ export default function TestLogsTab() {
           </div>
         ))}
       </div>
+    </div>
     </div>
   );
 }
