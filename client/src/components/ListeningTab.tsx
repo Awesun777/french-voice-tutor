@@ -44,7 +44,10 @@ export default function ListeningTab() {
             <img
               src="/brand/romaintube-logo.png"
               alt="RomainTube"
-              className="h-10 sm:h-12 w-auto"
+              // multiply melts the PNG's baked-in cream background into the
+              // page's warm cream, which is one shade darker — without it the
+              // logo sits in a visibly lighter rectangle.
+              className="h-10 sm:h-12 w-auto mix-blend-multiply"
             />
             <p className="text-sm text-muted-foreground truncate mt-1">
               {mode === "videos"
