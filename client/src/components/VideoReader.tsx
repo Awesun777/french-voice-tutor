@@ -93,7 +93,10 @@ export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
           <button
             key={v.youtubeId}
             onClick={() => onOpen(v.youtubeId)}
-            className="text-left group"
+            // flex-col defeats the button's native vertical centering: the grid
+            // stretches every card in a row to the same height, and a centered
+            // short card would sag its thumbnail out of line with its neighbors.
+            className="text-left group flex flex-col items-stretch"
           >
             <div className="relative aspect-video bg-muted overflow-hidden rounded-xl">
               {v.thumbnailUrl && (
