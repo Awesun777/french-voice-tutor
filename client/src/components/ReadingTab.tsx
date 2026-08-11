@@ -247,18 +247,14 @@ function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
   const [active, setActive] = useState<string>(ALL_SECTIONS);
   const [activeLevel, setActiveLevel] = useState<string>(RFI_LEVELS[0]);
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-  if (!items.length) return <EmptyReadingState />;
-
   // Sections come from the data, so adding a source is an ingest argument
   // rather than a code change here. Ordered by how many articles each holds so
   // the fullest shelf leads.
+  //
+  // These memos run before the loading/empty returns on purpose: an early
+  // return above any hook makes the hook count differ between the loading
+  // render and the loaded one, which is exactly React #310. Computing them
+  // against an empty list costs nothing.
   const sections = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of items) {
@@ -280,6 +276,15 @@ function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
       ? inSection.filter((a) => a.level?.trim().toUpperCase() === activeLevel)
       : inSection;
   }, [items, current, activeLevel]);
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!items.length) return <EmptyReadingState />;
 
   const [lead, ...rest] = shown as FeedItem[];
   const dateLabel = new Date().toLocaleDateString(undefined, {
