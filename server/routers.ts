@@ -2569,16 +2569,28 @@ ${input.transcript}`,
       const db = await getDb();
       if (!db) return [];
       const rows = await db.select().from(ingestJobs);
-      // Content tags live on the ingested lesson, not the job — join them in
-      // so the admin dashboards can show what the auto-tagger decided.
+      // Content tags and the graded level live on the ingested lesson, not
+      // the job — join them in so the admin dashboard can show what the
+      // auto-tagger/grader decided (and let the admin correct the level).
       const lessons = await db
-        .select({ youtubeId: videoLessonsTable.youtubeId, tags: videoLessonsTable.tags })
+        .select({
+          youtubeId: videoLessonsTable.youtubeId,
+          tags: videoLessonsTable.tags,
+          level: videoLessonsTable.level,
+        })
         .from(videoLessonsTable);
-      const tagsById = new Map(lessons.map((l) => [l.youtubeId, parseTags(l.tags)]));
+      const lessonById = new Map(lessons.map((l) => [l.youtubeId, l]));
       return rows
         .sort((a, b) => b.requestedAt - a.requestedAt)
         .slice(0, 60)
-        .map((j) => ({ ...j, tags: tagsById.get(j.youtubeId) ?? [] }));
+        .map((j) => {
+          const lesson = lessonById.get(j.youtubeId);
+          return {
+            ...j,
+            tags: lesson ? parseTags(lesson.tags) : [],
+            lessonLevel: lesson?.level ?? null,
+          };
+        });
     }),
 
     retry: adminProcedure
@@ -2589,6 +2601,21 @@ ${input.transcript}`,
         await db.update(ingestJobs)
           .set({ status: "pending", error: null, startedAt: null, finishedAt: null })
           .where(and(eq(ingestJobs.id, input.id), eq(ingestJobs.status, "failed")));
+        return { ok: true };
+      }),
+
+    /** Manual correction of the auto-graded CEFR level on an ingested video. */
+    setLevel: adminProcedure
+      .input(z.object({
+        youtubeId: z.string().min(1).max(32),
+        level: z.enum(["A1", "A2", "B1", "B2", "C1", "C2"]),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        await db.update(videoLessonsTable)
+          .set({ level: input.level })
+          .where(eq(videoLessonsTable.youtubeId, input.youtubeId));
         return { ok: true };
       }),
 

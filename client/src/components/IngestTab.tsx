@@ -53,6 +53,15 @@ export default function IngestTab() {
   });
   const retry = trpc.ingestQueue.retry.useMutation({ onSuccess: () => utils.ingestQueue.list.invalidate() });
   const remove = trpc.ingestQueue.remove.useMutation({ onSuccess: () => utils.ingestQueue.list.invalidate() });
+  const setLessonLevel = trpc.ingestQueue.setLevel.useMutation({
+    onSuccess: () => {
+      toast.success("Level updated");
+      utils.ingestQueue.list.invalidate();
+      // The learner-facing feed shows the same badge.
+      utils.videos.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const active = (jobs.data ?? []).filter((j) => j.status === "pending" || j.status === "running").length;
 
@@ -123,10 +132,29 @@ export default function IngestTab() {
                   <p className="text-sm font-semibold text-foreground truncate">
                     {j.title || j.youtubeId}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {j.level === "auto" ? "Auto" : j.level} · {ago(j.requestedAt)}
-                    {j.costCents != null ? ` · ~$${(j.costCents / 100).toFixed(2)}` : ""}
-                    {j.status === "failed" && j.error ? ` — ${j.error}` : ""}
+                  <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5 flex-wrap">
+                    {j.lessonLevel ? (
+                      // Once the video is on RomainTube its graded level is
+                      // editable in place — the auto-grader is a best guess.
+                      <select
+                        value={j.lessonLevel}
+                        onChange={(e) => setLessonLevel.mutate({ youtubeId: j.youtubeId, level: e.target.value as "A1" | "A2" | "B1" | "B2" | "C1" | "C2" })}
+                        disabled={setLessonLevel.isPending}
+                        title="Edit the CEFR level"
+                        className="px-1 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold cursor-pointer border-0 focus:outline-none focus:ring-2 focus:ring-ring/40 disabled:opacity-50"
+                      >
+                        {["A1", "A2", "B1", "B2", "C1", "C2"].map((l) => (
+                          <option key={l} value={l}>{l}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span>{j.level === "auto" ? "Auto" : j.level}</span>
+                    )}
+                    <span className="truncate">
+                      {ago(j.requestedAt)}
+                      {j.costCents != null ? ` · ~$${(j.costCents / 100).toFixed(2)}` : ""}
+                      {j.status === "failed" && j.error ? ` — ${j.error}` : ""}
+                    </span>
                   </p>
                   {j.tags.length > 0 && (
                     <div className="flex items-center gap-1 mt-1 flex-wrap">
