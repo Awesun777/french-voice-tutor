@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { AvatarVideo, avatarLayoutId, useAvatarPoster } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
 import { isGoodbye } from "@/lib/voiceEndTriggers";
+import { micErrorMessage, prewarmMicrophone } from "@/lib/micErrors";
 import { stallQuestionInstruction } from "@/lib/conversationQuestions";
 import { REPAIR_INSTRUCTION, contentWords, candidateUpdate } from "@/lib/wordRepair";
 import {
@@ -314,6 +315,12 @@ export function AnnaVoiceTab() {
       endingRef.current = false;
       setIsResuming(false);
 
+      // Ask for the microphone inside the tap's user activation — iOS Safari
+      // rejects the SDK's later getUserMedia with NotAllowedError if a network
+      // await runs first. The pre-warm grants page mic access so the SDK's own
+      // request succeeds after the round-trips below.
+      await prewarmMicrophone();
+
       // 1. Create session record in DB
       const { id } = await createSessionMutation.mutateAsync();
       setSessionId(id);
@@ -520,7 +527,7 @@ export function AnnaVoiceTab() {
 
       conversationRef.current = conversation as VoiceConversation;
     } catch (e: any) {
-      toast.error(e.message ?? "Failed to start session with Anna");
+      toast.error(micErrorMessage(e, "Failed to start session with Anna"));
       setSessionState("idle");
       cleanup();
     }
@@ -580,6 +587,10 @@ export function AnnaVoiceTab() {
       setIsResuming(true);
       setIsPaused(false);
       try {
+        // Same gesture rule as startSession: grab the mic before the network
+        // await or iOS rejects the SDK's re-acquisition on resume.
+        await prewarmMicrophone();
+
         const { signedUrl } = await annaSignedUrlMutation.mutateAsync();
 
         // Build a brief context note so Anna knows this is a resumed session
@@ -721,7 +732,7 @@ export function AnnaVoiceTab() {
 
         conversationRef.current = conversation as VoiceConversation;
       } catch (e: any) {
-        toast.error(e.message ?? "Failed to resume session with Anna");
+        toast.error(micErrorMessage(e, "Failed to resume session with Anna"));
         setSessionState("active"); // fall back to showing controls
         setIsResuming(false);
         setIsPaused(false);

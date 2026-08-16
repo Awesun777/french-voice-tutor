@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { AvatarVideo, avatarLayoutId, useAvatarPoster } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
 import { isGoodbye } from "@/lib/voiceEndTriggers";
+import { micErrorMessage } from "@/lib/micErrors";
 import { stallQuestionInstruction } from "@/lib/conversationQuestions";
 import {
   VoiceSessionSettings,
@@ -774,6 +775,28 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       endingRef.current = false;
       isSummarizingRef.current = false;
       if (summarizeTimerRef.current) { clearTimeout(summarizeTimerRef.current); summarizeTimerRef.current = null; }
+
+      // Request the microphone synchronously within the tap's user activation.
+      // iOS Safari rejects getUserMedia with NotAllowedError once a network
+      // await has consumed the activation, so this must fire before the DB and
+      // config round-trips below.
+      const micPromise = navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // The hidden audio element and AudioContext also have to be created (and
+      // the context resumed) inside the gesture — iOS otherwise leaves the
+      // context suspended and can refuse autoplay on the detached element.
+      const audioEl = document.createElement("audio");
+      audioEl.autoplay = true;
+      audioEl.setAttribute("playsinline", "");
+      audioRef.current = audioEl;
+
+      const audioCtx = new AudioContext();
+      void audioCtx.resume();
+      audioCtxRef.current = audioCtx;
+
+      const localStream = await micPromise;
+      localStreamRef.current = localStream;
+
       // 1. Create a session record in our DB
       const { id } = await createSessionMutation.mutateAsync();
       setSessionId(id);
@@ -798,15 +821,6 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
 
-      // Hidden audio element to play AI voice
-      const audioEl = document.createElement("audio");
-      audioEl.autoplay = true;
-      audioRef.current = audioEl;
-
-      // Set up AudioContext for waveform visualizers
-      const audioCtx = new AudioContext();
-      audioCtxRef.current = audioCtx;
-
       // AI audio analyser
       pc.ontrack = (e) => {
         const stream = e.streams[0];
@@ -818,9 +832,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
         aiAnalyserRef.current = analyser;
       };
 
-      // Capture microphone
-      const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      localStreamRef.current = localStream;
+      // Attach the mic stream acquired inside the gesture above
       localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
       // User audio analyser
@@ -881,7 +893,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
 
       setSessionState("active");
     } catch (e: any) {
-      toast.error(e.message ?? "Failed to start voice session");
+      toast.error(micErrorMessage(e, "Failed to start voice session"));
       setSessionState("idle");
       cleanupWebRTC();
     }

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { Mic, Square, Loader2, X, MessageCircle, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { usePronounce } from "@/lib/pronounce";
+import { micErrorMessage } from "@/lib/micErrors";
 import { Streamdown } from "streamdown";
 import { PronounceButton } from "@/components/PronounceButton";
 
@@ -150,8 +151,8 @@ export function VoiceAskDrawer({
         stopWhenReadyRef.current = false;
         try { rec.stop(); } catch { /* ignore */ }
       }
-    } catch {
-      setErrorMsg("Microphone access was blocked. Allow it in your browser settings.");
+    } catch (e) {
+      setErrorMsg(micErrorMessage(e, "Microphone access was blocked. Allow it in your browser settings."));
       setPhase("error");
     }
   }, [send, stopTracks]);

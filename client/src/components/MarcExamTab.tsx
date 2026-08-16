@@ -18,6 +18,7 @@ import { Conversation, type VoiceConversation } from "@elevenlabs/client";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { micErrorMessage, prewarmMicrophone } from "@/lib/micErrors";
 import { avatarLayoutId } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
 import {
@@ -120,6 +121,11 @@ export function MarcExamTab() {
       aiStreamIdRef.current = null;
       endingRef.current = false;
 
+      // Ask for the microphone inside the tap's user activation — iOS Safari
+      // rejects the SDK's later getUserMedia with NotAllowedError if a network
+      // await runs first.
+      await prewarmMicrophone();
+
       const { id } = await createSessionMutation.mutateAsync();
       setSessionId(id);
 
@@ -170,7 +176,7 @@ export function MarcExamTab() {
 
       conversationRef.current = conversation as VoiceConversation;
     } catch (e: any) {
-      toast.error(e.message ?? "Failed to start the exam with Marc");
+      toast.error(micErrorMessage(e, "Failed to start the exam with Marc"));
       setSessionState("idle");
       cleanup();
     }
