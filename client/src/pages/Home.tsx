@@ -72,13 +72,6 @@ function initialTab(): SidebarTab {
 
 export default function Home() {
   const { user, loading } = useAuth();
-
-  useEffect(() => {
-    if (!loading && ADMIN_TABS.includes(activeTab) && user?.role !== "admin") {
-      setActiveTab("dashboard");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user, activeTab]);
   const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab);
 
   // Persist the section in the URL (replaceState — switching tabs shouldn't
@@ -98,6 +91,15 @@ export default function Home() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  // A non-admin restoring an admin tab (stale hash, shared link) would land on
+  // a blank pane; bounce to the dashboard once the role is known.
+  useEffect(() => {
+    if (!loading && ADMIN_TABS.includes(activeTab) && user?.role !== "admin") {
+      setActiveTab("dashboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user, activeTab]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // Set by an import/voice "Review these words" CTA: pre-selects a date in the
   // review launch screen. Cleared on manual sidebar navigation so it doesn't
