@@ -5,6 +5,7 @@
  * background. Words can be saved straight into the vocab library.
  */
 import { useState, useEffect, useRef } from "react";
+import { Streamdown } from "streamdown";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Search, X, Loader2, Volume2, Plus, BookmarkCheck } from "lucide-react";
@@ -30,15 +31,33 @@ export function DictionaryFab({ open, onOpen }: { open: boolean; onOpen: () => v
   );
 }
 
-export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
+export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSentence }: {
   open: boolean;
   onClose: () => void;
   initialTerm?: string;
+  /** Sentence the highlighted term was found in — enables "In this context". */
+  contextSentence?: string;
 }) {
   const { speak, preload, state: pronounceState, activeText } = usePronounce();
   const { search, reset, result, quickLoading, detailsLoading } = useProgressiveDictionary();
   const [term, setTerm] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * "In this context" — what the highlighted word means in the very sentence
+   * it was selected from, mirroring the browser extension. Only for the seeded
+   * (highlighted) search: a fresh term typed into the box has left the page's
+   * sentence behind, so the analysis stops applying and disappears.
+   */
+  const [searchedTerm, setSearchedTerm] = useState<string | null>(null);
+  const [ctxNote, setCtxNote] = useState<string | null>(null);
+  const ctxRequestedFor = useRef<string | null>(null);
+  const contextChat = trpc.tutor.contextChat.useMutation();
+  const ctxEligible =
+    !!contextSentence &&
+    !!initialTerm &&
+    !!searchedTerm &&
+    searchedTerm.trim().toLowerCase() === initialTerm.trim().toLowerCase();
 
   // Escape closes, as expected of a palette-style overlay. Bound only while
   // open so it never competes with other Escape handlers on the page.
@@ -72,6 +91,9 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
   useEffect(() => {
     if (!open) return;
     setTerm(initialTerm ?? "");
+    setSearchedTerm(initialTerm?.trim() || null);
+    setCtxNote(null);
+    ctxRequestedFor.current = null;
     if (initialTerm?.trim()) void search(initialTerm.trim());
     else reset();
     setTimeout(() => inputRef.current?.focus(), 60);
@@ -85,9 +107,44 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
     }
   }, [result, preload]);
 
+  // Once the seeded search resolves to a real entry, ask what the word is doing
+  // in its sentence. The ref guards strict-mode double-fires and re-renders —
+  // one analysis per drawer opening.
+  useEffect(() => {
+    if (!ctxEligible || !contextSentence || !initialTerm) return;
+    const found =
+      (result?.type === "word" && (result as DictWordResult).found) ||
+      (result?.type === "phrase" && (result as DictPhraseResult).found);
+    if (!found) return;
+    const key = initialTerm.trim().toLowerCase();
+    if (ctxRequestedFor.current === key) return;
+    ctxRequestedFor.current = key;
+
+    const headword = result?.type === "word" ? (result as DictWordResult).word : (result as DictPhraseResult).phrase;
+    contextChat.mutate(
+      {
+        message: `In 2-3 sentences of plain prose, explain what "${headword}" means in this sentence and how it functions there: "${contextSentence}". Talk about "${headword}" ONLY — do NOT translate, analyze, or break down the rest of the sentence, and never go word by word. No bullets, no lists, no headings.`.slice(0, 2000),
+        vocabContext: {
+          term: headword,
+          translation:
+            result?.type === "word" ? (result as DictWordResult).translation : (result as DictPhraseResult).translation,
+        },
+      },
+      {
+        onSuccess: (r) => setCtxNote(r.reply),
+        onError: () => setCtxNote("Couldn't analyze this sentence."),
+      }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, ctxEligible, contextSentence, initialTerm]);
+
   if (!open) return null;
 
-  const runSearch = () => { if (term.trim()) void search(term.trim()); };
+  const runSearch = () => {
+    if (!term.trim()) return;
+    setSearchedTerm(term.trim());
+    void search(term.trim());
+  };
 
   const norm = (s: string) => s.trim().toLowerCase();
   const wordResult = result?.type === "word" ? (result as DictWordResult) : null;
@@ -202,6 +259,20 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm }: {
 
           {result?.type === "question" && (
             <QuestionCard result={result as DictQuestionResult} />
+          )}
+
+          {ctxEligible && (wordResult?.found || phraseResult?.found) && (
+            <div className="bg-card card-float rounded-2xl p-4">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-speaking mb-1">In this context</p>
+              <p className="text-xs text-muted-foreground italic mb-2 line-clamp-2">“{contextSentence}”</p>
+              {ctxNote ? (
+                <div className="prose prose-sm max-w-none text-sm text-foreground leading-relaxed">
+                  <Streamdown>{ctxNote}</Streamdown>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Reading the sentence…</p>
+              )}
+            </div>
           )}
 
           {result && ((result.type === "word" && !(result as DictWordResult).found) || (result.type === "phrase" && !(result as DictPhraseResult).found)) && (

@@ -22,6 +22,39 @@ import SettingsTab from "@/components/SettingsTab";
 import VoiceAgentChooser from "@/components/VoiceAgentChooser";
 import { Loader2, BookOpen } from "lucide-react";
 
+/**
+ * The sentence the current selection sits in, for the dictionary drawer's
+ * "In this context" analysis — same trick the browser extension uses. Walks up
+ * to the enclosing block, then trims to sentence boundaries around the term.
+ */
+function surroundingSentence(term: string): string | undefined {
+  try {
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    if (!node) return undefined;
+    const block =
+      (node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element))?.closest(
+        "p, li, blockquote, h1, h2, h3, figcaption, td, dd, article, section"
+      ) ?? (node.nodeType === Node.TEXT_NODE ? node.parentElement : null);
+    if (!block) return undefined;
+    const text = (block.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!text) return undefined;
+    if (text.length <= 400) return text;
+    const at = text.indexOf(term);
+    if (at === -1) return text.slice(0, 400);
+    const before = text.slice(0, at);
+    const after = text.slice(at + term.length);
+    const start = Math.max(before.lastIndexOf(". "), before.lastIndexOf("! "), before.lastIndexOf("? "));
+    const endRel = after.search(/[.!?…]\s/);
+    return text
+      .slice(start === -1 ? 0 : start + 2, at + term.length + (endRel === -1 ? after.length : endRel + 1))
+      .trim()
+      .slice(0, 400);
+  } catch {
+    return undefined;
+  }
+}
+
 export default function Home() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState<SidebarTab>("dashboard");
@@ -39,6 +72,8 @@ export default function Home() {
   const [dictOpen, setDictOpen] = useState(false);
   const dictSuppressed = activeTab === "dictionary" || activeTab === "tutor";
   const [dictSeed, setDictSeed] = useState<string | undefined>(undefined);
+  /** The sentence the selection sat in — fuels the drawer's "In this context". */
+  const [dictSentence, setDictSentence] = useState<string | undefined>(undefined);
   // Where focus was when the drawer opened, so Escape can put it back.
   const focusBeforeDict = useRef<HTMLElement | null>(null);
 
@@ -66,7 +101,10 @@ export default function Home() {
       // a transcript or a tutor reply and look it up without retyping it.
       const selected = window.getSelection()?.toString().trim() ?? "";
       focusBeforeDict.current = document.activeElement as HTMLElement | null;
-      setDictSeed(selected && selected.length <= 120 ? selected : undefined);
+      const seeded = !!selected && selected.length <= 120;
+      setDictSeed(seeded ? selected : undefined);
+      // Captured now, before the drawer takes focus and the selection collapses.
+      setDictSentence(seeded ? surroundingSentence(selected) : undefined);
       setDictOpen(true);
     };
     window.addEventListener("keydown", onKey);
@@ -133,6 +171,7 @@ export default function Home() {
   const closeDict = useCallback(() => {
     setDictOpen(false);
     setDictSeed(undefined);
+    setDictSentence(undefined);
     focusBeforeDict.current?.focus?.();
     focusBeforeDict.current = null;
   }, []);
@@ -181,7 +220,7 @@ export default function Home() {
       {!dictSuppressed && (
         <>
           <DictionaryFab open={dictOpen} onOpen={() => setDictOpen(true)} />
-          <DictionarySearchDrawer open={dictOpen} onClose={closeDict} initialTerm={dictSeed} />
+          <DictionarySearchDrawer open={dictOpen} onClose={closeDict} initialTerm={dictSeed} contextSentence={dictSentence} />
         </>
       )}
       {/* Available on every tab, including Tutor Chat — asking out loud is
