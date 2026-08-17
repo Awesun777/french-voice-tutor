@@ -55,9 +55,49 @@ function surroundingSentence(term: string): string | undefined {
   }
 }
 
+const TAB_IDS: SidebarTab[] = ["dashboard", "dictionary", "library", "quiz", "flashcards", "grammar", "listening", "reading", "tutor", "voice-chat", "progress", "settings", "ingest", "ops", "testlogs"];
+const ADMIN_TABS: SidebarTab[] = ["ingest", "ops", "testlogs"];
+
+/**
+ * Which tab to open on load: the URL hash wins (survives refresh AND makes
+ * sections linkable), then the last tab this browser was on, then Dashboard.
+ */
+function initialTab(): SidebarTab {
+  const fromHash = window.location.hash.replace(/^#/, "") as SidebarTab;
+  if (TAB_IDS.includes(fromHash)) return fromHash;
+  const stored = localStorage.getItem("rt-active-tab") as SidebarTab | null;
+  if (stored && TAB_IDS.includes(stored)) return stored;
+  return "dashboard";
+}
+
 export default function Home() {
   const { user, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<SidebarTab>("dashboard");
+
+  useEffect(() => {
+    if (!loading && ADMIN_TABS.includes(activeTab) && user?.role !== "admin") {
+      setActiveTab("dashboard");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user, activeTab]);
+  const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab);
+
+  // Persist the section in the URL (replaceState — switching tabs shouldn't
+  // pile up history entries) and in localStorage, so a refresh, a reopened
+  // browser, or a pasted link all land where the user was.
+  useEffect(() => {
+    window.history.replaceState(null, "", `#${activeTab}`);
+    localStorage.setItem("rt-active-tab", activeTab);
+  }, [activeTab]);
+
+  // Back/forward or a hand-edited hash still navigates.
+  useEffect(() => {
+    const onHash = () => {
+      const t = window.location.hash.replace(/^#/, "") as SidebarTab;
+      if (TAB_IDS.includes(t)) setActiveTab(t);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   // Set by an import/voice "Review these words" CTA: pre-selects a date in the
   // review launch screen. Cleared on manual sidebar navigation so it doesn't
