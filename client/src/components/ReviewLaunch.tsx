@@ -20,7 +20,7 @@
  * prefers-reduced-motion.
  */
 import { useState, useEffect, useRef } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { Brain, CalendarDays, ChevronLeft, Sparkles, ArrowRight, Check } from "lucide-react";
@@ -40,11 +40,41 @@ function fmtDateLabel(dk: string) {
  * straight into choosing how many to review. Same visual grammar as the
  * news-radar applications calendar, in this app's tokens.
  */
+/**
+ * Odometer-style text: each character column rolls old-out/new-in when the
+ * string changes, so sweeping across calendar days reads as digits spinning
+ * rather than labels blinking. Characters that stay put don't move.
+ */
+function RollingLabel({ text }: { text: string }) {
+  const reduced = useReducedMotion();
+  return (
+    <span className="inline-flex" aria-live="polite">
+      {text.split("").map((ch, i) => (
+        <span key={i} className="relative inline-block overflow-hidden">
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.span
+              key={ch}
+              initial={reduced ? false : { y: 11, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={reduced ? undefined : { y: -11, opacity: 0 }}
+              transition={{ duration: 0.16, delay: i * 0.012 }}
+              className="inline-block"
+            >
+              {ch === " " ? "\u00A0" : ch}
+            </motion.span>
+          </AnimatePresence>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function VocabHeatmap({ dates, onPick }: {
   dates: { dateKey: string; total: number }[];
   onPick: (dateKey: string) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState<{ k: string; c: number } | null>(null);
   // Most recent weeks live at the right edge; start the scroll there.
   useEffect(() => {
     const el = scrollRef.current;
@@ -65,9 +95,16 @@ function VocabHeatmap({ dates, onPick }: {
   const ymd = (d: Date) => d.toISOString().split("T")[0];
   const tk = todayKey();
 
+  const label = hovered
+    ? `${fmtDateLabel(hovered.k)} · ${hovered.c === 0 ? "no words" : `${hovered.c} word${hovered.c === 1 ? "" : "s"}`}`
+    : "Or pick a day you saved words";
+
   return (
     <div className="w-full">
-      <div ref={scrollRef} className="overflow-x-auto pb-1">
+      <p className="flex items-center justify-center gap-1.5 text-xs font-semibold text-muted-foreground mb-2 h-4">
+        <CalendarDays className="w-3.5 h-3.5 flex-none" /> <RollingLabel text={label} />
+      </p>
+      <div ref={scrollRef} className="overflow-x-auto pb-1" onMouseLeave={() => setHovered(null)}>
         <div className="w-max mx-auto">
           <div className="flex gap-[3px] mb-1">
             {weeks.map((week, i) => {
@@ -97,7 +134,7 @@ function VocabHeatmap({ dates, onPick }: {
                       type="button"
                       disabled={!c}
                       onClick={() => c && onPick(k)}
-                      title={`${fmtDateLabel(k)}${c ? ` · ${c} word${c === 1 ? "" : "s"}` : ""}`}
+                      onMouseEnter={() => setHovered({ k, c })}
                       aria-label={c ? `Review ${c} words from ${fmtDateLabel(k)}` : undefined}
                       style={style}
                       className={cn(
@@ -488,9 +525,6 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
         {/* Secondary path, deliberately quieter than the hero. */}
         {dates.length > 0 && (
           <Rise delay={0.35}>
-            <p className="flex items-center justify-center gap-1.5 text-xs font-semibold text-muted-foreground mb-2">
-              <CalendarDays className="w-3.5 h-3.5" /> Or pick a day you saved words
-            </p>
             <VocabHeatmap dates={dates} onPick={(dk) => setSource(dk)} />
           </Rise>
         )}

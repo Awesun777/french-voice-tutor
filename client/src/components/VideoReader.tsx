@@ -447,7 +447,9 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           </button>
         )}
         <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-4">
-          <div className="max-w-3xl mx-auto space-y-0.5 pb-32">
+          {/* Same column width as the player, and shifted by the accent-bar
+              gutter so the TEXT's left edge lines up with the video's. */}
+          <div className="max-w-4xl mx-auto space-y-0.5 pb-32 sm:-translate-x-[19px]">
             {cues.map((cue, i) => (
               <p
                 key={cue.idx}
