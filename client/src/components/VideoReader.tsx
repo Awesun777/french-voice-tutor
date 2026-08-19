@@ -317,33 +317,47 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
   // ─── Hover gloss ───────────────────────────────────────────────────────────
   // One shared card positioned from the hovered span's rect, rather than a
   // popover root per token — a transcript runs to hundreds of tokens.
-  const [hover, setHover] = useState<{ token: Token; top: number; left: number } | null>(null);
+  // Anchored by `bottom` when flipped above the word, so the card's lower edge
+  // hugs the word regardless of the card's real height — an estimated-height
+  // `top` left a dead gap under short glosses, and crossing that gap swept the
+  // cursor over the line above, whose tokens stole the card before the pointer
+  // could reach the save button.
+  const [hover, setHover] = useState<{ token: Token; top?: number; bottom?: number; left: number } | null>(null);
   const hoverTimer = useRef<number | null>(null);
+  const pendingOpen = useRef<number | null>(null);
 
   const cancelHoverClose = () => {
     if (hoverTimer.current !== null) { window.clearTimeout(hoverTimer.current); hoverTimer.current = null; }
+  };
+  const cancelPendingOpen = () => {
+    if (pendingOpen.current !== null) { window.clearTimeout(pendingOpen.current); pendingOpen.current = null; }
   };
   const scheduleHoverClose = () => {
     cancelHoverClose();
     hoverTimer.current = window.setTimeout(() => setHover(null), 160);
   };
-  useEffect(() => cancelHoverClose, []);
+  useEffect(() => () => { cancelHoverClose(); cancelPendingOpen(); }, []);
 
-  /** Roughly the card's height; used only to decide which side to open on. */
+  /** Rough card height — used only to pick which side to open on. */
   const HOVER_CARD_H = 170;
 
   const openHover = (token: Token, el: HTMLElement) => {
     cancelHoverClose();
-    const r = el.getBoundingClientRect();
-    // Flip above the word when there isn't room below, otherwise the card is
-    // clipped by the viewport for anything in the lower part of the transcript.
-    const below = r.bottom + 8;
-    const flip = below + HOVER_CARD_H > window.innerHeight;
-    setHover({
-      token,
-      top: flip ? Math.max(8, r.top - HOVER_CARD_H - 8) : below,
-      left: Math.max(8, Math.min(r.left, window.innerWidth - 280)),
-    });
+    cancelPendingOpen();
+    const commit = () => {
+      const r = el.getBoundingClientRect();
+      const below = r.bottom + 6;
+      const flip = below + HOVER_CARD_H > window.innerHeight;
+      setHover(
+        flip
+          ? { token, bottom: window.innerHeight - r.top + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 280)) }
+          : { token, top: below, left: Math.max(8, Math.min(r.left, window.innerWidth - 280)) }
+      );
+    };
+    // Hover intent: with a card already up, brushing other tokens on the way
+    // to it must not replace it — only a deliberate pause on a word does.
+    if (hover) pendingOpen.current = window.setTimeout(commit, 130);
+    else commit();
     // Deliberately no TTS preload here. Glosses ship with the cue, so hovering
     // must cost zero requests — warming audio on hover would fire a synthesis
     // call for every word skimmed, and there is no rate limiting anywhere.
@@ -472,8 +486,8 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
 
         {hover && (
           <div
-            style={{ top: hover.top, left: hover.left }}
-            onMouseEnter={cancelHoverClose}
+            style={{ top: hover.top, bottom: hover.bottom, left: hover.left }}
+            onMouseEnter={() => { cancelHoverClose(); cancelPendingOpen(); }}
             onMouseLeave={scheduleHoverClose}
             className="fixed z-50 w-64 rounded-2xl bg-popover p-3 shadow-[0_12px_32px_-8px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5"
           >
