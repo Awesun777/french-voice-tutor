@@ -26,7 +26,7 @@ function ago(ts: number) {
 }
 
 /** Headline number. Not a chart — one value has no shape worth plotting. */
-function Stat({ label, value, hint }: { label: string; value: number; hint?: string }) {
+function Stat({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
   return (
     <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm p-4">
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
@@ -77,6 +77,62 @@ function SignupChart({ data }: { data: { day: string; count: number }[] }) {
   );
 }
 
+
+/**
+ * Daily active users, 60 days. A trend rather than a set of discrete events,
+ * so it reads as an area with a 2px line on top — visually distinct from the
+ * signup bars above it, which are counts of individual events.
+ *
+ * One series, so no legend: the heading names it. Values live in the hover
+ * tooltip instead of being stamped on every point.
+ */
+function ActivityChart({ data }: { data: { day: string; count: number }[] }) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  const W = 600, H = 100, PAD = 8;
+  const x = (i: number) => (i / Math.max(1, data.length - 1)) * W;
+  const y = (c: number) => H - PAD - (c / max) * (H - PAD * 2);
+  const line = data.map((d, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(d.count).toFixed(1)}`).join(" ");
+  const area = `${line} L${W},${H} L0,${H} Z`;
+  const peak = data.reduce((m, d) => (d.count > m.count ? d : m), data[0] ?? { day: "", count: 0 });
+
+  return (
+    <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm p-4">
+      <div className="flex items-baseline justify-between gap-3 mb-1 flex-wrap">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Active users per day · last 60 days</p>
+        <p className="text-xs text-muted-foreground tabular-nums">peak {peak.count}</p>
+      </div>
+      <p className="text-[11px] text-muted-foreground mb-3">
+        Counts anyone who saved a word, quizzed, spoke, or messaged the tutor that day — reading alone leaves no trace.
+      </p>
+
+      <div className="relative">
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-24 block" role="img" aria-label="Daily active users over the last 60 days">
+          {/* Recessive baseline — orientation, not decoration. */}
+          <line x1="0" y1={H - 0.5} x2={W} y2={H - 0.5} className="stroke-border" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          <path d={area} className="fill-primary/15" />
+          <path d={line} className="stroke-primary" strokeWidth="2" fill="none" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+        </svg>
+
+        {/* Hit targets sit above the SVG so a 0-value day is still hoverable. */}
+        <div className="absolute inset-0 flex">
+          {data.map((d) => (
+            <div key={d.day} className="group relative flex-1">
+              <div className="absolute inset-y-0 left-1/2 w-px bg-primary/40 opacity-0 group-hover:opacity-100" />
+              <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 whitespace-nowrap rounded-lg bg-popover px-2 py-1 text-[11px] font-semibold shadow-lg ring-1 ring-black/5">
+                {fmtDate(new Date(d.day + "T12:00:00").getTime())} · {d.count} active
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
+        <span>{fmtDate(new Date((data[0]?.day ?? "") + "T12:00:00").getTime())}</span>
+        <span>Today</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AccountsTab() {
   const [q, setQ] = useState("");
   const [confirming, setConfirming] = useState<number | null>(null);
@@ -84,6 +140,7 @@ export default function AccountsTab() {
   const utils = trpc.useUtils();
 
   const overview = trpc.admin.overview.useQuery();
+  const activity = trpc.admin.activity.useQuery();
   const users = trpc.admin.users.useQuery();
 
   const invalidate = () => { utils.admin.users.invalidate(); utils.admin.overview.invalidate(); };
@@ -123,6 +180,29 @@ export default function AccountsTab() {
         </div>
 
         {overview.data?.signups && <SignupChart data={overview.data.signups} />}
+
+        {/* Engagement — how much the accounts above actually get used. */}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+          <Stat
+            label="Avg DAU"
+            value={activity.data?.avgDau ?? 0}
+            hint={activity.data?.stickiness != null ? `${activity.data.stickiness}% of MAU daily` : "30-day mean"}
+          />
+          <Stat label="Avg WAU" value={activity.data?.avgWau ?? 0} hint="8-week mean" />
+          <Stat label="MAU" value={activity.data?.mau ?? 0} hint="active in 30 days" />
+          <Stat
+            label="Weekly ret."
+            value={activity.data?.weeklyRetention == null ? "—" : `${Math.round(activity.data.weeklyRetention * 100)}%`}
+            hint="came back next week"
+          />
+          <Stat
+            label="Monthly ret."
+            value={activity.data?.monthlyRetention == null ? "—" : `${Math.round(activity.data.monthlyRetention * 100)}%`}
+            hint="came back next month"
+          />
+        </div>
+
+        {activity.data?.daily && <ActivityChart data={activity.data.daily} />}
 
         <div className="bg-card rounded-2xl ring-1 ring-black/5 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">

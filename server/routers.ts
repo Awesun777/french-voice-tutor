@@ -29,7 +29,7 @@ import {
   googleDriveSettings,
   emailCredentials,
 } from "../drizzle/schema";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { B1_VERBS, TENSES, TENSE_KEYS, PERSONS, assembleGrammarQuestions, type TenseKey, type VerbPick, type RawGeneratedItem } from "./grammarVerbs";
 import {
@@ -2308,6 +2308,110 @@ ${input.transcript}`,
       }
 
       return { totals: { users: all.length, active7, active30, newWeek }, signups };
+    }),
+
+
+    /**
+     * Daily actives, rolling averages, and repeat retention.
+     *
+     * "Active" means a user wrote a row that day — saved a word, took a quiz,
+     * held a voice session, or messaged the tutor. It deliberately does NOT
+     * count pure reading (an article read or a video watched leaves no trace),
+     * so treat these as ENGAGED users, a floor rather than a visitor count.
+     *
+     * Everything is derived from one pass of distinct (user, day) pairs; at
+     * this scale that is a few thousand rows, and computing in JS keeps the
+     * window logic readable instead of four flavours of date SQL.
+     */
+    activity: adminProcedure.query(async () => {
+      const db = await getDb();
+      const empty = {
+        daily: [] as { day: string; count: number }[],
+        avgDau: 0, avgWau: 0, mau: 0,
+        weeklyRetention: null as number | null,
+        monthlyRetention: null as number | null,
+        stickiness: null as number | null,
+      };
+      if (!db) return empty;
+
+      const [rows]: any = await db.execute(sql`
+        SELECT DISTINCT userId, DATE(createdAt) AS day FROM (
+          SELECT userId, createdAt FROM vocab_entries
+          UNION ALL SELECT userId, createdAt FROM quiz_sessions
+          UNION ALL SELECT userId, createdAt FROM voice_sessions
+          UNION ALL SELECT userId, createdAt FROM tutor_messages
+        ) e
+        WHERE createdAt > DATE_SUB(NOW(), INTERVAL 200 DAY)
+      `);
+
+      const key = (d: Date) => d.toISOString().slice(0, 10);
+      const byDay = new Map<string, Set<number>>();
+      for (const r of rows as { userId: number; day: any }[]) {
+        const k = typeof r.day === "string" ? r.day.slice(0, 10) : key(new Date(r.day));
+        if (!byDay.has(k)) byDay.set(k, new Set());
+        byDay.get(k)!.add(r.userId);
+      }
+
+      const today = new Date();
+      today.setHours(12, 0, 0, 0);
+      const dayAt = (back: number) => key(new Date(today.getTime() - back * 86400000));
+
+      // 60-day series, zero-filled: a quiet day and a missing day must differ.
+      const daily: { day: string; count: number }[] = [];
+      for (let i = 59; i >= 0; i--) {
+        const k = dayAt(i);
+        daily.push({ day: k, count: byDay.get(k)?.size ?? 0 });
+      }
+
+      /** Distinct users active in the window [from, from+len) days back. */
+      const usersIn = (from: number, len: number) => {
+        const set = new Set<number>();
+        for (let i = from; i < from + len; i++) {
+          byDay.get(dayAt(i))?.forEach((u) => set.add(u));
+        }
+        return set;
+      };
+
+      const last30 = daily.slice(-30);
+      const avgDau = last30.length ? last30.reduce((n, d) => n + d.count, 0) / last30.length : 0;
+
+      // Rolling 7-day windows, one per week back, averaged.
+      const wau: number[] = [];
+      for (let w = 0; w < 8; w++) wau.push(usersIn(w * 7, 7).size);
+      const avgWau = wau.reduce((a, b) => a + b, 0) / wau.length;
+
+      const mau = usersIn(0, 30).size;
+
+      /**
+       * Repeat retention: of the people active in one period, how many came
+       * back the next. Averaged over recent periods, skipping empty ones —
+       * a week with nobody active has no retention to measure, and counting
+       * it as 0% would drag the number down for the wrong reason.
+       */
+      const retention = (periodDays: number, periods: number) => {
+        const rates: number[] = [];
+        for (let p = periods; p >= 1; p--) {
+          const earlier = usersIn(p * periodDays, periodDays);
+          if (!earlier.size) continue;
+          const later = usersIn((p - 1) * periodDays, periodDays);
+          let back = 0;
+          earlier.forEach((u) => { if (later.has(u)) back++; });
+          rates.push(back / earlier.size);
+        }
+        return rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
+      };
+
+      return {
+        daily,
+        avgDau: Math.round(avgDau * 10) / 10,
+        avgWau: Math.round(avgWau * 10) / 10,
+        mau,
+        weeklyRetention: retention(7, 8),
+        monthlyRetention: retention(30, 3),
+        // The classic stickiness ratio: what share of a month's users show up
+        // on an average day.
+        stickiness: mau ? Math.round((avgDau / mau) * 1000) / 10 : null,
+      };
     }),
 
     users: adminProcedure.query(async () => {
