@@ -18,6 +18,16 @@ import {
   opsTodos,
   opsSubscriptions,
   testLogs,
+  users,
+  vocabEntries,
+  quizSessions,
+  voiceSessions,
+  tutorMessages,
+  reviewSettings,
+  pendingImports,
+  googleAccounts,
+  googleDriveSettings,
+  emailCredentials,
 } from "../drizzle/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "./db";
@@ -2262,6 +2272,126 @@ ${input.transcript}`,
    */
 
 
+
+
+  // ─── Accounts dashboard (admin) ─────────────────────────────────────────────
+  // Everything here reads tables the product already writes — no tracking code,
+  // no cookies, no third-party script. Aggregates only: message and voice
+  // CONTENT is never surfaced, deliberately.
+  admin: router({
+    overview: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return { totals: { users: 0, active7: 0, active30: 0, newWeek: 0 }, signups: [] };
+
+      const all = await db.select().from(users);
+      const now = Date.now();
+      const since = (days: number) => now - days * 86400000;
+      const ms = (d: Date | null | undefined) => (d ? new Date(d).getTime() : 0);
+
+      // "Active" = signed in recently. Sign-in is the one event every feature
+      // shares, so it doesn't privilege whichever tab someone happens to use.
+      const active7 = all.filter((u) => ms(u.lastSignedIn) > since(7)).length;
+      const active30 = all.filter((u) => ms(u.lastSignedIn) > since(30)).length;
+      const newWeek = all.filter((u) => ms(u.createdAt) > since(7)).length;
+
+      // Daily signups for the last 60 days, zero-filled so the chart has no
+      // implicit gaps — a missing day and a zero day must look different.
+      const byDay = new Map<string, number>();
+      for (const u of all) {
+        const k = new Date(ms(u.createdAt)).toISOString().slice(0, 10);
+        byDay.set(k, (byDay.get(k) ?? 0) + 1);
+      }
+      const signups: { day: string; count: number }[] = [];
+      for (let i = 59; i >= 0; i--) {
+        const k = new Date(now - i * 86400000).toISOString().slice(0, 10);
+        signups.push({ day: k, count: byDay.get(k) ?? 0 });
+      }
+
+      return { totals: { users: all.length, active7, active30, newWeek }, signups };
+    }),
+
+    users: adminProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) return [];
+
+      // Three grouped counts merged in JS rather than one join-heavy query:
+      // at this scale it is faster to read and impossible to get subtly wrong.
+      const [all, vocab, quizzes, voices] = await Promise.all([
+        db.select().from(users),
+        db.select({ userId: vocabEntries.userId, id: vocabEntries.id }).from(vocabEntries),
+        db.select({ userId: quizSessions.userId, id: quizSessions.id }).from(quizSessions),
+        db.select({ userId: voiceSessions.userId, id: voiceSessions.id }).from(voiceSessions),
+      ]);
+      const tally = (rows: { userId: number }[]) => {
+        const m = new Map<number, number>();
+        for (const r of rows) m.set(r.userId, (m.get(r.userId) ?? 0) + 1);
+        return m;
+      };
+      const w = tally(vocab), q = tally(quizzes), v = tally(voices);
+
+      return all
+        .map((u) => ({
+          id: u.id,
+          name: u.name ?? null,
+          email: u.email ?? null,
+          loginMethod: u.loginMethod ?? null,
+          role: u.role,
+          createdAt: u.createdAt ? new Date(u.createdAt).getTime() : 0,
+          lastSignedIn: u.lastSignedIn ? new Date(u.lastSignedIn).getTime() : 0,
+          words: w.get(u.id) ?? 0,
+          quizzes: q.get(u.id) ?? 0,
+          voiceSessions: v.get(u.id) ?? 0,
+        }))
+        .sort((a, b) => b.lastSignedIn - a.lastSignedIn);
+    }),
+
+    setRole: adminProcedure
+      .input(z.object({ id: z.number(), role: z.enum(["user", "admin"]) }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        // Locking yourself out is the one mistake with no in-app recovery.
+        if (input.id === ctx.user.id && input.role !== "admin") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "You can't remove your own admin access." });
+        }
+        await db.update(users).set({ role: input.role }).where(eq(users.id, input.id));
+        return { ok: true };
+      }),
+
+    /**
+     * Erase an account and everything attached to it. Irreversible, and the
+     * reason the UI asks twice. Rows are removed table by table rather than
+     * relying on cascades, which this schema doesn't declare.
+     */
+    deleteUser: adminProcedure
+      .input(z.object({ id: z.number(), confirmEmail: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
+        if (input.id === ctx.user.id) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "You can't delete your own account here." });
+        }
+        const [target] = await db.select().from(users).where(eq(users.id, input.id));
+        if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "No such user." });
+        // Typed confirmation must match the account being deleted — a stale
+        // dialog on a re-sorted table can otherwise delete the wrong person.
+        if ((target.email ?? "").toLowerCase() !== input.confirmEmail.trim().toLowerCase()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Confirmation didn't match that account's email." });
+        }
+
+        await db.delete(vocabEntries).where(eq(vocabEntries.userId, input.id));
+        await db.delete(quizSessions).where(eq(quizSessions.userId, input.id));
+        await db.delete(voiceSessions).where(eq(voiceSessions.userId, input.id));
+        await db.delete(tutorMessages).where(eq(tutorMessages.userId, input.id));
+        await db.delete(reviewSettings).where(eq(reviewSettings.userId, input.id));
+        await db.delete(pendingImports).where(eq(pendingImports.userId, input.id));
+        await db.delete(googleAccounts).where(eq(googleAccounts.userId, input.id));
+        await db.delete(googleDriveSettings).where(eq(googleDriveSettings.userId, input.id));
+        await db.delete(emailCredentials).where(eq(emailCredentials.userId, input.id));
+        await db.delete(users).where(eq(users.id, input.id));
+        return { ok: true };
+      }),
+  }),
 
   // ─── Voice-chat test logs (admin) ───────────────────────────────────────────
   testLogs: router({
