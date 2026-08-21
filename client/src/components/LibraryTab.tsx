@@ -609,26 +609,30 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                           </span>
                           {editId === w.id ? (
                             <div className="flex-1 min-w-0 flex flex-col gap-1.5" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                value={editTerm}
-                                onChange={(e) => setEditTerm(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(w.id); if (e.key === "Escape") cancelEdit(); }}
-                                placeholder="French"
-                                autoFocus
-                                className="w-full px-2.5 py-1.5 rounded-lg border border-primary/50 bg-card text-sm font-semibold text-foreground focus:outline-none focus:border-primary"
-                              />
-                              <input
-                                value={editTranslation}
-                                onChange={(e) => setEditTranslation(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(w.id); if (e.key === "Escape") cancelEdit(); }}
-                                placeholder="English meaning"
-                                className="w-full px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground focus:outline-none focus:border-primary"
-                              />
+                              <div className="flex items-center gap-2">
+                                <input
+                                  value={editTerm}
+                                  onChange={(e) => setEditTerm(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(w.id); if (e.key === "Escape") cancelEdit(); }}
+                                  placeholder="French"
+                                  autoFocus
+                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-primary/50 bg-card text-sm font-semibold text-foreground focus:outline-none focus:border-primary"
+                                />
+                                <input
+                                  value={editTranslation}
+                                  onChange={(e) => setEditTranslation(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(w.id); if (e.key === "Escape") cancelEdit(); }}
+                                  placeholder="English meaning"
+                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-border bg-card text-xs text-muted-foreground focus:outline-none focus:border-primary"
+                                />
+                              </div>
                             </div>
                           ) : (
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-foreground truncate">{w.term}</p>
-                              <p className="text-xs text-muted-foreground truncate">{w.translation}</p>
+                              <div className="flex items-baseline gap-3">
+                                <p className="text-sm font-semibold text-foreground truncate flex-1 min-w-0">{w.term}</p>
+                                <p className="text-xs text-muted-foreground truncate text-right flex-1 min-w-0">{w.translation}</p>
+                              </div>
                               {w.groupLabel && (
                                 <p className="text-xs text-blue-700/80 truncate mt-0.5">🏷 {w.groupLabel}</p>
                               )}
