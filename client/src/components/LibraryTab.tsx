@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry, SidebarTab, ImportItem } from "@/types";
 import { Star, Trash2, Search, Download, Upload, Loader2, ChevronDown, ChevronRight, Pencil, Check, X, AlertTriangle, Cloud } from "lucide-react";
+import { VocabHeatmap } from "@/components/VocabHeatmap";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ImportModal from "./ImportModal";
@@ -488,50 +489,6 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
 
       {/* Body: date index rail + scrolling word list */}
       <div className="flex-1 flex min-h-0">
-        {/* Date index — hidden below md, and pointless with a single group. */}
-        {!isLoading && sortedGroups.length > 1 && (
-          <nav className="hidden md:flex w-52 flex-shrink-0 flex-col border-r border-border overflow-y-auto py-4 px-2">
-            <p className="px-2 pb-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              Lessons
-            </p>
-            <button
-              onClick={() => scrollRef.current?.scrollTo({ top: 0 })}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted-foreground hover:bg-primary/5 hover:text-foreground transition-colors"
-            >
-              <span className="flex-1 text-left truncate">All words</span>
-              <span className="text-xs tabular-nums text-muted-foreground">{filtered.length}</span>
-            </button>
-            <div className="my-2 border-t border-border" />
-            <div className="space-y-0.5">
-              {sortedGroups.map(([dateKey, dayWords]) => {
-                const groupDue = dayWords.filter(isDue).length;
-                return (
-                  <button
-                    key={dateKey}
-                    onClick={() => scrollToGroup(dateKey)}
-                    className={cn(
-                      "w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors",
-                      activeGroup === dateKey
-                        ? "bg-primary/15 text-primary font-semibold"
-                        : "text-muted-foreground hover:bg-primary/5 hover:text-foreground"
-                    )}
-                    title={fmtDateLabel(dateKey)}
-                  >
-                    <span className="flex-1 text-left truncate">{fmtDateLabel(dateKey)}</span>
-                    {groupDue > 0 && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-accent-strong flex-shrink-0"
-                        title={`${groupDue} due for review`}
-                      />
-                    )}
-                    <span className="text-xs tabular-nums opacity-70">{dayWords.length}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-        )}
-
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
@@ -556,6 +513,44 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
           </div>
         ) : (
           <div className="max-w-3xl mx-auto space-y-3">
+            {/* Same calendar as Quiz and Flashcards — literally the same
+                component. Here a click scrolls to that day's group instead of
+                starting a review, and the current group stays ringed. */}
+            {sortedGroups.length > 1 && (
+              <div className="bg-card card-float rounded-2xl p-4">
+                <VocabHeatmap
+                  dates={sortedGroups
+                    .filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+                    .map(([k, ws]) => ({ dateKey: k, total: ws.length }))}
+                  onPick={(dk) => scrollToGroup(dk)}
+                  selectedKey={activeGroup}
+                  idleLabel="Jump to a day you saved words"
+                />
+                {/* Renamed groups have no date to sit on, so they keep their
+                    own row rather than becoming unreachable. */}
+                {sortedGroups.some(([k]) => !/^\d{4}-\d{2}-\d{2}$/.test(k)) && (
+                  <div className="flex flex-wrap gap-1.5 justify-center mt-3 pt-3 border-t border-border">
+                    {sortedGroups
+                      .filter(([k]) => !/^\d{4}-\d{2}-\d{2}$/.test(k))
+                      .map(([k, ws]) => (
+                        <button
+                          key={k}
+                          onClick={() => scrollToGroup(k)}
+                          className={cn(
+                            "px-2 py-0.5 rounded-lg text-xs font-semibold transition-colors",
+                            activeGroup === k
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {fmtDateLabel(k)} <span className="opacity-70 tabular-nums">{ws.length}</span>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">{filtered.length} of {words.length} words</p>
               <div className="flex gap-2">
