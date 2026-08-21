@@ -86,7 +86,7 @@ function SignupChart({ data }: { data: { day: string; count: number }[] }) {
  * One series, so no legend: the heading names it. Values live in the hover
  * tooltip instead of being stamped on every point.
  */
-function ActivityChart({ data }: { data: { day: string; count: number }[] }) {
+function ActivityChart({ data }: { data: { day: string; count: number; newUsers: number; returning: number }[] }) {
   const max = Math.max(1, ...data.map((d) => d.count));
   const W = 600, H = 100, PAD = 8;
   const x = (i: number) => (i / Math.max(1, data.length - 1)) * W;
@@ -118,8 +118,15 @@ function ActivityChart({ data }: { data: { day: string; count: number }[] }) {
           {data.map((d) => (
             <div key={d.day} className="group relative flex-1">
               <div className="absolute inset-y-0 left-1/2 w-px bg-primary/40 opacity-0 group-hover:opacity-100" />
-              <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 whitespace-nowrap rounded-lg bg-popover px-2 py-1 text-[11px] font-semibold shadow-lg ring-1 ring-black/5">
-                {fmtDate(new Date(d.day + "T12:00:00").getTime())} · {d.count} active
+              <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 whitespace-nowrap rounded-lg bg-popover px-2.5 py-1.5 text-[11px] shadow-lg ring-1 ring-black/5">
+                <p className="font-bold text-foreground">
+                  {fmtDate(new Date(d.day + "T12:00:00").getTime())} · {d.count} active
+                </p>
+                {d.count > 0 && (
+                  <p className="text-muted-foreground mt-0.5 tabular-nums">
+                    <b className="text-speaking">{d.newUsers}</b> new · <b className="text-primary">{d.returning}</b> returning
+                  </p>
+                )}
               </div>
             </div>
           ))}

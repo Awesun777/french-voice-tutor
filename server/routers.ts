@@ -2326,7 +2326,7 @@ ${input.transcript}`,
     activity: adminProcedure.query(async () => {
       const db = await getDb();
       const empty = {
-        daily: [] as { day: string; count: number }[],
+        daily: [] as { day: string; count: number; newUsers: number; returning: number }[],
         avgDau: 0, avgWau: 0, mau: 0,
         weeklyRetention: null as number | null,
         monthlyRetention: null as number | null,
@@ -2344,10 +2344,15 @@ ${input.transcript}`,
         WHERE createdAt > DATE_SUB(NOW(), INTERVAL 200 DAY)
       `);
 
+      const [signupRows]: any = await db.execute(sql`SELECT id, DATE(createdAt) AS day FROM users`);
+      const dayKey = (v: any) => (typeof v === "string" ? v.slice(0, 10) : new Date(v).toISOString().slice(0, 10));
+      const signupDay = new Map<number, string>();
+      for (const r of signupRows as { id: number; day: any }[]) signupDay.set(r.id, dayKey(r.day));
+
       const key = (d: Date) => d.toISOString().slice(0, 10);
       const byDay = new Map<string, Set<number>>();
       for (const r of rows as { userId: number; day: any }[]) {
-        const k = typeof r.day === "string" ? r.day.slice(0, 10) : key(new Date(r.day));
+        const k = dayKey(r.day);
         if (!byDay.has(k)) byDay.set(k, new Set());
         byDay.get(k)!.add(r.userId);
       }
@@ -2357,10 +2362,16 @@ ${input.transcript}`,
       const dayAt = (back: number) => key(new Date(today.getTime() - back * 86400000));
 
       // 60-day series, zero-filled: a quiet day and a missing day must differ.
-      const daily: { day: string; count: number }[] = [];
+      // Split each day's actives into accounts created that same day and
+      // everyone else — the difference between arriving and coming back.
+      const daily: { day: string; count: number; newUsers: number; returning: number }[] = [];
       for (let i = 59; i >= 0; i--) {
         const k = dayAt(i);
-        daily.push({ day: k, count: byDay.get(k)?.size ?? 0 });
+        const set = byDay.get(k);
+        let fresh = 0;
+        set?.forEach((uid) => { if (signupDay.get(uid) === k) fresh++; });
+        const count = set?.size ?? 0;
+        daily.push({ day: k, count, newUsers: fresh, returning: count - fresh });
       }
 
       /** Distinct users active in the window [from, from+len) days back. */
