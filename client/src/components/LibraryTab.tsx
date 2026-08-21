@@ -487,8 +487,48 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
         </div>
       )}
 
-      {/* Body: date index rail + scrolling word list */}
-      <div className="flex-1 flex min-h-0">
+      {/* Body: pinned calendar over a scrolling word list */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Same calendar as Quiz and Flashcards, and dressed the same way —
+            bare on the page background, no card. Pinned above the scroll area
+            so it stays reachable however far down the list you are. */}
+        {!isLoading && words.length > 0 && sortedGroups.length > 1 && (
+          <div className="flex-shrink-0 border-b border-border px-4 py-3">
+            <div className="max-w-3xl mx-auto">
+              <VocabHeatmap
+                dates={sortedGroups
+                  .filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+                  .map(([k, ws]) => ({ dateKey: k, total: ws.length }))}
+                onPick={(dk) => scrollToGroup(dk)}
+                selectedKey={activeGroup}
+                idleLabel="Jump to a day you saved words"
+              />
+              {/* Renamed groups have no date to sit on, so they keep their own
+                  row rather than becoming unreachable. */}
+              {sortedGroups.some(([k]) => !/^\d{4}-\d{2}-\d{2}$/.test(k)) && (
+                <div className="flex flex-wrap gap-1.5 justify-center mt-3 pt-3 border-t border-border">
+                  {sortedGroups
+                    .filter(([k]) => !/^\d{4}-\d{2}-\d{2}$/.test(k))
+                    .map(([k, ws]) => (
+                      <button
+                        key={k}
+                        onClick={() => scrollToGroup(k)}
+                        className={cn(
+                          "px-2 py-0.5 rounded-lg text-xs font-semibold transition-colors",
+                          activeGroup === k
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {fmtDateLabel(k)} <span className="opacity-70 tabular-nums">{ws.length}</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
@@ -513,44 +553,6 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
           </div>
         ) : (
           <div className="max-w-3xl mx-auto space-y-3">
-            {/* Same calendar as Quiz and Flashcards — literally the same
-                component. Here a click scrolls to that day's group instead of
-                starting a review, and the current group stays ringed. */}
-            {sortedGroups.length > 1 && (
-              <div className="bg-card card-float rounded-2xl p-4">
-                <VocabHeatmap
-                  dates={sortedGroups
-                    .filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k))
-                    .map(([k, ws]) => ({ dateKey: k, total: ws.length }))}
-                  onPick={(dk) => scrollToGroup(dk)}
-                  selectedKey={activeGroup}
-                  idleLabel="Jump to a day you saved words"
-                />
-                {/* Renamed groups have no date to sit on, so they keep their
-                    own row rather than becoming unreachable. */}
-                {sortedGroups.some(([k]) => !/^\d{4}-\d{2}-\d{2}$/.test(k)) && (
-                  <div className="flex flex-wrap gap-1.5 justify-center mt-3 pt-3 border-t border-border">
-                    {sortedGroups
-                      .filter(([k]) => !/^\d{4}-\d{2}-\d{2}$/.test(k))
-                      .map(([k, ws]) => (
-                        <button
-                          key={k}
-                          onClick={() => scrollToGroup(k)}
-                          className={cn(
-                            "px-2 py-0.5 rounded-lg text-xs font-semibold transition-colors",
-                            activeGroup === k
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {fmtDateLabel(k)} <span className="opacity-70 tabular-nums">{ws.length}</span>
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">{filtered.length} of {words.length} words</p>
               <div className="flex gap-2">
