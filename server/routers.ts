@@ -1609,7 +1609,10 @@ The user is asking about this specific word/phrase. Answer in the context of thi
 
     // Returns a signed WebSocket URL for a TCF mock oral exam with Marc — the
     // ElevenLabs workflow agent whose exam phases are platform-enforced nodes.
-    marcSignedUrl: protectedProcedure.mutation(async () => {
+    // Admin-only: an exam burns ElevenLabs minutes, and Marc is not finished
+    // enough to put in front of everyone. Hiding the entry in the chooser is
+    // cosmetic; this is the gate — without a signed URL there is no exam.
+    marcSignedUrl: adminProcedure.mutation(async () => {
       const apiKey = process.env.ELEVENLABS_API_KEY;
       const agentId = process.env.ELEVENLABS_MARC_AGENT_ID;
       if (!apiKey || !agentId) {

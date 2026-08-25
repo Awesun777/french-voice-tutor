@@ -10,6 +10,10 @@
  * session view. A slim "← Tutors" bar returns to the chooser (unmounting the
  * agent tab, which tears down its live voice connection).
  *
+ * The Test Mock side (Marc) is admin-only — `voice.marcSignedUrl` is an
+ * adminProcedure, so hiding the flip here just keeps a non-admin from walking
+ * into a FORBIDDEN they cannot act on.
+ *
  * Each half shows a looping avatar video with the tutor's name beneath it.
  * The avatar carries a shared `layoutId`, so when a tutor is started it morphs
  * (moves + shrinks) into the idle screen's avatar slot via framer-motion; the
@@ -21,6 +25,7 @@ import { useState } from "react";
 import { motion, LayoutGroup } from "framer-motion";
 import { ArrowLeft, Play, MessageCircle, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { AvatarVideo, avatarLayoutId } from "@/components/AvatarVideo";
 import VoiceChatTab from "@/components/VoiceChatTab";
 import { AnnaVoiceTab } from "@/components/AnnaVoiceTab";
@@ -114,8 +119,16 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
   const [started, setStarted] = useState<VoiceAgent | null>(null);
   const [mode, setMode] = useState<SpeakingMode>("casual");
 
-  const startedAgent = started
-    ? (started === "marc" ? MARC : AGENTS.find((a) => a.id === started)!)
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  // Marc is admin-only, so a non-admin never leaves the casual side — and can
+  // never be left mounted in his tab if the role changes under them.
+  const activeMode: SpeakingMode = isAdmin ? mode : "casual";
+  const activeStarted = started === "marc" && !isAdmin ? null : started;
+
+  const startedAgent = activeStarted
+    ? (activeStarted === "marc" ? MARC : AGENTS.find((a) => a.id === activeStarted)!)
     : null;
 
   const flipTo = (m: SpeakingMode) => {
@@ -136,15 +149,15 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              {started === "marc" ? "Speaking" : "Tutors"}
+              {activeStarted === "marc" ? "Speaking" : "Tutors"}
             </button>
             <span className="text-sm font-semibold">{startedAgent.name}</span>
             <span className="text-[10px] text-muted-foreground">{startedAgent.tag}</span>
           </div>
           <div className="flex-1 overflow-hidden">
-            {started === "romain" ? (
+            {activeStarted === "romain" ? (
               <VoiceChatTab onStartReview={onStartReview} />
-            ) : started === "anna" ? (
+            ) : activeStarted === "anna" ? (
               <AnnaVoiceTab />
             ) : (
               <MarcExamTab />
@@ -155,6 +168,7 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
         // ── Chooser: flip between casual tutors and the mock-exam examiner. ──
         <div className="relative h-full w-full flex flex-col overflow-hidden">
           {/* Mode flip — a two-sided pill pinned above the chooser content. */}
+          {isAdmin && (
           <div className="flex-shrink-0 flex justify-center pt-5 pb-1 z-10">
             <div className="inline-flex items-center rounded-full border border-border bg-card p-1 shadow-sm">
               {(
@@ -166,13 +180,13 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 <button
                   key={side.id}
                   onClick={() => flipTo(side.id)}
-                  aria-pressed={mode === side.id}
+                  aria-pressed={activeMode === side.id}
                   className={cn(
                     "relative flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold transition-colors",
-                    mode === side.id ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                    activeMode === side.id ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {mode === side.id && (
+                  {activeMode === side.id && (
                     <motion.span
                       layoutId="speaking-mode-pill"
                       className={cn(
@@ -190,8 +204,9 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
               ))}
             </div>
           </div>
+          )}
 
-          {mode === "test-mock" ? (
+          {activeMode === "test-mock" ? (
             // ── Test mock: one examiner, one click, straight into the exam. ──
             <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
               <button
