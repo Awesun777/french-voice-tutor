@@ -101,9 +101,18 @@ function SujetPanel({ sujet, onZoom }: { sujet: Task2Sujet; onZoom: () => void }
       className="flex-shrink-0 flex flex-col min-h-0 border-b border-border lg:w-[42%] lg:max-w-md lg:border-b-0 lg:border-r"
     >
       <div className="flex-shrink-0 px-4 pt-4 pb-2">
-        <p className="font-display text-[11px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
-          <FileText className="w-3.5 h-3.5" /> {sujet.label}
-        </p>
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="font-display text-[11px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5" /> {sujet.label}
+          </p>
+          <button
+            type="button"
+            onClick={onZoom}
+            className="text-[11px] font-medium text-muted-foreground hover:text-amber-700 transition-colors"
+          >
+            Agrandir
+          </button>
+        </div>
         <p className="mt-1 text-sm text-foreground leading-relaxed">{sujet.consigne}</p>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 max-h-[40vh] lg:max-h-none">
