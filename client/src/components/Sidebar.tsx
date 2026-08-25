@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
   Users,
+  Workflow,
   Clapperboard,
   Activity,
   BookOpen,
@@ -107,7 +108,8 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
        { kind: "leaf", id: "ingest", label: "Ingest", icon: <UploadCloud className={ICON} /> },
        { kind: "leaf", id: "ops", label: "Ops", icon: <Activity className={ICON} /> },
        { kind: "leaf", id: "testlogs", label: "Test Logs", icon: <Clapperboard className={ICON} /> },
-       { kind: "leaf", id: "accounts", label: "Accounts", icon: <Users className={ICON} /> }]
+       { kind: "leaf", id: "accounts", label: "Accounts", icon: <Users className={ICON} /> },
+       { kind: "leaf", id: "workflow", label: "Workflow", icon: <Workflow className={ICON} /> }]
     : NAV;
   const logoutMutation = trpc.auth.logout.useMutation({
     onSuccess: () => { window.location.reload(); },

@@ -92,7 +92,7 @@ export interface DictWordDetails {
 
 export type DictResult = DictWordResult | DictPhraseResult | DictQuestionResult | { type: "error"; message: string };
 
-export type SidebarTab = "dashboard" | "dictionary" | "library" | "quiz" | "flashcards" | "grammar" | "listening" | "reading" | "tutor" | "voice-chat" | "progress" | "settings" | "ingest" | "ops" | "testlogs" | "accounts";
+export type SidebarTab = "dashboard" | "dictionary" | "library" | "quiz" | "flashcards" | "grammar" | "listening" | "reading" | "tutor" | "voice-chat" | "progress" | "settings" | "ingest" | "ops" | "testlogs" | "accounts" | "workflow";
 
 export interface ImportItem {
   term: string;

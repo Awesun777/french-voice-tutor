@@ -8,6 +8,7 @@ import IngestTab from "@/components/IngestTab";
 import OpsTab from "@/components/OpsTab";
 import TestLogsTab from "@/components/TestLogsTab";
 import AccountsTab from "@/components/AccountsTab";
+import WorkflowTab from "@/components/WorkflowTab";
 import LandingPage from "@/components/LandingPage";
 import DashboardTab from "@/components/DashboardTab";
 import DictionaryTab from "@/components/DictionaryTab";
@@ -56,8 +57,8 @@ function surroundingSentence(term: string): string | undefined {
   }
 }
 
-const TAB_IDS: SidebarTab[] = ["dashboard", "dictionary", "library", "quiz", "flashcards", "grammar", "listening", "reading", "tutor", "voice-chat", "progress", "settings", "ingest", "ops", "testlogs", "accounts"];
-const ADMIN_TABS: SidebarTab[] = ["ingest", "ops", "testlogs", "accounts"];
+const TAB_IDS: SidebarTab[] = ["dashboard", "dictionary", "library", "quiz", "flashcards", "grammar", "listening", "reading", "tutor", "voice-chat", "progress", "settings", "ingest", "ops", "testlogs", "accounts", "workflow"];
+const ADMIN_TABS: SidebarTab[] = ["ingest", "ops", "testlogs", "accounts", "workflow"];
 
 /**
  * Which tab to open on load: the URL hash wins (survives refresh AND makes
@@ -255,6 +256,7 @@ export default function Home() {
         {activeTab === "ops" && user?.role === "admin" && <OpsTab />}
         {activeTab === "testlogs" && user?.role === "admin" && <TestLogsTab />}
         {activeTab === "accounts" && user?.role === "admin" && <AccountsTab />}
+            {activeTab === "workflow" && user?.role === "admin" && <WorkflowTab />}
         {activeTab === "reading" && <ReadingTab />}
         {activeTab === "tutor" && <TutorTab />}
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}
