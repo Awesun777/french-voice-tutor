@@ -6,6 +6,12 @@
  * lean compared to AnnaVoiceTab: no vocab tools, no language-mix settings, no
  * memory injection — an exam is a standalone, self-contained session.
  *
+ * Task 2 hands the candidate a printed sujet in the real exam. Marc puts that
+ * document on screen by calling the `afficher_sujet` client tool, which the
+ * workflow forces on entry to its task2_setup node; the transcript regexes below
+ * are only a net under that call, so a missed tool call still shows the sheet and
+ * Task 3 always clears it.
+ *
  * There is intentionally NO pause control. The SDK has no pause primitive, and
  * the Anna-style workaround (end the session, reconnect with a fresh signed
  * URL) would restart the workflow from the opening node — in exam terms,
@@ -13,6 +19,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { Conversation, type VoiceConversation } from "@elevenlabs/client";
 import { trpc } from "@/lib/trpc";
@@ -20,6 +27,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { avatarLayoutId } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
+import { resolveTask2Sujet, DEFAULT_TASK2_SUJET, type Task2Sujet } from "@/lib/tcfSujets";
 import {
   Mic,
   PhoneOff,
@@ -27,6 +35,8 @@ import {
   Volume2,
   ClipboardCheck,
   MessageSquare,
+  FileText,
+  X,
 } from "lucide-react";
 
 interface TranscriptLine {
@@ -81,6 +91,71 @@ function Waveform({ active, color }: { active: boolean; color: string }) {
   );
 }
 
+/** The Task 2 document, alongside the exam rather than interrupting it. */
+function SujetPanel({ sujet, onZoom }: { sujet: Task2Sujet; onZoom: () => void }) {
+  return (
+    <motion.aside
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="flex-shrink-0 flex flex-col min-h-0 border-b border-border lg:w-[42%] lg:max-w-md lg:border-b-0 lg:border-r"
+    >
+      <div className="flex-shrink-0 px-4 pt-4 pb-2">
+        <p className="font-display text-[11px] font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+          <FileText className="w-3.5 h-3.5" /> {sujet.label}
+        </p>
+        <p className="mt-1 text-sm text-foreground leading-relaxed">{sujet.consigne}</p>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 max-h-[40vh] lg:max-h-none">
+        <button
+          type="button"
+          onClick={onZoom}
+          title="Agrandir le document"
+          className="block w-full rounded-xl overflow-hidden border border-border bg-white transition-colors hover:border-amber-500/60"
+        >
+          <img src={sujet.image} alt={sujet.alt} className="w-full h-auto" />
+        </button>
+      </div>
+    </motion.aside>
+  );
+}
+
+/** Full-size document. Portalled — transformed ancestors would trap a fixed child. */
+function SujetLightbox({ sujet, onClose }: { sujet: Task2Sujet; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={sujet.label}
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+    >
+      <img
+        src={sujet.image}
+        alt={sujet.alt}
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-full w-auto max-w-3xl rounded-lg bg-white shadow-2xl"
+      />
+      <button
+        onClick={onClose}
+        aria-label="Fermer le document"
+        className="absolute top-4 right-4 rounded-full bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+      >
+        <X className="w-5 h-5" />
+      </button>
+    </div>,
+    document.body,
+  );
+}
+
 export function MarcExamTab() {
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [sessionId, setSessionId] = useState<number | null>(null);
@@ -88,6 +163,8 @@ export function MarcExamTab() {
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [userSpeaking, setUserSpeaking] = useState(false);
   const [endedSummary, setEndedSummary] = useState<string | null>(null);
+  const [sujet, setSujet] = useState<Task2Sujet | null>(null);
+  const [sujetZoomed, setSujetZoomed] = useState(false);
 
   const conversationRef = useRef<VoiceConversation | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -117,6 +194,8 @@ export function MarcExamTab() {
       setSessionState("connecting");
       setTranscript([]);
       setEndedSummary(null);
+      setSujet(null);
+      setSujetZoomed(false);
       aiStreamIdRef.current = null;
       endingRef.current = false;
 
@@ -127,6 +206,15 @@ export function MarcExamTab() {
 
       const conversation = await Conversation.startSession({
         signedUrl,
+
+        clientTools: {
+          // Forced on entry to the task2_setup node — Marc cannot start Task 2
+          // without it, so this is the authoritative "show the sheet" signal.
+          afficher_sujet: ({ sujet_id }: { sujet_id?: string }) => {
+            const next = resolveTask2Sujet(sujet_id);
+            if (next) setSujet(next);
+          },
+        },
 
         onConnect: () => setSessionState("active"),
 
@@ -151,6 +239,16 @@ export function MarcExamTab() {
           const text = (message ?? "").trim();
           if (!text) return;
           if (source === "ai") {
+            // Marc's phase scripts are verbatim, so they double as a fallback.
+            // Order matters: the Task 3 opener names both tasks in one breath
+            // ("la fin de la deuxième tâche… la troisième"), and it must hide.
+            if (/troisi[eè]me\s+(et\s+derni[eè]re\s+)?t[aâ]che/i.test(text)) {
+              setSujet(null);
+              setSujetZoomed(false);
+            } else if (/deuxi[eè]me\s+t[aâ]che/i.test(text)) {
+              setSujet((prev) => prev ?? DEFAULT_TASK2_SUJET);
+            }
+
             const lineId = aiStreamIdRef.current ?? `ai-${Date.now()}`;
             aiStreamIdRef.current = lineId;
             setTranscript((prev) => {
@@ -180,6 +278,8 @@ export function MarcExamTab() {
     if (endingRef.current || !sessionId) return;
     endingRef.current = true;
     setSessionState("ending");
+    setSujet(null);
+    setSujetZoomed(false);
     cleanup();
     try {
       const persistable = transcript.map((l) => ({ role: l.role, text: l.text, timestamp: l.timestamp }));
@@ -266,45 +366,51 @@ export function MarcExamTab() {
         {/* Live exam */}
         {isLive && (
           <div className="flex flex-col h-full">
-            <div className="flex-shrink-0 px-4 py-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className={cn("bg-card border rounded-xl p-3 transition-colors", userSpeaking ? "border-primary/60 bg-primary/5" : "border-border")}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                    <Mic className="w-3 h-3" /> You
-                  </p>
-                  <Waveform active={userSpeaking} color="#173F6B" />
+            <div className={cn("flex-1 min-h-0 flex", sujet ? "flex-col lg:flex-row" : "flex-col")}>
+              {sujet && <SujetPanel sujet={sujet} onZoom={() => setSujetZoomed(true)} />}
+
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex-shrink-0 px-4 py-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className={cn("bg-card border rounded-xl p-3 transition-colors", userSpeaking ? "border-primary/60 bg-primary/5" : "border-border")}>
+                      <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                        <Mic className="w-3 h-3" /> You
+                      </p>
+                      <Waveform active={userSpeaking} color="#173F6B" />
+                    </div>
+                    <div className={cn("bg-card border rounded-xl p-3 transition-colors", aiSpeaking ? "border-amber-500/60 bg-amber-500/5" : "border-border")}>
+                      <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                        <Volume2 className="w-3 h-3" />
+                        Marc {aiSpeaking && <span className="text-amber-700 animate-pulse">speaking…</span>}
+                      </p>
+                      <Waveform active={aiSpeaking} color="#9C6D18" />
+                    </div>
+                  </div>
                 </div>
-                <div className={cn("bg-card border rounded-xl p-3 transition-colors", aiSpeaking ? "border-amber-500/60 bg-amber-500/5" : "border-border")}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                    <Volume2 className="w-3 h-3" />
-                    Marc {aiSpeaking && <span className="text-amber-700 animate-pulse">speaking…</span>}
-                  </p>
-                  <Waveform active={aiSpeaking} color="#9C6D18" />
+
+                <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-2 min-h-0">
+                  {transcript.length === 0 && (
+                    <p className="text-center text-xs text-muted-foreground py-4">The exam will appear here…</p>
+                  )}
+                  {transcript.map((line, i) => (
+                    <div key={line.id ?? i} className={cn("flex gap-2 items-start", line.role === "user" ? "flex-row-reverse" : "flex-row")}>
+                      <div className={cn(
+                        "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5",
+                        line.role === "user" ? "bg-secondary text-foreground" : "bg-amber-500/20 text-amber-700"
+                      )}>
+                        {line.role === "user" ? "Me" : "M"}
+                      </div>
+                      <div className={cn(
+                        "max-w-[75%] px-3 py-2 rounded-2xl text-sm leading-relaxed",
+                        line.role === "user" ? "bg-secondary text-foreground rounded-tr-sm" : "bg-card card-float text-foreground rounded-tl-sm"
+                      )}>
+                        {line.text}
+                      </div>
+                    </div>
+                  ))}
+                  <div ref={transcriptEndRef} />
                 </div>
               </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-2 min-h-0">
-              {transcript.length === 0 && (
-                <p className="text-center text-xs text-muted-foreground py-4">The exam will appear here…</p>
-              )}
-              {transcript.map((line, i) => (
-                <div key={line.id ?? i} className={cn("flex gap-2 items-start", line.role === "user" ? "flex-row-reverse" : "flex-row")}>
-                  <div className={cn(
-                    "w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5",
-                    line.role === "user" ? "bg-secondary text-foreground" : "bg-amber-500/20 text-amber-700"
-                  )}>
-                    {line.role === "user" ? "Me" : "M"}
-                  </div>
-                  <div className={cn(
-                    "max-w-[75%] px-3 py-2 rounded-2xl text-sm leading-relaxed",
-                    line.role === "user" ? "bg-secondary text-foreground rounded-tr-sm" : "bg-card card-float text-foreground rounded-tl-sm"
-                  )}>
-                    {line.text}
-                  </div>
-                </div>
-              ))}
-              <div ref={transcriptEndRef} />
             </div>
 
             <div className="flex-shrink-0 border-t border-border px-4 py-4 flex items-center justify-center">
@@ -374,6 +480,10 @@ export function MarcExamTab() {
           </div>
         )}
       </div>
+
+      {sujetZoomed && sujet && (
+        <SujetLightbox sujet={sujet} onClose={() => setSujetZoomed(false)} />
+      )}
     </div>
   );
 }
