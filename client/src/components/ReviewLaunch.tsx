@@ -1,12 +1,14 @@
 /**
  * ReviewLaunch — the shared first screen for both Quiz and Flashcards.
  *
- * Step 1: choose a source — "Due Today" (the spaced-repetition queue) or a
+ * Step 1: choose a source — "Due Today" (the spaced-repetition queue),
+ *         "Latest saved" (most recently added words, newest first), or a
  *         specific date from the picker.
  * Step 2: choose how many words — a few presets or "All … left".
  *
  * Calls `onStart({ mode, dateKey, limit })`:
- *   - Due Today      → { mode: "due",  limit }
+ *   - Due Today      → { mode: "due",    limit }
+ *   - Latest saved   → { mode: "latest", limit }
  *   - a date group   → { mode: "all",  dateKey, limit }
  * `limit` is omitted when the user picks "All … left".
  *
@@ -23,7 +25,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Brain, ChevronLeft, Sparkles, ArrowRight, Check } from "lucide-react";
+import { Brain, ChevronLeft, Sparkles, ArrowRight, Check, History } from "lucide-react";
 import { VocabHeatmap } from "@/components/VocabHeatmap";
 
 function todayKey() { return new Date().toISOString().split("T")[0]; }
@@ -42,7 +44,7 @@ function fmtDateLabel(dk: string) {
  * news-radar applications calendar, in this app's tokens.
  */
 export interface ReviewLaunchChoice {
-  mode: "due" | "all";
+  mode: "due" | "all" | "latest";
   dateKey?: string;
   limit?: number;
   /** Flashcards only — which side of the card shows first. */
@@ -175,14 +177,17 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
 
   const dueToday = stats?.dueToday ?? 0;
   const verb = kind === "quiz" ? "Quiz" : "Review";
+  const totalWords = dates.reduce((sum, d) => sum + d.total, 0);
 
   // Available word count for the chosen source (bounds the presets).
   const available =
     source === "due"
       ? dueToday
-      : source
-        ? dates.find((d) => d.dateKey === source)?.total ?? 0
-        : 0;
+      : source === "latest"
+        ? totalWords
+        : source
+          ? dates.find((d) => d.dateKey === source)?.total ?? 0
+          : 0;
 
   const presets = [10, 20, 30, 50].filter((n) => n < available);
 
@@ -193,6 +198,11 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
       // For "All left", pass the due count as an explicit limit so the server
       // returns every due word (an explicit limit overrides the daily cap).
       onStart({ mode: "due", limit: limit ?? (available || undefined), front: frontChoice });
+    } else if (source === "latest") {
+      // Same trick: "All" passes the library total so the server's default
+      // latest-cap (20) doesn't truncate the session. Clamped to the API's
+      // max limit (500) in case the library is bigger than that.
+      onStart({ mode: "latest", limit: limit ?? (available ? Math.min(available, 500) : undefined), front: frontChoice });
     } else if (source) {
       onStart({ mode: "all", dateKey: source, limit, front: frontChoice });
     }
@@ -200,7 +210,7 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
 
   // ── Step 2: how many words ──────────────────────────────────────────────
   if (source) {
-    const label = source === "due" ? "Due Today" : fmtDateLabel(source);
+    const label = source === "due" ? "Due Today" : source === "latest" ? "Latest Saved" : fmtDateLabel(source);
     return (
       <div className="relative flex-1 flex flex-col items-center justify-center p-6 overflow-hidden">
         <DriftingField />
@@ -221,6 +231,9 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
             <p className="text-sm text-muted-foreground mt-1">
               <CountUp value={available} className="font-bold text-foreground" /> word{available === 1 ? "" : "s"} available
             </p>
+            {source === "latest" && (
+              <p className="text-xs text-muted-foreground mt-1">Newest first — starts from the words you saved most recently</p>
+            )}
           </Rise>
 
           {available === 0 ? (
@@ -348,6 +361,28 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: 
           )}
         </motion.button>
         </Rise>
+
+        {/* Latest saved — jump straight to the words added most recently,
+            newest first, without hunting for today's square on the heatmap. */}
+        {totalWords > 0 && (
+          <Rise delay={0.18}>
+            <motion.button
+              onClick={() => setSource("latest")}
+              whileHover={reduce ? undefined : { y: -2 }}
+              whileTap={reduce ? undefined : { scale: 0.99 }}
+              className="group w-full rounded-3xl bg-card px-6 py-4 text-left shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)] hover:shadow-[0_10px_26px_-10px_rgb(23_63_107_/_0.4)] transition-shadow flex items-center gap-4"
+            >
+              <div className="w-11 h-11 rounded-2xl bg-accent/25 flex items-center justify-center flex-shrink-0">
+                <History className="w-5 h-5 text-accent-strong" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-display text-base font-bold text-foreground">Latest saved words</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{verb} the words you added most recently</p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 flex-shrink-0" />
+            </motion.button>
+          </Rise>
+        )}
 
         {/* Live SM-2 buckets. Already computed for the due count — surfacing them
             turns a blank screen into a sense of a collection being worked

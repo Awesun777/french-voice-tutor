@@ -412,6 +412,38 @@ async function fetchAudioBytes(url: string): Promise<{ bytes: Buffer; mimeType: 
   return { bytes: buf, mimeType };
 }
 
+/** Normalized views of Marc's ElevenLabs workflow, for the admin Workflow tab. */
+interface WorkflowNodeView {
+  id: string;
+  type: string;
+  label: string | null;
+  promptChars: number;
+  forcedToolName: string | null;
+  toolIds: string[];
+  turnTimeout: number | null;
+}
+interface WorkflowEdgeView {
+  id: string;
+  source: string;
+  target: string;
+  kind: string;
+  condition: string | null;
+}
+interface WorkflowToolView {
+  id: string;
+  name: string;
+  kind: string;
+  interruptionMode: string | null;
+  hasEnum: boolean;
+}
+interface WorkflowSettingsView {
+  turnTimeout: number | null;
+  turnEagerness: string | null;
+  mergeDefaultIgnoreTerms: boolean | null;
+  backgroundVoiceDetection: boolean | null;
+  disableFirstMessageInterruptions: boolean | null;
+}
+
 export const appRouter = router({
   system: systemRouter,
 
@@ -1630,6 +1662,95 @@ The user is asking about this specific word/phrase. Answer in the context of thi
       return { signedUrl: data.signed_url };
     }),
 
+    /**
+     * The live shape of Marc's exam, for the admin Workflow tab.
+     *
+     * Read from ElevenLabs rather than described here on purpose: the graph is
+     * edited in their dashboard as well as by `scripts/patch-marc-task2-prompts.ts`,
+     * so a hardcoded copy would drift and the tab would quietly start lying.
+     * Everything is optional — the tab degrades to the static structure it knows
+     * from the repo rather than erroring, which is why this returns a zero value
+     * instead of throwing the way `marcSignedUrl` does.
+     */
+    marcWorkflow: adminProcedure.query(async () => {
+      const empty = {
+        available: false,
+        nodes: [] as WorkflowNodeView[],
+        edges: [] as WorkflowEdgeView[],
+        tools: [] as WorkflowToolView[],
+        settings: null as WorkflowSettingsView | null,
+      };
+
+      const apiKey = process.env.ELEVENLABS_API_KEY;
+      const agentId = process.env.ELEVENLABS_MARC_AGENT_ID;
+      if (!apiKey || !agentId) return empty;
+
+      const headers = { 'xi-api-key': apiKey };
+      const api = 'https://api.elevenlabs.io/v1/convai';
+      try {
+        const res = await fetch(`${api}/agents/${agentId}`, { headers });
+        if (!res.ok) return empty;
+        const agent = await res.json() as any;
+
+        const wf = agent.workflow ?? {};
+        const nodes: WorkflowNodeView[] = Object.entries(wf.nodes ?? {}).map(([id, raw]) => {
+          const n = raw as any;
+          return {
+            id,
+            type: n.type ?? 'node',
+            label: n.label ?? null,
+            promptChars: (n.additional_prompt ?? '').length,
+            // Null is the correct value. Setting it re-forces the tool on every
+            // agent turn while the node is active, which makes Marc loop on the
+            // tool and never speak — the tab flags it if it ever comes back.
+            forcedToolName: n.forced_tool_name ?? null,
+            toolIds: (n.additional_tool_ids ?? []) as string[],
+            turnTimeout: n.conversation_config?.turn?.turn_timeout ?? null,
+          };
+        });
+
+        const edges: WorkflowEdgeView[] = Object.entries(wf.edges ?? {}).map(([id, raw]) => {
+          const e = raw as any;
+          return {
+            id,
+            source: e.source ?? '',
+            target: e.target ?? '',
+            kind: e.forward_condition?.type ?? 'unconditional',
+            condition: e.forward_condition?.condition ?? null,
+          };
+        });
+
+        // Only the tools the graph actually reaches; the workspace holds others.
+        const toolIds = Array.from(new Set(nodes.flatMap((n) => n.toolIds)));
+        const tools: WorkflowToolView[] = [];
+        for (const toolId of toolIds) {
+          const tRes = await fetch(`${api}/tools/${toolId}`, { headers });
+          if (!tRes.ok) continue;
+          const { tool_config: cfg } = await tRes.json() as any;
+          tools.push({
+            id: toolId,
+            name: cfg?.name ?? toolId,
+            kind: cfg?.type ?? 'client',
+            interruptionMode: cfg?.interruption_mode ?? null,
+            hasEnum: Boolean(cfg?.parameters?.properties?.sujet_id?.enum),
+          });
+        }
+
+        const cfg = agent.conversation_config ?? {};
+        const settings: WorkflowSettingsView = {
+          turnTimeout: cfg.turn?.turn_timeout ?? null,
+          turnEagerness: cfg.turn?.turn_eagerness ?? null,
+          mergeDefaultIgnoreTerms: cfg.turn?.merge_with_default_ignore_terms ?? null,
+          backgroundVoiceDetection: cfg.vad?.background_voice_detection ?? null,
+          disableFirstMessageInterruptions: cfg.agent?.disable_first_message_interruptions ?? null,
+        };
+
+        return { available: true, nodes, edges, tools, settings };
+      } catch {
+        return empty;
+      }
+    }),
+
     // Called by the voice client when Romain invokes the web_search tool.
     // Uses the LLM to answer factual queries and returns a short plain-text
     // snippet that the client sends back to Romain as a function_call_output.
@@ -1908,7 +2029,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
     /** Unified launch-screen queue: due-today or all-words, optional date, optional size */
     getQueue: protectedProcedure
       .input(z.object({
-        mode: z.enum(["due", "all"]),
+        mode: z.enum(["due", "all", "latest"]),
         dateKey: z.string().max(100).optional(),
         limit: z.number().min(1).max(500).optional(),
       }))

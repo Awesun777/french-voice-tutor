@@ -581,13 +581,26 @@ export function orderForReview(words: VocabEntry[]): VocabEntry[] {
  *              an explicit session size set by the user wins over the defaults.
  * mode "all":  every word the user has (optionally one dateKey), ordered
  *              overdue/new-first, sliced to `limit`.
+ * mode "latest": the most recently saved words, strictly newest-first —
+ *              deliberately NOT re-sorted by due status, since the point is
+ *              "show me what I just saved".
  */
 export async function getReviewQueue(
   userId: number,
-  opts: { mode: "due" | "all"; dateKey?: string; limit?: number }
+  opts: { mode: "due" | "all" | "latest"; dateKey?: string; limit?: number }
 ): Promise<VocabEntry[]> {
   const db = await getDb();
   if (!db) return [];
+
+  if (opts.mode === "latest") {
+    const rows = await db
+      .select()
+      .from(vocabEntries)
+      .where(eq(vocabEntries.userId, userId))
+      .orderBy(desc(vocabEntries.createdAt), desc(vocabEntries.id))
+      .limit(opts.limit && opts.limit > 0 ? opts.limit : 20);
+    return rows;
+  }
 
   if (opts.mode === "due") {
     // Reuse the interleaved due logic; when an explicit limit is given, use it
