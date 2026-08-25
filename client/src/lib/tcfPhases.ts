@@ -9,10 +9,12 @@
  *
  * `firstMessage` is duplicated here rather than set as a node-level override on
  * the agent on purpose: an override sent only on a jump cannot leak into a real
- * exam, whereas a node first_message would ride along on every transition.
+ * exam, whereas a node first_message would ride along on every transition. It
+ * takes the sitting's sujet because a jump has to announce the document the
+ * client actually chose, not a hardcoded one.
  */
 
-import { TASK2_SUJETS, type Task2Sujet } from "@/lib/tcfSujets";
+import { type Task2Sujet } from "@/lib/tcfSujets";
 
 export type ExamPhase = "complet" | "tache1" | "tache2" | "tache3";
 
@@ -21,9 +23,9 @@ export interface PhaseEntry {
   label: string;
   blurb: string;
   /** Spoken opener, standing in for the full exam introduction. */
-  firstMessage: string;
-  /** Shown immediately on entry — a jump can't wait for Marc's tool call. */
-  sujet?: Task2Sujet;
+  firstMessage: (sujet: Task2Sujet) => string;
+  /** True when the phase opens with the document already on screen. */
+  showsSujet?: boolean;
 }
 
 export const PHASE_ENTRIES: PhaseEntry[] = [
@@ -31,7 +33,7 @@ export const PHASE_ENTRIES: PhaseEntry[] = [
     id: "tache1",
     label: "Tâche 1",
     blurb: "Entretien dirigé",
-    firstMessage:
+    firstMessage: () =>
       'Bonjour. Nous passons directement à la tâche une : l\'entretien dirigé. <break time="0.6s" /> ' +
       "Est-ce que vous pouvez vous présenter ?",
   },
@@ -39,18 +41,18 @@ export const PHASE_ENTRIES: PhaseEntry[] = [
     id: "tache2",
     label: "Tâche 2",
     blurb: "Exercice en interaction",
-    firstMessage:
+    showsSujet: true,
+    firstMessage: (sujet) =>
       'Bonjour. Nous passons directement à la tâche deux : l\'exercice en interaction. <break time="0.6s" /> ' +
       'Le sujet est affiché à l\'écran devant vous. Je vous lis la consigne : <break time="0.5s" /> ' +
-      "Je suis un agent immobilier. Vous cherchez un logement. Vous m'expliquez ce que vous cherchez. " +
+      `${sujet.consigne} ` +
       '<break time="0.8s" /> Vous avez compris ?',
-    sujet: TASK2_SUJETS.logement,
   },
   {
     id: "tache3",
     label: "Tâche 3",
     blurb: "Point de vue",
-    firstMessage:
+    firstMessage: () =>
       'Bonjour. Nous passons directement à la tâche trois : l\'expression d\'un point de vue. <break time="0.6s" /> ' +
       "Je vais vous poser une question, et vous allez me donner votre opinion en la justifiant, " +
       'avec des arguments et des exemples. Vous n\'avez pas de temps de préparation. <break time="0.8s" /> ' +

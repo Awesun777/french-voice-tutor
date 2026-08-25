@@ -27,7 +27,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { avatarLayoutId } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
-import { resolveTask2Sujet, DEFAULT_TASK2_SUJET, type Task2Sujet } from "@/lib/tcfSujets";
+import {
+  TASK2_SUJETS,
+  pickTask2Sujet,
+  resolveTask2Sujet,
+  type Task2Sujet,
+} from "@/lib/tcfSujets";
 import { PHASE_ENTRIES, type ExamPhase } from "@/lib/tcfPhases";
 import {
   Mic,
@@ -175,6 +180,9 @@ export function MarcExamTab() {
   const [endedSummary, setEndedSummary] = useState<string | null>(null);
   const [sujet, setSujet] = useState<Task2Sujet | null>(null);
   const [sujetZoomed, setSujetZoomed] = useState(false);
+  // "auto" draws at random per sitting; a pinned id always wins. Drilling one
+  // scenario is a deliberate choice, so it has to survive across sittings.
+  const [pinnedSujetId, setPinnedSujetId] = useState<string>("auto");
 
   const conversationRef = useRef<VoiceConversation | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -201,13 +209,17 @@ export function MarcExamTab() {
 
   const startExam = async (phase: ExamPhase = "complet") => {
     const entry = PHASE_ENTRIES.find((p) => p.id === phase);
+    // Chosen here, not by Marc: the agent's Task 2 prompts are sujet-agnostic
+    // and read this one's consigne and fact sheet from dynamic variables, so
+    // only the scenario in play ever reaches the model.
+    const chosen = pickTask2Sujet(pinnedSujetId);
     try {
       setSessionState("connecting");
       setTranscript([]);
       setEndedSummary(null);
       // A jump lands mid-workflow, so its document goes up with the opener
       // rather than waiting on the tool call Marc makes in a full sitting.
-      setSujet(entry?.sujet ?? null);
+      setSujet(entry?.showsSujet ? chosen : null);
       setSujetZoomed(false);
       aiStreamIdRef.current = null;
       endingRef.current = false;
@@ -220,18 +232,25 @@ export function MarcExamTab() {
       const conversation = await Conversation.startSession({
         signedUrl,
 
-        // Read by the expression edges on the workflow's start node.
-        dynamicVariables: { phase_depart: phase },
+        // `phase_depart` is read by the expression edges on the workflow's
+        // start node; the rest are interpolated inside the Task 2 node prompts.
+        dynamicVariables: {
+          phase_depart: phase,
+          sujet_id: chosen.id,
+          consigne_task2: chosen.consigne,
+          apercu_task2: chosen.apercu,
+          fiche_task2: chosen.fiche,
+        },
 
         // Only ever sent on a jump — a full exam keeps the agent's own opening.
-        ...(entry ? { overrides: { agent: { firstMessage: entry.firstMessage } } } : {}),
+        ...(entry ? { overrides: { agent: { firstMessage: entry.firstMessage(chosen) } } } : {}),
 
         clientTools: {
-          // Forced on entry to the task2_setup node — Marc cannot start Task 2
-          // without it, so this is the authoritative "show the sheet" signal.
+          // Marc's cue for *when* to reveal the sheet — which sheet was already
+          // settled before connecting. The argument is honoured only if it names
+          // a real sujet, so a misquoted id cannot blank the panel.
           afficher_sujet: ({ sujet_id }: { sujet_id?: string }) => {
-            const next = resolveTask2Sujet(sujet_id);
-            if (next) setSujet(next);
+            setSujet(resolveTask2Sujet(sujet_id) ?? chosen);
           },
         },
 
@@ -265,7 +284,7 @@ export function MarcExamTab() {
               setSujet(null);
               setSujetZoomed(false);
             } else if (/deuxi[eè]me\s+t[aâ]che/i.test(text)) {
-              setSujet((prev) => prev ?? DEFAULT_TASK2_SUJET);
+              setSujet((prev) => prev ?? chosen);
             }
 
             const lineId = aiStreamIdRef.current ?? `ai-${Date.now()}`;
@@ -399,6 +418,26 @@ export function MarcExamTab() {
               <motion.p variants={idleItem} className="text-[11px] text-muted-foreground leading-relaxed">
                 Skips the introduction and every earlier task. The exam runs on from there to the feedback.
               </motion.p>
+
+              {/* Applies to a full sitting too, not just a jump — Task 2 draws a
+                  random sujet unless one is pinned here. */}
+              <motion.label variants={idleItem} className="mt-2 block">
+                <span className="block font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Sujet — tâche 2
+                </span>
+                <select
+                  value={pinnedSujetId}
+                  onChange={(e) => setPinnedSujetId(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground transition-colors hover:border-amber-500/60 focus:border-amber-500/60 focus:outline-none"
+                >
+                  <option value="auto">Au hasard</option>
+                  {Object.values(TASK2_SUJETS).map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </motion.label>
             </motion.aside>
           </div>
         )}
