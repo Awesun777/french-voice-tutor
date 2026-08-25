@@ -136,3 +136,54 @@ export const DYNAMIC_VARIABLES = [
     why: "The figures the document withholds. Only the drawn sujet's sheet is sent, so Marc cannot quote another scenario's prices.",
   },
 ];
+
+/**
+ * What actually opens a connection, and when.
+ *
+ * The thing worth understanding: a sitting is ONE WebSocket. The phases are
+ * nodes inside the graph on that single connection, so nothing reconnects
+ * between tasks and every phase runs on the same ASR, LLM and TTS. What varies
+ * per phase is the node prompt and a few turn settings — nothing else.
+ */
+export const CONNECTION_STEPS = [
+  {
+    when: "Before the first word",
+    what: "voiceSession.create",
+    where: "tRPC → MySQL",
+    detail: "Opens the row the transcript and the feedback will hang off.",
+  },
+  {
+    when: "Before the first word",
+    what: "voice.marcSignedUrl",
+    where: "tRPC (admin only) → ElevenLabs REST",
+    detail:
+      "GET /v1/convai/conversation/get-signed-url. ELEVENLABS_API_KEY never leaves the server — the browser receives only a short-lived signed URL.",
+  },
+  {
+    when: "Handshake",
+    what: "conversation_initiation_client_data",
+    where: "wss:// ElevenLabs",
+    detail:
+      "Carries the dynamic variables, and on a phase jump the firstMessage override. This is where phase_depart decides which node the sitting starts on.",
+  },
+  {
+    when: "Every turn, every phase",
+    what: "audio → ASR → LLM → TTS → audio",
+    where: "the same socket",
+    detail:
+      "One connection for the whole exam. Advancing a task moves a pointer inside the graph; it does not reconnect and does not change models.",
+  },
+  {
+    when: "Start of Tâche 2",
+    what: "afficher_sujet",
+    where: "in the browser",
+    detail:
+      "A client tool: the agent asks the page to run it and the page answers on the open socket. No extra network hop, and the sheet is a local asset.",
+  },
+  {
+    when: "When the exam ends",
+    what: "voiceSession.end",
+    where: "tRPC → MySQL",
+    detail: "Closes the row. A disconnect from the agent side counts as the end of the sitting.",
+  },
+];

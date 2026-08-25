@@ -412,6 +412,28 @@ async function fetchAudioBytes(url: string): Promise<{ bytes: Buffer; mimeType: 
   return { bytes: buf, mimeType };
 }
 
+/**
+ * A node inherits the agent's whole config and may override slices of it. Only
+ * the overrides that change behaviour are worth showing — ElevenLabs writes a
+ * lot of explicit nulls and empty objects that mean "inherit".
+ */
+function describeOverrides(cc: any): string[] {
+  if (!cc) return [];
+  const out: string[] = [];
+  if (cc.turn?.turn_timeout != null) out.push(`turn_timeout ${cc.turn.turn_timeout}s`);
+  if (cc.turn?.turn_eagerness) out.push(`turn_eagerness ${cc.turn.turn_eagerness}`);
+  if (Array.isArray(cc.conversation?.client_events)) {
+    out.push(`client_events: ${cc.conversation.client_events.join(', ')}`);
+  }
+  // None of these are set today. They are listed because an override here is
+  // the only way a phase could run on a different model than the rest.
+  if (cc.agent?.prompt?.llm) out.push(`llm ${cc.agent.prompt.llm}`);
+  if (cc.tts?.model_id) out.push(`tts ${cc.tts.model_id}`);
+  if (cc.tts?.voice_id) out.push(`voice ${cc.tts.voice_id}`);
+  if (cc.asr?.provider) out.push(`asr ${cc.asr.provider}`);
+  return out;
+}
+
 /** Normalized views of Marc's ElevenLabs workflow, for the admin Workflow tab. */
 interface WorkflowNodeView {
   id: string;
@@ -421,6 +443,8 @@ interface WorkflowNodeView {
   forcedToolName: string | null;
   toolIds: string[];
   turnTimeout: number | null;
+  /** Human-readable node-level overrides — the only thing that varies by phase. */
+  overrides: string[];
 }
 interface WorkflowEdgeView {
   id: string;
@@ -442,6 +466,15 @@ interface WorkflowSettingsView {
   mergeDefaultIgnoreTerms: boolean | null;
   backgroundVoiceDetection: boolean | null;
   disableFirstMessageInterruptions: boolean | null;
+  /** Hard cap on one conversation. Shorter than the exam is a real failure. */
+  maxDurationSeconds: number | null;
+}
+interface WorkflowAgentView {
+  name: string | null;
+  agentId: string;
+  language: string | null;
+  /** ASR / LLM / TTS as configured on the agent, in pipeline order. */
+  models: { role: string; value: string; detail: string }[];
 }
 
 export const appRouter = router({
@@ -1679,6 +1712,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         edges: [] as WorkflowEdgeView[],
         tools: [] as WorkflowToolView[],
         settings: null as WorkflowSettingsView | null,
+        agent: null as WorkflowAgentView | null,
       };
 
       const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -1706,6 +1740,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
             forcedToolName: n.forced_tool_name ?? null,
             toolIds: (n.additional_tool_ids ?? []) as string[],
             turnTimeout: n.conversation_config?.turn?.turn_timeout ?? null,
+            overrides: describeOverrides(n.conversation_config),
           };
         });
 
@@ -1743,9 +1778,43 @@ The user is asking about this specific word/phrase. Answer in the context of thi
           mergeDefaultIgnoreTerms: cfg.turn?.merge_with_default_ignore_terms ?? null,
           backgroundVoiceDetection: cfg.vad?.background_voice_detection ?? null,
           disableFirstMessageInterruptions: cfg.agent?.disable_first_message_interruptions ?? null,
+          maxDurationSeconds: cfg.conversation?.max_duration_seconds ?? null,
         };
 
-        return { available: true, nodes, edges, tools, settings };
+        const prompt = cfg.agent?.prompt ?? {};
+        const agentView: WorkflowAgentView = {
+          name: agent.name ?? null,
+          agentId,
+          language: cfg.agent?.language ?? null,
+          models: [
+            {
+              role: 'Speech to text',
+              value: cfg.asr?.provider ?? 'unknown',
+              detail: [cfg.asr?.quality && `quality ${cfg.asr.quality}`, cfg.asr?.user_input_audio_format]
+                .filter(Boolean).join(' · '),
+            },
+            {
+              role: 'Language model',
+              value: prompt.llm ?? 'unknown',
+              detail: [
+                prompt.temperature != null && `temperature ${prompt.temperature}`,
+                prompt.max_tokens === -1 ? 'no token cap' : prompt.max_tokens != null && `max ${prompt.max_tokens} tokens`,
+                `system prompt ${(prompt.prompt ?? '').length} chars`,
+              ].filter(Boolean).join(' · '),
+            },
+            {
+              role: 'Text to speech',
+              value: cfg.tts?.model_id ?? 'unknown',
+              detail: [
+                cfg.tts?.voice_id && `voice ${cfg.tts.voice_id}`,
+                cfg.tts?.stability != null && `stability ${cfg.tts.stability}`,
+                cfg.tts?.speed != null && `speed ${cfg.tts.speed}`,
+              ].filter(Boolean).join(' · '),
+            },
+          ],
+        };
+
+        return { available: true, nodes, edges, tools, settings, agent: agentView };
       } catch {
         return empty;
       }

@@ -8,12 +8,13 @@
  * knows from the repo and says so, rather than showing an error page.
  */
 
-import { Workflow, FileText, Timer, GitBranch, Wrench, CheckCircle2, AlertTriangle, Info } from "lucide-react";
+import { Workflow, FileText, Timer, GitBranch, Wrench, CheckCircle2, AlertTriangle, Info, Cpu, Radio } from "lucide-react";
 
 import { trpc } from "@/lib/trpc";
 import { TASK2_SUJETS } from "@/lib/tcfSujets";
 import {
   EXAM_PHASES,
+  CONNECTION_STEPS,
   DYNAMIC_VARIABLES,
   OFFICIAL_SECONDS,
   TOTAL_SECONDS,
@@ -142,8 +143,119 @@ function Timeline() {
   );
 }
 
-type LiveNode = { id: string; type: string; label: string | null; promptChars: number; forcedToolName: string | null; toolIds: string[]; turnTimeout: number | null };
+type LiveNode = { id: string; type: string; label: string | null; promptChars: number; forcedToolName: string | null; toolIds: string[]; turnTimeout: number | null; overrides: string[] };
 type LiveEdge = { id: string; source: string; target: string; kind: string; condition: string | null };
+
+/**
+ * The pipeline, and the fact that there is only one of it.
+ *
+ * The obvious guess about a multi-phase exam is that each phase connects to
+ * something of its own. It does not, and that is the single most useful thing
+ * this tab can say — so it is stated once, plainly, above the table.
+ */
+function Models({ agent, settings, nodes }: { agent: any; settings: any; nodes: LiveNode[] }) {
+  const overridden = nodes.filter((n) => n.overrides.length);
+
+  return (
+    <section className={CARD}>
+      <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+        <Cpu className="w-5 h-5 text-speaking" /> Models
+      </h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        <span className="font-semibold text-foreground">{agent?.name ?? "—"}</span>
+        <code className="ml-1.5 text-[11px]">{agent?.agentId}</code>
+        {agent?.language ? ` · ${agent.language}` : ""}
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Every phase runs on these three. A task does not switch models, because a task is a node on one
+        connection rather than a connection of its own.
+      </p>
+
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-muted-foreground">
+              <th className="py-1 pr-3 font-semibold">Stage</th>
+              <th className="py-1 pr-3 font-semibold">Model</th>
+              <th className="py-1 font-semibold">Settings</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {(agent?.models ?? []).map((m: any) => (
+              <tr key={m.role} className="align-top">
+                <td className="py-2 pr-3 whitespace-nowrap text-muted-foreground">{m.role}</td>
+                <td className="py-2 pr-3">
+                  <code className="text-[12px] font-bold text-accent-strong">{m.value}</code>
+                </td>
+                <td className="py-2 text-[11px] text-muted-foreground">{m.detail || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-4 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        What each phase changes
+      </p>
+      {overridden.length === 0 ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          No node overrides anything — every phase inherits the agent's settings exactly.
+        </p>
+      ) : (
+        <ul className="mt-1 divide-y divide-border">
+          {overridden.map((n) => {
+            const phase = phaseForNode(n.id);
+            return (
+              <li key={n.id} className="flex flex-wrap items-baseline gap-x-2 py-1.5">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-[3px]" style={{ backgroundColor: phase?.color ?? "#CBD9E6" }} />
+                  <code className="text-[12px] font-bold text-foreground">{n.id}</code>
+                </span>
+                <span className="text-[11px] text-muted-foreground">{n.overrides.join(" · ")}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+        Everything not listed is inherited. A model override would appear here too, which is how you would notice
+        one that was never meant to be set.
+      </p>
+    </section>
+  );
+}
+
+/** The call chain, in the order it happens. */
+function Connection({ settings }: { settings: any }) {
+  return (
+    <section className={CARD}>
+      <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+        <Radio className="w-5 h-5 text-speaking" /> What connects, and when
+      </h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        A sitting is one WebSocket, held open for
+        {settings?.maxDurationSeconds ? ` up to ${formatDuration(settings.maxDurationSeconds)}` : " the whole exam"}.
+      </p>
+      <ol className="mt-3 divide-y divide-border">
+        {CONNECTION_STEPS.map((step, i) => (
+          <li key={step.what} className="flex gap-3 py-2.5">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-bold tabular-nums text-foreground">
+              {i + 1}
+            </span>
+            <div className="min-w-0">
+              <p className="flex flex-wrap items-baseline gap-x-2">
+                <code className="text-[12px] font-bold text-accent-strong">{step.what}</code>
+                <span className="text-[11px] text-muted-foreground">{step.where}</span>
+              </p>
+              <p className="text-[11px] font-semibold text-foreground">{step.when}</p>
+              <p className="text-[11px] leading-snug text-muted-foreground">{step.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 /**
  * The graph, drawn rather than listed, because the interesting part is the shape:
@@ -273,6 +385,14 @@ function Checks({ nodes, tools, settings }: { nodes: LiveNode[]; tools: any[]; s
       detail: `afficher_sujet interruption_mode = ${sujetTool?.interruptionMode ?? "unknown"}. It must cover the turn after the call, which is the scripted consigne.`,
     },
     {
+      ok: settings?.maxDurationSeconds == null || settings.maxDurationSeconds >= TOTAL_SECONDS,
+      label: "The connection outlasts the exam",
+      detail:
+        settings?.maxDurationSeconds != null && settings.maxDurationSeconds < TOTAL_SECONDS
+          ? `max_duration_seconds is ${formatDuration(settings.maxDurationSeconds)} but a full sitting runs ${formatDuration(TOTAL_SECONDS)} — the socket closes mid-exam.`
+          : `max_duration_seconds covers the ${formatDuration(TOTAL_SECONDS)} sitting.`,
+    },
+    {
       ok: settings?.backgroundVoiceDetection === true,
       label: "Background voices ignored",
       detail: "vad.background_voice_detection stops a TV or a passer-by from taking the candidate's turn.",
@@ -350,6 +470,13 @@ export default function WorkflowTab() {
         </div>
 
         <Timeline />
+
+        {live && (
+          <div className="grid gap-4 lg:grid-cols-2 items-start">
+            <Models agent={live.agent} settings={live.settings} nodes={live.nodes} />
+            <Connection settings={live.settings} />
+          </div>
+        )}
 
         {live && <ExamGraph nodes={live.nodes} edges={live.edges} />}
 
