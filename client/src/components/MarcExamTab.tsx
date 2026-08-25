@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { avatarLayoutId } from "@/components/AvatarVideo";
 import { idleContainer, idleItem } from "@/components/idleReveal";
 import { resolveTask2Sujet, DEFAULT_TASK2_SUJET, type Task2Sujet } from "@/lib/tcfSujets";
+import { PHASE_ENTRIES, type ExamPhase } from "@/lib/tcfPhases";
 import {
   Mic,
   PhoneOff,
@@ -198,12 +199,15 @@ export function MarcExamTab() {
   // Tear down the live connection if the tab unmounts so Marc stops talking.
   useEffect(() => cleanup, [cleanup]);
 
-  const startExam = async () => {
+  const startExam = async (phase: ExamPhase = "complet") => {
+    const entry = PHASE_ENTRIES.find((p) => p.id === phase);
     try {
       setSessionState("connecting");
       setTranscript([]);
       setEndedSummary(null);
-      setSujet(null);
+      // A jump lands mid-workflow, so its document goes up with the opener
+      // rather than waiting on the tool call Marc makes in a full sitting.
+      setSujet(entry?.sujet ?? null);
       setSujetZoomed(false);
       aiStreamIdRef.current = null;
       endingRef.current = false;
@@ -215,6 +219,12 @@ export function MarcExamTab() {
 
       const conversation = await Conversation.startSession({
         signedUrl,
+
+        // Read by the expression edges on the workflow's start node.
+        dynamicVariables: { phase_depart: phase },
+
+        // Only ever sent on a jump — a full exam keeps the agent's own opening.
+        ...(entry ? { overrides: { agent: { firstMessage: entry.firstMessage } } } : {}),
 
         clientTools: {
           // Forced on entry to the task2_setup node — Marc cannot start Task 2
@@ -322,7 +332,8 @@ export function MarcExamTab() {
       <div className="flex-1 overflow-y-auto">
         {/* Idle — exam briefing */}
         {sessionState === "idle" && (
-          <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-6 text-center gap-5">
+          <div className="flex flex-col lg:flex-row items-center justify-center h-full min-h-[400px] p-6 gap-6 lg:gap-8">
+            <div className="flex flex-col items-center text-center gap-5">
             <motion.div
               layoutId={avatarLayoutId("marc")}
               className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-amber-500/40"
@@ -354,13 +365,41 @@ export function MarcExamTab() {
 
               <motion.div variants={idleItem}>
                 <button
-                  onClick={startExam}
+                  onClick={() => startExam()}
                   className="px-8 py-3 bg-amber-600 hover:bg-amber-600/90 text-white rounded-2xl font-semibold text-base transition-all shadow-lg shadow-amber-600/20 hover:shadow-amber-600/30"
                 >
                   Start the Exam
                 </button>
               </motion.div>
             </motion.div>
+            </div>
+
+            {/* Straight into one task — for drilling a phase without sitting
+                the whole exam. The workflow still runs on from there. */}
+            <motion.aside
+              variants={idleContainer}
+              initial="hidden"
+              animate="show"
+              className="flex flex-col justify-center gap-2 w-full max-w-xs lg:w-52 lg:border-l lg:border-border lg:pl-6"
+            >
+              <motion.p variants={idleItem} className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Start from a task
+              </motion.p>
+              {PHASE_ENTRIES.map((entry) => (
+                <motion.button
+                  key={entry.id}
+                  variants={idleItem}
+                  onClick={() => startExam(entry.id)}
+                  className="text-left px-3 py-2 rounded-xl border border-border bg-card hover:border-amber-500/60 hover:bg-amber-500/5 transition-colors"
+                >
+                  <span className="block text-sm font-semibold text-foreground">{entry.label}</span>
+                  <span className="block text-[11px] text-muted-foreground">{entry.blurb}</span>
+                </motion.button>
+              ))}
+              <motion.p variants={idleItem} className="text-[11px] text-muted-foreground leading-relaxed">
+                Skips the introduction and every earlier task. The exam runs on from there to the feedback.
+              </motion.p>
+            </motion.aside>
           </div>
         )}
 
