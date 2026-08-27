@@ -158,6 +158,39 @@ export const dictCache = mysqlTable("dict_cache", {
 export type DictCacheEntry = typeof dictCache.$inferSelect;
 
 /**
+ * Server-side TTS audio cache — one row per unique (engine, voice, text).
+ * Audio stored inline as base64 (MEDIUMTEXT in prod DDL — plain TEXT caps at
+ * 64KB, too small for sentences). Storing bytes in MySQL rather than S3 keys
+ * avoids the storage proxy's expiring download URLs.
+ * NOTE: drizzle migrate is broken in this repo — DDL applied manually via
+ * mysql2 (see drizzle/manual/).
+ */
+export const ttsCache = mysqlTable("tts_cache", {
+  textHash: varchar("text_hash", { length: 64 }).primaryKey(), // sha256 of engine:voice:text
+  text: varchar("text", { length: 600 }).notNull(),
+  engine: varchar("engine", { length: 32 }).notNull(),
+  audioB64: text("audio_b64").notNull(),
+  mimeType: varchar("mime_type", { length: 64 }).notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+/**
+ * Native-speaker word recordings from Lingua Libre (Wikimedia Commons,
+ * CC BY-SA 4.0). term_key runs under utf8mb4_bin like dict_cache (accent-
+ * exact). status "none" caches misses so Commons isn't re-queried.
+ * speaker + sourceFile carry the attribution the license requires.
+ */
+export const wordAudio = mysqlTable("word_audio", {
+  termKey: varchar("term_key", { length: 255 }).primaryKey(),
+  status: mysqlEnum("status", ["found", "none"]).notNull(),
+  audioB64: text("audio_b64"),
+  mimeType: varchar("mime_type", { length: 64 }),
+  speaker: varchar("speaker", { length: 128 }),
+  sourceFile: varchar("source_file", { length: 512 }),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+/**
  * Queue for the Listening Lab ingest dashboard. The website only writes and
  * reads rows here; the actual download/transcribe/gloss runs on a local
  * machine (see scripts/ingest-worker.ts) because YouTube bot-blocks

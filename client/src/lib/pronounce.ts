@@ -1,5 +1,7 @@
 /**
- * French pronunciation using OpenAI TTS (tts-1) via a server-side tRPC call.
+ * French pronunciation via a server-side tRPC call. The server picks the
+ * engine (ElevenLabs Anna, OpenAI fallback) and caches audio persistently;
+ * see server/tts.ts.
  *
  * Architecture:
  *   - First call for a given text: calls voice.tts mutation → receives base64 MP3
@@ -17,7 +19,7 @@ import { trpc } from "./trpc";
 
 // Client-side blob URL cache — persists for the lifetime of the browser tab.
 // Version suffix ensures stale blobs from previous voice/model changes are not reused.
-const CACHE_VERSION = 'v3-marin-fr';
+const CACHE_VERSION = 'v4-anna-fr';
 const audioCache = new Map<string, string>(); // `${CACHE_VERSION}:${text}` → blob URL
 
 let _currentAudio: HTMLAudioElement | null = null;

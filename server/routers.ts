@@ -5,6 +5,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { invokeLLM } from "./_core/llm";
 import { enforceVerbPreposition } from "./verbPrepositions";
 import { enforcePronunciation } from "./ipaLexicon";
+import { synthesizeFrench } from "./tts";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
@@ -1623,27 +1624,12 @@ The user is asking about this specific word/phrase. Answer in the context of thi
     tts: protectedProcedure
       .input(z.object({ text: z.string().min(1).max(500) }))
       .mutation(async ({ input }) => {
-        const apiKey = process.env.OPENAI_API_KEY;
-        if (!apiKey) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'OpenAI not configured' });
-        const resp = await fetch('https://api.openai.com/v1/audio/speech', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini-tts',
-            input: input.text,
-            voice: 'marin',
-            response_format: 'mp3',
-            speed: 0.9,
-            instructions: 'The text to speak is ALWAYS French — read it as a native French speaker with authentic French phonetics and a natural French accent. This holds even for single words that happen to be spelled like English words (e.g. "important", "table", "message", "nation", "orange", "possible", "restaurant", "double", "impossible"): pronounce them the French way, NEVER anglicized.',
-          }),
-        });
-        if (!resp.ok) {
-          const err = await resp.text();
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `TTS error: ${err}` });
+        try {
+          const { base64, mimeType } = await synthesizeFrench(input.text);
+          return { base64, mimeType };
+        } catch (e) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `TTS error: ${String(e).slice(0, 300)}` });
         }
-        const arrayBuffer = await resp.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString('base64');
-        return { base64, mimeType: 'audio/mpeg' };
       }),
 
     transcribe: protectedProcedure
