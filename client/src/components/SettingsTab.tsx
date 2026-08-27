@@ -255,6 +255,14 @@ export default function SettingsTab({
         <AccountCard user={user} />
         <VoiceModelCard />
         <ReviewSettingsCard />
+        {/* Required by CC BY-SA for the native word recordings served by
+            voice.pronounce; per-clip speaker credit rides in the API payload. */}
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Word pronunciations feature native-speaker recordings by{" "}
+          <a href="https://lingualibre.org" target="_blank" rel="noreferrer" className="underline hover:text-foreground">Lingua Libre</a>{" "}
+          contributors, hosted on Wikimedia Commons (CC BY-SA 4.0). Phonetic transcriptions
+          include data from Wiktionary via WikiPron (CC BY-SA).
+        </p>
       </div>
     </div>
   );

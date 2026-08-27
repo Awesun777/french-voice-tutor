@@ -6,6 +6,7 @@ import { invokeLLM } from "./_core/llm";
 import { enforceVerbPreposition } from "./verbPrepositions";
 import { enforcePronunciation } from "./ipaLexicon";
 import { synthesizeFrench } from "./tts";
+import { fetchCommonsRecording } from "./commonsAudio";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
@@ -31,6 +32,7 @@ import {
   googleAccounts,
   googleDriveSettings,
   emailCredentials,
+  wordAudio,
 } from "../drizzle/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "./db";
@@ -1629,6 +1631,72 @@ The user is asking about this specific word/phrase. Answer in the context of thi
           return { base64, mimeType };
         } catch (e) {
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `TTS error: ${String(e).slice(0, 300)}` });
+        }
+      }),
+
+    /**
+     * Pronunciation with provenance: single words are served from native
+     * Lingua Libre recordings (Wikimedia Commons, CC BY-SA — attribution in
+     * the payload) when one exists, cached in word_audio either way;
+     * multi-word text and misses go through the TTS chain (Anna → OpenAI).
+     */
+    pronounce: protectedProcedure
+      .input(z.object({ text: z.string().min(1).max(500) }))
+      .mutation(async ({ input }) => {
+        const text = input.text.trim();
+        const isSingleWord = text.length > 0 && !/\s/.test(text);
+        try {
+          if (isSingleWord) {
+            const key = text.toLowerCase().normalize("NFC");
+            const db = await getDb();
+            if (db) {
+              const rows = await db.select().from(wordAudio).where(eq(wordAudio.termKey, key));
+              if (rows.length > 0) {
+                const row = rows[0];
+                if (row.status === "found" && row.audioB64) {
+                  return {
+                    base64: row.audioB64,
+                    mimeType: row.mimeType ?? "audio/mpeg",
+                    attribution: row.speaker
+                      ? `Voice: ${row.speaker} — Lingua Libre / Wikimedia Commons (CC BY-SA 4.0)`
+                      : undefined,
+                  };
+                }
+                // status "none": known miss — fall through to TTS without re-querying Commons.
+              } else {
+                try {
+                  const rec = await fetchCommonsRecording(key);
+                  await db
+                    .insert(wordAudio)
+                    .values({
+                      termKey: key,
+                      status: rec ? "found" : "none",
+                      audioB64: rec?.base64 ?? null,
+                      mimeType: rec?.mimeType ?? null,
+                      speaker: rec?.speaker ?? null,
+                      sourceFile: rec?.sourceFile ?? null,
+                      createdAt: Date.now(),
+                    })
+                    .onDuplicateKeyUpdate({ set: { createdAt: Date.now() } });
+                  if (rec) {
+                    return {
+                      base64: rec.base64,
+                      mimeType: rec.mimeType,
+                      attribution: `Voice: ${rec.speaker} — Lingua Libre / Wikimedia Commons (CC BY-SA 4.0)`,
+                    };
+                  }
+                } catch (e) {
+                  // Commons being down must never block pronunciation — TTS instead,
+                  // and don't cache "none" so the next play retries Commons.
+                  console.warn("[pronounce] Commons lookup failed:", String(e).slice(0, 200));
+                }
+              }
+            }
+          }
+          const { base64, mimeType } = await synthesizeFrench(text);
+          return { base64, mimeType, attribution: undefined as string | undefined };
+        } catch (e) {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: `Pronounce error: ${String(e).slice(0, 300)}` });
         }
       }),
 

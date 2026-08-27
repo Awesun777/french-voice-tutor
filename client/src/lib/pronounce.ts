@@ -56,7 +56,9 @@ export function usePronounce() {
   const [activeText, setActiveText] = useState<string | null>(null);
   const pendingRef = useRef<string | null>(null);
 
-  const ttsMutation = trpc.voice.tts.useMutation();
+  // voice.pronounce serves native Lingua Libre recordings for single words
+  // (with attribution in the payload) and falls back to TTS for everything else.
+  const ttsMutation = trpc.voice.pronounce.useMutation();
 
   // Fetch + cache the audio for `text` WITHOUT playing it, so a later speak()
   // is instant. Used to warm the next flashcard while the current one shows.
