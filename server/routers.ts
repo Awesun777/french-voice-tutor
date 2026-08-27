@@ -4,6 +4,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { invokeLLM } from "./_core/llm";
 import { enforceVerbPreposition } from "./verbPrepositions";
+import { enforcePronunciation } from "./ipaLexicon";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
@@ -700,7 +701,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         } as const;
         for (const variant of CHAIN[input.parts]) {
           const hit = await getCached(base + SUFFIX[variant]);
-          if (hit) return enforceVerbPreposition(enforceLemmaHeadword(hit));
+          if (hit) return enforcePronunciation(enforceVerbPreposition(enforceLemmaHeadword(hit)));
         }
         const key = base + SUFFIX[input.parts];
 
@@ -924,8 +925,9 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
         }
         enforceLemmaHeadword(result);
         // Applied after lemma enforcement (keys on the base form) and before
-        // setCache, so the corrected preposition is what gets persisted.
+        // setCache, so the corrected values are what get persisted.
         enforceVerbPreposition(result);
+        enforcePronunciation(result);
         // The model sometimes pads examples with an empty {fr:"",en:""} —
         // structure the schema enforces, emptiness it cannot. Never cache them.
         if (Array.isArray((result as any).examples)) {
