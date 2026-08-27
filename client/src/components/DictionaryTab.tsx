@@ -235,16 +235,19 @@ function WordResult({
           </div>
         )}
 
-        {/* Governed preposition (verbs) — e.g. jouer À, se souvenir DE */}
-        {result.governedPreposition && (
+        {/* Governed preposition (verbs) — e.g. jouer À, se souvenir DE.
+            Also shown with an empty preposition when there's an explanation:
+            the direct-object traps (attendre, chercher…) are exactly where an
+            English speaker would wrongly add one. */}
+        {(result.governedPreposition || result.prepositionExplanation) && (
           <div className="border border-sky-500/40 bg-sky-500/10 rounded-xl p-3 mb-3 space-y-1">
             <div className="flex items-center gap-2 flex-wrap text-sm">
               <span className="font-display text-xs font-bold text-sky-800 uppercase tracking-wide">Preposition</span>
               <span className="font-semibold text-foreground">{result.word}</span>
               <span className="px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-900 font-bold">
-                {result.governedPreposition}
+                {result.governedPreposition || "no preposition"}
               </span>
-              <span className="text-muted-foreground">+ complement</span>
+              <span className="text-muted-foreground">{result.governedPreposition ? "+ complement" : "— direct object"}</span>
             </div>
             {result.prepositionExplanation && (
               <p className="text-sm text-sky-900/80 leading-relaxed">{result.prepositionExplanation}</p>

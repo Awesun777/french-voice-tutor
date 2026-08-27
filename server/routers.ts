@@ -3,6 +3,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { invokeLLM } from "./_core/llm";
+import { enforceVerbPreposition } from "./verbPrepositions";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
@@ -699,7 +700,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         } as const;
         for (const variant of CHAIN[input.parts]) {
           const hit = await getCached(base + SUFFIX[variant]);
-          if (hit) return enforceLemmaHeadword(hit);
+          if (hit) return enforceVerbPreposition(enforceLemmaHeadword(hit));
         }
         const key = base + SUFFIX[input.parts];
 
@@ -834,7 +835,7 @@ The user may have omitted accents; return proper French WITH accents. If it is n
 
 REFLEXIVE FIELDS (for verbs): set "isReflexive" true only if the base form is pronominal (has "se"/"s'", e.g. se souvenir). Set "hasReflexiveForm" true if the verb is normally non-reflexive but also has a common pronominal use (e.g. "laver" → "se laver", "appeler" → "s'appeler"). When either is true, fill "reflexiveForm" (e.g. "se laver") and "nonReflexiveForm" (e.g. "laver"), set "reflexiveType" (e.g. "reflexive", "reciprocal", "idiomatic"), and in "reflexiveExplanation" explain in English what the reflexive form means and how it differs from the plain verb. If the word is not a verb or has no reflexive use, set isReflexive and hasReflexiveForm to false and leave those string fields empty.
 
-GOVERNED PREPOSITION (for verbs): set "governedPreposition" to the preposition the verb normally requires before its complement — "à" (e.g. jouer à, penser à, téléphoner à, réussir à), "de" (e.g. se souvenir de, parler de, avoir besoin de, décider de), or "" (empty) if it takes a direct object with no preposition (e.g. regarder, écouter, attendre) or isn't a verb. In "prepositionExplanation" briefly explain the pattern with a short example, especially when it differs from English (e.g. "attendre takes no preposition, unlike English 'wait FOR'"). Leave prepositionExplanation empty when governedPreposition is "".
+GOVERNED PREPOSITION (for verbs): set "governedPreposition" to the preposition the verb normally requires before its complement — "à" (e.g. jouer à, penser à, téléphoner à, réussir à), "de" (e.g. se souvenir de, parler de, avoir besoin de, décider de), or "" (empty) if it takes a direct object with no preposition (e.g. regarder, écouter, attendre) or isn't a verb. In "prepositionExplanation" briefly explain the pattern with a short example, especially when it differs from English (e.g. "attendre takes no preposition, unlike English 'wait FOR'"). ALSO fill prepositionExplanation when governedPreposition is "" but the verb takes a direct object where English uses a preposition (attendre/wait for, chercher/look for, écouter/listen to, regarder/look at, payer/pay for) — that trap is worth flagging. Leave prepositionExplanation empty for non-verbs and for verbs with no notable pattern.
 
 ADJECTIVE / STATE AUXILIARY: if the word is an adjective or expresses a personal state, set "adjectiveAuxiliary" to the verb used to express that state about a person — "être" for normal adjectives (e.g. "je suis content", "elle est fatiguée") or "avoir" for the sensation/state set (e.g. "j'ai faim", "j'ai froid", "j'ai peur", "j'ai raison", "j'ai sommeil"). Set "" if it is not an adjective or state word (e.g. a plain verb or concrete noun). In "adjectiveAuxiliaryExplanation" give a short example in French with its English gloss (e.g. "j'ai froid = I'm cold (uses avoir, not être)"). Leave empty when adjectiveAuxiliary is "".
 
@@ -922,6 +923,9 @@ Provide 2 example sentences. ${detailsInstruction} If the input is not a real Fr
           result.type = type; // fall back to the detected input type
         }
         enforceLemmaHeadword(result);
+        // Applied after lemma enforcement (keys on the base form) and before
+        // setCache, so the corrected preposition is what gets persisted.
+        enforceVerbPreposition(result);
         // The model sometimes pads examples with an empty {fr:"",en:""} —
         // structure the schema enforces, emptiness it cannot. Never cache them.
         if (Array.isArray((result as any).examples)) {
