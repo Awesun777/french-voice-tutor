@@ -47,6 +47,27 @@ export const TASK2_SUJETS: Record<string, Task2Sujet> = {
       "justificatif de revenus et un garant demandés ; bail d'un an renouvelable ; " +
       "visites possibles en fin de semaine ; animaux acceptés dans la maison seulement.",
   },
+  restaurant: {
+    id: "restaurant",
+    label: "Tâche 2 — Sujet 2",
+    consigne:
+      "Je suis le gérant d'un restaurant. Vous voulez organiser un repas de famille. Vous m'expliquez ce que vous cherchez.",
+    image: "/tcf/task2-sujet2-restaurant.png",
+    alt:
+      "Document du sujet : trois salles de restaurant — une petite salle de 15 personnes au rez-de-chaussée, " +
+      "une grande salle de 40 personnes au premier étage, et une terrasse couverte de 25 personnes dans un jardin.",
+    apercu: "trois salles : une petite salle, une grande salle et une terrasse couverte",
+    fiche:
+      "• Petite salle, 15 personnes, rez-de-chaussée — menu entrée-plat-dessert à 29 € par personne ; " +
+      "boissons non comprises ; disponible tous les soirs sauf le samedi ; pas de supplément de privatisation.\n" +
+      "• Grande salle, 40 personnes, premier étage sans ascenseur — menu à 34 € ou buffet à 38 € par personne ; " +
+      "privatisation 100 € le samedi soir ; libre en semaine ; deux marches à l'entrée de la salle.\n" +
+      "• Terrasse couverte, 25 personnes, jardin — buffet uniquement à 32 € par personne ; " +
+      "chauffée d'octobre à mars ; fermée en cas de forte pluie ; disponible le week-end.\n" +
+      "• Conditions du restaurant : réservation au moins deux semaines à l'avance ; acompte de 30 % ; " +
+      "menu choisi cinq jours avant ; annulation gratuite jusqu'à 72 heures ; gâteau apporté par le client " +
+      "accepté sans droit de bouchon ; menu enfant à 12 € ; deux plats végétariens possibles sur demande.",
+  },
 };
 
 /** The sujet Marc falls back to if the tool call never lands. */
