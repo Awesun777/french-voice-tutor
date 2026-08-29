@@ -17,6 +17,17 @@ describe("parseSpeaker", () => {
   });
 });
 
+describe("cooldown circuit breaker", () => {
+  it("fails fast without touching the network while cooling down", async () => {
+    const { fetchCommonsRecording, commonsInCooldown, _setCooldownUntil } = await import("./commonsAudio");
+    _setCooldownUntil(Date.now() + 60_000);
+    expect(commonsInCooldown()).toBe(true);
+    await expect(fetchCommonsRecording("mot")).rejects.toThrow(/cooldown/);
+    _setCooldownUntil(0);
+    expect(commonsInCooldown()).toBe(false);
+  });
+});
+
 describe("transcodeUrl", () => {
   it("derives the mp3 transcode path from the original", () => {
     expect(transcodeUrl("https://upload.wikimedia.org/wikipedia/commons/a/ab/LL-Q150_(fra)-X-mot.wav"))

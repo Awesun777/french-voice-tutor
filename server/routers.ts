@@ -6,7 +6,7 @@ import { invokeLLM } from "./_core/llm";
 import { enforceVerbPreposition } from "./verbPrepositions";
 import { enforcePronunciation } from "./ipaLexicon";
 import { synthesizeFrench } from "./tts";
-import { fetchCommonsRecording } from "./commonsAudio";
+import { fetchCommonsRecording, commonsInCooldown } from "./commonsAudio";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
 import { systemRouter } from "./_core/systemRouter";
@@ -1663,7 +1663,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
                   };
                 }
                 // status "none": known miss — fall through to TTS without re-querying Commons.
-              } else {
+              } else if (!commonsInCooldown()) {
                 try {
                   const rec = await fetchCommonsRecording(key);
                   await db

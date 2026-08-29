@@ -308,3 +308,13 @@ describe("extractVocabGroups section skipping", () => {
     return { sectionHashes: sections.map((s) => s.hash) };
   }
 });
+
+describe("isTruncationError", () => {
+  it("matches both providers' truncation messages", async () => {
+    const { isTruncationError } = await import("./googleDrive");
+    expect(isTruncationError(new Error("DeepSeek response was truncated (hit max_tokens) — extraction batch too large"))).toBe(true);
+    expect(isTruncationError(new Error("Gemini response was truncated (hit maxOutputTokens) — extraction batch too large"))).toBe(true);
+    expect(isTruncationError(new Error("DeepSeek API error 429: rate limited"))).toBe(false);
+    expect(isTruncationError("truncated")).toBe(false);
+  });
+});

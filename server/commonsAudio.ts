@@ -12,6 +12,43 @@
  */
 const UA = { "user-agent": "romaintalk.com dictionary (French tutor app; audio via Lingua Libre)" };
 
+// ── Politeness / self-defense against 429 storms ─────────────────────────────
+// Wikimedia rate-limits datacenter IPs aggressively. Two guards:
+// 1. A cooldown circuit breaker: any 429 pauses ALL Commons lookups for a
+//    while (callers fall back to TTS; misses are NOT cached during cooldown,
+//    so words retry once Commons is willing again).
+// 2. Minimum spacing between requests, serialized through a queue — a
+//    flashcard session autoplaying uncached words must not burst.
+const COOLDOWN_MS = 15 * 60 * 1000;
+const MIN_INTERVAL_MS = 1_000;
+let cooldownUntil = 0;
+let queueTail: Promise<void> = Promise.resolve();
+let lastRequestAt = 0;
+
+export function commonsInCooldown(): boolean {
+  return Date.now() < cooldownUntil;
+}
+
+/** For tests. */
+export function _setCooldownUntil(ts: number) { cooldownUntil = ts; }
+
+async function politeFetch(url: string): Promise<Response> {
+  if (commonsInCooldown()) throw new Error("Commons in cooldown after rate limiting");
+  const myTurn = queueTail.then(async () => {
+    const wait = lastRequestAt + MIN_INTERVAL_MS - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    lastRequestAt = Date.now();
+  });
+  queueTail = myTurn.catch(() => {});
+  await myTurn;
+  const res = await fetch(url, { headers: UA });
+  if (res.status === 429) {
+    cooldownUntil = Date.now() + COOLDOWN_MS;
+    console.warn(`[commons] 429 — pausing Commons lookups for ${COOLDOWN_MS / 60000} min`);
+  }
+  return res;
+}
+
 export interface CommonsRecording {
   base64: string;
   mimeType: string;
@@ -40,18 +77,16 @@ export function transcodeUrl(originalUrl: string): string {
 /** Find and download a native recording for `word`, or null if none exists. */
 export async function fetchCommonsRecording(word: string): Promise<CommonsRecording | null> {
   const q = encodeURIComponent(`intitle:"LL-Q150 (fra)" intitle:"${word}.wav"`);
-  const searchRes = await fetch(
-    `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${q}&srnamespace=6&srlimit=5&format=json`,
-    { headers: UA }
+  const searchRes = await politeFetch(
+    `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${q}&srnamespace=6&srlimit=5&format=json`
   );
   if (!searchRes.ok) throw new Error(`Commons search ${searchRes.status}`);
   const hits: { title: string }[] = (await searchRes.json())?.query?.search ?? [];
   const exact = hits.find((h) => h.title.toLowerCase().endsWith(`-${word.toLowerCase()}.wav`));
   if (!exact) return null;
 
-  const infoRes = await fetch(
-    `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(exact.title)}&prop=imageinfo&iiprop=url&format=json`,
-    { headers: UA }
+  const infoRes = await politeFetch(
+    `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(exact.title)}&prop=imageinfo&iiprop=url&format=json`
   );
   if (!infoRes.ok) throw new Error(`Commons imageinfo ${infoRes.status}`);
   const pages = (await infoRes.json())?.query?.pages ?? {};
@@ -59,10 +94,10 @@ export async function fetchCommonsRecording(word: string): Promise<CommonsRecord
   if (!originalUrl) return null;
 
   // Prefer the mp3 transcode; the original wav is the fallback.
-  let audioRes = await fetch(transcodeUrl(originalUrl), { headers: UA });
+  let audioRes = await politeFetch(transcodeUrl(originalUrl));
   let mimeType = "audio/mpeg";
   if (!audioRes.ok) {
-    audioRes = await fetch(originalUrl, { headers: UA });
+    audioRes = await politeFetch(originalUrl);
     mimeType = "audio/wav";
     if (!audioRes.ok) throw new Error(`Commons audio download ${audioRes.status}`);
   }

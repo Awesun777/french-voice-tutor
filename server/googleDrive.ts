@@ -402,7 +402,36 @@ export type ExtractionModel = "deepseek-v4-flash" | "gemini-2.5-flash";
  * This keeps the output small and predictable, avoiding the 8192-token truncation
  * that plagued the old full-document prompt.
  */
+/** True for the truncation errors thrown by callDeepSeek / callGemini. */
+export function isTruncationError(err: unknown): boolean {
+  return err instanceof Error && /truncated .*(max_tokens|maxOutputTokens)/i.test(err.message);
+}
+
+/**
+ * Translate a batch, splitting it in half and retrying when the model's
+ * output hits its token cap. A reasoning model's thinking counts against
+ * max_tokens, so batch size in LINES doesn't bound output size in TOKENS —
+ * a verbose reasoning chain on a dense batch can truncate the JSON even
+ * within the normal 100–150-line window. Halving converges: fewer lines →
+ * shorter reasoning + shorter answer. A single line that still truncates
+ * rethrows (that would be a model bug, not a batching problem).
+ */
 async function translateBatch(
+  lines: string[],
+  model: ExtractionModel
+): Promise<ExtractedWord[]> {
+  try {
+    return await translateBatchOnce(lines, model);
+  } catch (err) {
+    if (!isTruncationError(err) || lines.length <= 1) throw err;
+    const mid = Math.ceil(lines.length / 2);
+    console.warn(`[DriveSync] ${model} truncated on ${lines.length} lines — splitting and retrying`);
+    const [a, b] = [lines.slice(0, mid), lines.slice(mid)];
+    return [...(await translateBatch(a, model)), ...(await translateBatch(b, model))];
+  }
+}
+
+async function translateBatchOnce(
   lines: string[],
   model: ExtractionModel
 ): Promise<ExtractedWord[]> {
