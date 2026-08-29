@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry, SidebarTab, ImportItem } from "@/types";
-import { Star, Trash2, Search, Download, Upload, Loader2, ChevronDown, ChevronRight, Pencil, Check, X, AlertTriangle, Cloud } from "lucide-react";
+import { Star, Trash2, Search, Download, Upload, Loader2, ChevronDown, ChevronRight, Pencil, Check, X, AlertTriangle } from "lucide-react";
 import { VocabHeatmap } from "@/components/VocabHeatmap";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -424,53 +424,59 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
       {/* min-h-14 matches the sidebar header so the divider continues that line;
           min- rather than fixed because these controls wrap on narrow screens. */}
       <div className="flex-shrink-0 min-h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-2 flex items-center">
-        {/* Controls sit centred on the body column (max-w-3xl, same as the
-            word list) rather than pushed to the right; the search input now
-            lives down with the list itself, just above the first date group. */}
-        <div className="w-full max-w-3xl mx-auto flex items-center justify-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setFilterStarred(!filterStarred)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
-                // Gold is bright enough for a 3:1 icon but not for a 4.5:1 text
-                // label, so the label takes foreground and only the star is gold.
-                filterStarred ? "bg-star/20 text-foreground" : "bg-card border border-border text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <Star className={cn("w-3.5 h-3.5", filterStarred && "text-star")} /> Starred
-            </button>
-            {dueCount > 0 && (
-              <span className="px-2.5 py-1 rounded-full bg-primary/15 text-primary text-xs font-bold">
-                {dueCount} due
-              </span>
+        {/* Controls spread across the body column (max-w-3xl, same as the
+            word list), each with a solid identity colour so they read at a
+            glance: gold = starred, blue = due, green = export, violet =
+            import, and Drive carries Google's own multicolour logo. */}
+        <div className="w-full max-w-3xl mx-auto flex items-center justify-between gap-2 flex-wrap">
+          <button
+            onClick={() => setFilterStarred(!filterStarred)}
+            className={cn(
+              "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm transition-all",
+              filterStarred ? "bg-amber-600 ring-2 ring-amber-400/60" : "bg-amber-500 hover:bg-amber-600"
             )}
-            <button
-              onClick={() => exportCSV(words)}
-              disabled={!words.length}
-              className="flex items-center gap-1.5 px-3 py-2 bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground rounded-xl text-xs font-semibold transition-colors disabled:opacity-40"
-            >
-              <Download className="w-3.5 h-3.5" /> Export
-            </button>
-            <button
-              onClick={() => setShowImport(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-primary/15 hover:bg-primary/25 text-primary rounded-xl text-xs font-semibold transition-colors"
-            >
-              <Upload className="w-3.5 h-3.5" /> Import
-            </button>
-            <button
-              onClick={() => setShowDrivePanel(!showDrivePanel)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-colors",
-                showDrivePanel
-                  ? "bg-blue-500/20 text-blue-700 border border-blue-500/30"
-                  : "bg-card border border-border text-muted-foreground hover:text-foreground"
-              )}
-              title="Google Drive Sync"
-            >
-              <Cloud className="w-3.5 h-3.5" /> Drive
-            </button>
-          </div>
+          >
+            <Star className={cn("w-3.5 h-3.5", filterStarred && "fill-current")} /> Starred
+          </button>
+          {dueCount > 0 && (
+            <span className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-sm">
+              {dueCount} due
+            </span>
+          )}
+          <button
+            onClick={() => exportCSV(words)}
+            disabled={!words.length}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-40"
+          >
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" /> Import
+          </button>
+          <button
+            onClick={() => setShowDrivePanel(!showDrivePanel)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-card shadow-sm transition-all",
+              showDrivePanel
+                ? "text-blue-700 border border-blue-500/60 ring-2 ring-blue-400/40"
+                : "text-foreground border border-border hover:bg-muted/50"
+            )}
+            title="Google Drive Sync"
+          >
+            {/* Google Drive's own mark, full colour — same asset as the panel. */}
+            <svg width="14" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+              <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+              <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+              <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+              <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+              <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+              <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+            </svg>
+            Drive
+          </button>
         </div>
       </div>
 
@@ -523,7 +529,23 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
           </div>
         )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      {/* Search — pinned here (not inside the scroll area) so it stays in the
+          same spot however far down the date groups you scroll. */}
+      {!isLoading && words.length > 0 && (
+        <div className="flex-shrink-0 px-4 pt-3 pb-2">
+          <div className="max-w-3xl mx-auto relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search your library…"
+              className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+            />
+          </div>
+        </div>
+      )}
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-4 pt-1">
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -542,19 +564,6 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
           </div>
         ) : (
           <div className="max-w-3xl mx-auto space-y-3">
-            {/* Search — moved from the header to sit right above the first
-                date group. Rendered whenever there are words (even when the
-                current query matches nothing, so it can be cleared). */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search your library…"
-                className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-              />
-            </div>
-
             {filtered.length === 0 ? (
             <div className="text-center py-16">
               <p className="text-4xl mb-3">🔍</p>
