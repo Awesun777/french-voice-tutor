@@ -38,7 +38,14 @@ import {
 import { getAllNonSkippedPendingImports } from "./db";
 
 function send(res: Response, data: Record<string, unknown>) {
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
+  // Never throw: a client that closed the tab (or a proxy that dropped the
+  // long-lived SSE connection) must not abort the sync itself — the write
+  // failure would otherwise propagate up through extractVocabGroups'
+  // progress callback and discard minutes of completed LLM work.
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  } catch { /* client gone — the sync continues headless */ }
 }
 
 /** Send SSE keepalive comment every intervalMs to prevent connection timeout. */
