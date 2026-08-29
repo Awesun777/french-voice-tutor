@@ -424,16 +424,10 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
       {/* min-h-14 matches the sidebar header so the divider continues that line;
           min- rather than fixed because these controls wrap on narrow screens. */}
       <div className="flex-shrink-0 min-h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-2 flex items-center">
-        <div className="w-full flex items-center gap-3 flex-wrap">
-          <div className="relative flex-1 min-w-48">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search your library…"
-              className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-            />
-          </div>
+        {/* Controls sit centred on the body column (max-w-3xl, same as the
+            word list) rather than pushed to the right; the search input now
+            lives down with the list itself, just above the first date group. */}
+        <div className="w-full max-w-3xl mx-auto flex items-center justify-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setFilterStarred(!filterStarred)}
@@ -546,13 +540,28 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
               Import Lesson Notes
             </button>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-4xl mb-3">🔍</p>
-            <p className="text-muted-foreground text-sm">No words match your search</p>
-          </div>
         ) : (
           <div className="max-w-3xl mx-auto space-y-3">
+            {/* Search — moved from the header to sit right above the first
+                date group. Rendered whenever there are words (even when the
+                current query matches nothing, so it can be cleared). */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search your library…"
+                className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              />
+            </div>
+
+            {filtered.length === 0 ? (
+            <div className="text-center py-16">
+              <p className="text-4xl mb-3">🔍</p>
+              <p className="text-muted-foreground text-sm">No words match your search</p>
+            </div>
+            ) : (
+            <>
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">{filtered.length} of {words.length} words</p>
               <div className="flex gap-2">
@@ -712,6 +721,8 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                 </div>
               );
             })}
+            </>
+            )}
           </div>
         )}
         </div>

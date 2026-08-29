@@ -97,6 +97,8 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [syncError, setSyncError] = useState<string>("");
+  /** Determinate progress from "analysing chunk/total" events; null = unknown. */
+  const [syncProgress, setSyncProgress] = useState<{ chunk: number; total: number } | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   // Year picker state
@@ -242,6 +244,7 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
     setSyncing(true);
     setSyncError("");
     setSyncStatus("Connecting…");
+    setSyncProgress(null);
 
     const es = new EventSource(url, { withCredentials: true });
     esRef.current = es;
@@ -250,6 +253,7 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
       try {
         const event: SyncStep = JSON.parse(e.data);
         setSyncStatus(stepToMessage(event));
+        if (event.step === "analysing") setSyncProgress({ chunk: event.chunk, total: event.total });
 
         if (event.step === "needs_year") {
           setAmbiguousDates(event.dates);
@@ -428,25 +432,6 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
           )}
         </div>
 
-        {/* Progress bar during a sync, so the bar itself reports progress rather
-            than needing a status line permanently reserved below it. */}
-        <AnimatePresence>
-          {syncing && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="h-0.5 bg-secondary overflow-hidden"
-            >
-              <motion.div
-                className="h-full w-1/3 bg-primary"
-                animate={reduceMotion ? undefined : { x: ["-100%", "400%"] }}
-                transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         <AnimatePresence initial={false}>
           {status?.connected && showDriveSettings && (
             <motion.div
@@ -563,6 +548,47 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
           )}
         </AnimatePresence>
       </div>
+
+      {/* Sync progress — sits just beneath the Drive card. Determinate once
+          the "analysing chunk/total" events start; indeterminate shimmer while
+          connecting/reading; the full bar turns destructive on error. */}
+      <AnimatePresence>
+        {(syncing || syncError) && (
+          <motion.div
+            initial={reduceMotion ? false : { opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0 }}
+            className="px-1"
+          >
+            <div className="flex items-center justify-between gap-3 text-xs mb-1.5">
+              <span className={cn("truncate", syncError ? "text-destructive font-semibold" : "text-muted-foreground")}>
+                {syncError || syncStatus || "Syncing…"}
+              </span>
+              {!syncError && syncProgress && (
+                <span className="flex-shrink-0 font-mono text-muted-foreground tabular-nums">
+                  {syncProgress.chunk} / {syncProgress.total}
+                </span>
+              )}
+            </div>
+            <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+              {syncError ? (
+                <div className="h-full w-full bg-destructive/60" />
+              ) : syncProgress ? (
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-500"
+                  style={{ width: `${Math.round((syncProgress.chunk / Math.max(1, syncProgress.total)) * 100)}%` }}
+                />
+              ) : (
+                <motion.div
+                  className="h-full w-1/3 bg-primary rounded-full"
+                  animate={reduceMotion ? undefined : { x: ["-100%", "400%"] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                />
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Year picker dialog */}
       <Dialog open={showYearPicker} onOpenChange={(open) => { if (!open) setShowYearPicker(false); }}>
