@@ -232,7 +232,11 @@ export default function AccountsTab() {
                   <th className="text-left font-bold px-2 py-2">Last seen</th>
                   <th className="text-right font-bold px-2 py-2">Words</th>
                   <th className="text-right font-bold px-2 py-2">Quizzes</th>
-                  <th className="text-right font-bold px-2 py-2">Voice</th>
+                  <th className="text-right font-bold px-2 py-2" title="Voice sessions with Romain">Romain</th>
+                  <th className="text-right font-bold px-2 py-2" title="Voice sessions with Anna">Anna</th>
+                  <th className="text-left font-bold px-2 py-2" title="Which LLM answers this user's voice questions">Model</th>
+                  <th className="text-right font-bold px-2 py-2" title="RomainTube videos opened">Videos</th>
+                  <th className="text-right font-bold px-2 py-2" title="Reading articles opened">Articles</th>
                   <th className="px-4 py-2"></th>
                 </tr>
               </thead>
@@ -254,19 +258,20 @@ export default function AccountsTab() {
                     <td className="px-2 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{ago(u.lastSignedIn)}</td>
                     <td className="px-2 py-2.5 text-right tabular-nums">{u.words}</td>
                     <td className="px-2 py-2.5 text-right tabular-nums">{u.quizzes}</td>
-                    <td className="px-2 py-2.5 text-right">
-                      <span className="tabular-nums">{u.voiceSessions}</span>
-                      {/* Which LLM answers this user's voice questions —
-                          null means the default (OpenAI). */}
-                      <div
-                        className={cn(
-                          "text-[10px] font-semibold leading-tight whitespace-nowrap",
-                          u.voiceChatModel === "deepseek" ? "text-sky-700" : "text-muted-foreground"
-                        )}
-                      >
-                        {u.voiceChatModel === "deepseek" ? "DeepSeek" : "GPT-4o mini"}
-                      </div>
+                    <td className="px-2 py-2.5 text-right tabular-nums">{u.romainSessions}</td>
+                    <td className={cn("px-2 py-2.5 text-right tabular-nums", u.annaSessions > 0 && "text-rose-700 font-semibold")}>{u.annaSessions}</td>
+                    {/* Which LLM answers this user's voice questions —
+                        null means the default (OpenAI). */}
+                    <td
+                      className={cn(
+                        "px-2 py-2.5 text-[11px] font-semibold whitespace-nowrap",
+                        u.voiceChatModel === "deepseek" ? "text-sky-700" : "text-muted-foreground"
+                      )}
+                    >
+                      {u.voiceChatModel === "deepseek" ? "DeepSeek" : "GPT-4o mini"}
                     </td>
+                    <td className="px-2 py-2.5 text-right tabular-nums">{u.videoViews}</td>
+                    <td className="px-2 py-2.5 text-right tabular-nums">{u.articleViews}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
@@ -303,7 +308,7 @@ export default function AccountsTab() {
                 <p className="font-bold text-foreground">Delete {u.name ?? u.email}?</p>
                 <p className="text-sm text-muted-foreground mt-1.5">
                   Erases the account and everything attached — {u.words} saved words, {u.quizzes} quizzes,
-                  {" "}{u.voiceSessions} voice sessions, tutor history, and settings. This cannot be undone.
+                  {" "}{u.romainSessions + u.annaSessions} voice sessions, tutor history, and settings. This cannot be undone.
                 </p>
                 <p className="text-xs text-muted-foreground mt-3 mb-1">Type <b>{u.email}</b> to confirm:</p>
                 <input

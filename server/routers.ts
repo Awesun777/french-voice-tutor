@@ -33,6 +33,7 @@ import {
   googleDriveSettings,
   emailCredentials,
   wordAudio,
+  contentViews,
 } from "../drizzle/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "./db";
@@ -76,6 +77,7 @@ import {
   bulkUpdatePendingImportsByDateKey,
   upsertGoogleDriveSettings,
   getPendingImportById,
+  recordContentView,
 } from "./db";
 import {
   extractDocId,
@@ -1911,11 +1913,15 @@ The user is asking about this specific word/phrase. Answer in the context of thi
 
   // ─── Voice Chat Sessions ─────────────────────────────────────────────────────
   voiceSession: router({
-    // Create a new session record and return its ID
-    create: protectedProcedure.mutation(async ({ ctx }) => {
-      const id = await createVoiceSession(ctx.user.id);
-      return { id };
-    }),
+    // Create a new session record and return its ID. `agent` says which tutor
+    // runs it (Romain's realtime chat vs Anna's ElevenLabs agent); optional so
+    // clients deployed before agent tracking still work.
+    create: protectedProcedure
+      .input(z.object({ agent: z.enum(["romain", "anna"]).optional() }).optional())
+      .mutation(async ({ ctx, input }) => {
+        const id = await createVoiceSession(ctx.user.id, input?.agent ?? "romain");
+        return { id };
+      }),
 
     // Save a word discovered during voice chat to the vocab library
     saveWord: protectedProcedure
@@ -2684,18 +2690,25 @@ ${input.transcript}`,
 
       // Three grouped counts merged in JS rather than one join-heavy query:
       // at this scale it is faster to read and impossible to get subtly wrong.
-      const [all, vocab, quizzes, voices] = await Promise.all([
+      const [all, vocab, quizzes, voices, views] = await Promise.all([
         db.select().from(users),
         db.select({ userId: vocabEntries.userId, id: vocabEntries.id }).from(vocabEntries),
         db.select({ userId: quizSessions.userId, id: quizSessions.id }).from(quizSessions),
-        db.select({ userId: voiceSessions.userId, id: voiceSessions.id }).from(voiceSessions),
+        db.select({ userId: voiceSessions.userId, agent: voiceSessions.agent }).from(voiceSessions),
+        db.select({ userId: contentViews.userId, kind: contentViews.kind }).from(contentViews),
       ]);
       const tally = (rows: { userId: number }[]) => {
         const m = new Map<number, number>();
         for (const r of rows) m.set(r.userId, (m.get(r.userId) ?? 0) + 1);
         return m;
       };
-      const w = tally(vocab), q = tally(quizzes), v = tally(voices);
+      const w = tally(vocab), q = tally(quizzes);
+      // Voice sessions split by tutor. Pre-tracking rows (agent NULL) count
+      // as Romain — his chat predates both Anna and the agent column.
+      const romain = tally(voices.filter((s) => s.agent !== "anna"));
+      const anna = tally(voices.filter((s) => s.agent === "anna"));
+      const videoV = tally(views.filter((x) => x.kind === "video"));
+      const articleV = tally(views.filter((x) => x.kind === "article"));
 
       return all
         .map((u) => ({
@@ -2708,9 +2721,12 @@ ${input.transcript}`,
           lastSignedIn: u.lastSignedIn ? new Date(u.lastSignedIn).getTime() : 0,
           words: w.get(u.id) ?? 0,
           quizzes: q.get(u.id) ?? 0,
-          voiceSessions: v.get(u.id) ?? 0,
+          romainSessions: romain.get(u.id) ?? 0,
+          annaSessions: anna.get(u.id) ?? 0,
+          videoViews: videoV.get(u.id) ?? 0,
+          articleViews: articleV.get(u.id) ?? 0,
           // Which LLM answers this user's voice questions; null = the
-          // default (openai). Shown beside the voice count in Accounts.
+          // default (openai). Shown in its own Model column in Accounts.
           voiceChatModel: u.voiceChatModel ?? null,
         }))
         .sort((a, b) => b.lastSignedIn - a.lastSignedIn);
@@ -2759,6 +2775,7 @@ ${input.transcript}`,
         await db.delete(googleAccounts).where(eq(googleAccounts.userId, input.id));
         await db.delete(googleDriveSettings).where(eq(googleDriveSettings.userId, input.id));
         await db.delete(emailCredentials).where(eq(emailCredentials.userId, input.id));
+        await db.delete(contentViews).where(eq(contentViews.userId, input.id));
         await db.delete(users).where(eq(users.id, input.id));
         return { ok: true };
       }),
@@ -3154,7 +3171,7 @@ ${input.transcript}`,
 
     get: protectedProcedure
       .input(z.object({ youtubeId: z.string().min(1).max(32) }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "NOT_FOUND", message: "No database" });
 
@@ -3166,6 +3183,8 @@ ${input.transcript}`,
           throw new TRPCError({ code: "NOT_FOUND", message: "Video lesson not found" });
         }
         const lesson = lessons[0];
+        // View tracking for the admin Accounts breakdown — fire-and-forget.
+        void recordContentView(ctx.user.id, "video", input.youtubeId).catch(() => {});
 
         const cueRows = await db
           .select()
@@ -3235,7 +3254,7 @@ ${input.transcript}`,
 
     get: protectedProcedure
       .input(z.object({ slug: z.string().min(1).max(128) }))
-      .query(async ({ input }) => {
+      .query(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: "NOT_FOUND", message: "No database" });
 
@@ -3247,6 +3266,8 @@ ${input.transcript}`,
           throw new TRPCError({ code: "NOT_FOUND", message: "Article not found" });
         }
         const article = found[0];
+        // View tracking for the admin Accounts breakdown — fire-and-forget.
+        void recordContentView(ctx.user.id, "article", input.slug).catch(() => {});
 
         const blockRows = await db
           .select()

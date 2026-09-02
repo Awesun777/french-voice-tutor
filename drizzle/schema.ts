@@ -134,12 +134,35 @@ export const voiceSessions = mysqlTable("voice_sessions", {
   transcript: text("transcript"), // JSON string
   summary: text("summary"),
   savedWords: text("savedWords"), // JSON string
+  /**
+   * Which tutor ran the session: "romain" or "anna". NULL on rows created
+   * before agent tracking (2026-09-01); those are counted as Romain in the
+   * admin breakdown since Romain predates Anna.
+   */
+  agent: varchar("agent", { length: 16 }),
   startedAt: bigint("startedAt", { mode: "number" }).notNull(),
   endedAt: bigint("endedAt", { mode: "number" }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type VoiceSession = typeof voiceSessions.$inferSelect;
+
+/**
+ * One view of a piece of content — a RomainTube video or a Reading article.
+ * Recorded server-side when the detail endpoint serves the item, deduped to
+ * one row per (user, item) per 30 minutes so refetch-on-focus doesn't inflate
+ * the count. refKey is the item's natural id: youtubeId for videos, slug for
+ * articles. (drizzle migrate is broken — DDL applied manually, see
+ * drizzle/manual/.)
+ */
+export const contentViews = mysqlTable("content_views", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  kind: mysqlEnum("kind", ["video", "article"]).notNull(),
+  refKey: varchar("refKey", { length: 128 }).notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+});
+export type ContentView = typeof contentViews.$inferSelect;
 
 /**
  * Shared dictionary cache — stores completed LLM lookup results keyed by

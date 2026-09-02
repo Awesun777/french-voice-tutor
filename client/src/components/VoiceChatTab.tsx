@@ -775,7 +775,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateK
       isSummarizingRef.current = false;
       if (summarizeTimerRef.current) { clearTimeout(summarizeTimerRef.current); summarizeTimerRef.current = null; }
       // 1. Create a session record in our DB
-      const { id } = await createSessionMutation.mutateAsync();
+      const { id } = await createSessionMutation.mutateAsync({ agent: "romain" });
       setSessionId(id);
 
       // Grab the base system prompt so session.update can re-send it verbatim.

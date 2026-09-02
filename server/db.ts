@@ -19,6 +19,7 @@ import {
   users,
   vocabEntries,
   voiceSessions,
+  contentViews,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -296,14 +297,45 @@ export async function clearTutorHistory(userId: number): Promise<void> {
 
 // ─── Voice session helpers ─────────────────────────────────────────────────
 
-export async function createVoiceSession(userId: number): Promise<number> {
+export async function createVoiceSession(userId: number, agent: "romain" | "anna" = "romain"): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
   const result = await db.insert(voiceSessions).values({
     userId,
+    agent,
     startedAt: Date.now(),
   });
   return (result as any)[0]?.insertId ?? 0;
+}
+
+// ─── Content view tracking ─────────────────────────────────────────────────
+
+/**
+ * Record that a user opened a video or article. Deduped: at most one row per
+ * (user, item) per 30 minutes, so a query refetch (window focus, cache
+ * invalidation) doesn't count as another view. Best-effort — callers fire and
+ * forget; a failure must never break serving the content itself.
+ */
+export async function recordContentView(
+  userId: number,
+  kind: "video" | "article",
+  refKey: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const since = Date.now() - 30 * 60 * 1000;
+  const recent = await db
+    .select({ id: contentViews.id })
+    .from(contentViews)
+    .where(and(
+      eq(contentViews.userId, userId),
+      eq(contentViews.kind, kind),
+      eq(contentViews.refKey, refKey),
+      gte(contentViews.createdAt, since)
+    ))
+    .limit(1);
+  if (recent.length > 0) return;
+  await db.insert(contentViews).values({ userId, kind, refKey, createdAt: Date.now() });
 }
 
 export async function endVoiceSession(

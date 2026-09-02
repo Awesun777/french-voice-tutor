@@ -315,7 +315,7 @@ export function AnnaVoiceTab() {
       setIsResuming(false);
 
       // 1. Create session record in DB
-      const { id } = await createSessionMutation.mutateAsync();
+      const { id } = await createSessionMutation.mutateAsync({ agent: "anna" });
       setSessionId(id);
 
       // Draw this session's stall questions once, biased by what Anna remembers.
