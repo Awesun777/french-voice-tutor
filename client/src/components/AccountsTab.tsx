@@ -254,7 +254,19 @@ export default function AccountsTab() {
                     <td className="px-2 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{ago(u.lastSignedIn)}</td>
                     <td className="px-2 py-2.5 text-right tabular-nums">{u.words}</td>
                     <td className="px-2 py-2.5 text-right tabular-nums">{u.quizzes}</td>
-                    <td className="px-2 py-2.5 text-right tabular-nums">{u.voiceSessions}</td>
+                    <td className="px-2 py-2.5 text-right">
+                      <span className="tabular-nums">{u.voiceSessions}</span>
+                      {/* Which LLM answers this user's voice questions —
+                          null means the default (OpenAI). */}
+                      <div
+                        className={cn(
+                          "text-[10px] font-semibold leading-tight whitespace-nowrap",
+                          u.voiceChatModel === "deepseek" ? "text-sky-700" : "text-muted-foreground"
+                        )}
+                      >
+                        {u.voiceChatModel === "deepseek" ? "DeepSeek" : "GPT-4o mini"}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button

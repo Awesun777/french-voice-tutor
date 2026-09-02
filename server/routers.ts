@@ -2709,6 +2709,9 @@ ${input.transcript}`,
           words: w.get(u.id) ?? 0,
           quizzes: q.get(u.id) ?? 0,
           voiceSessions: v.get(u.id) ?? 0,
+          // Which LLM answers this user's voice questions; null = the
+          // default (openai). Shown beside the voice count in Accounts.
+          voiceChatModel: u.voiceChatModel ?? null,
         }))
         .sort((a, b) => b.lastSignedIn - a.lastSignedIn);
     }),
