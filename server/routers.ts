@@ -694,14 +694,45 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         langHint: z.enum(["fr", "en"]).optional(),
       }))
       .mutation(async ({ input }) => {
+        // Effective term: with langHint=en the English word is first resolved
+        // to its primary French equivalent by a small dedicated call — prompt
+        // reframing alone reliably lost to the dictionary's French framing
+        // (the model kept returning the homograph: pain→bread, chat→cat).
+        // The real lookup then runs on the FRENCH word, so the entry caches
+        // under the French headword and is shared with ordinary searches.
+        let term = input.term;
+        let langHint = input.langHint;
+        if (input.langHint === "en") {
+          const mapKey = "v2::en2fr::" + input.term.toLowerCase().trim() +
+            (input.wordTypeHint ? `::t=${input.wordTypeHint}` : "");
+          let mapping = (await getCached(mapKey)) as { fr?: string } | null;
+          if (!mapping) {
+            try {
+              const resp = await invokeLLM({
+                messages: [
+                  { role: "system", content: "You translate one English word or short phrase to its primary French equivalent. Return only valid JSON." },
+                  { role: "user", content: `English input: "${input.term}"${input.wordTypeHint ? ` (as a ${input.wordTypeHint})` : ""}. Return {"fr": "<its primary French equivalent, in dictionary base form>"}.` },
+                ],
+                response_format: { type: "json_object" },
+              } as Parameters<typeof invokeLLM>[0]);
+              const rawContent = resp.choices[0]?.message?.content ?? "{}";
+              mapping = JSON.parse(typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent));
+              if (mapping?.fr) await setCache(mapKey, mapping);
+            } catch { /* resolver failed — fall through to the single-prompt path */ }
+          }
+          if (typeof mapping?.fr === "string" && mapping.fr.trim()) {
+            term = mapping.fr.trim();
+            langHint = undefined; // it IS French now; cache like a plain search
+          }
+        }
         // "v2" cache generation — bumped when the word schema gained noun gender,
         // so previously-cached entries re-fetch and pick up the gender field.
         // Hints are part of the key: a hinted answer is a different entry, and
         // unhinted searches must keep hitting the existing warm cache.
         const hintKey =
           (input.wordTypeHint ? `::t=${input.wordTypeHint}` : "") +
-          (input.langHint ? `::l=${input.langHint}` : "");
-        const base = "v2::" + input.term.toLowerCase().trim() + hintKey;
+          (langHint ? `::l=${langHint}` : "");
+        const base = "v2::" + term.toLowerCase().trim() + hintKey;
         const SUFFIX = { full: "", quick: "::q", meaning: "::m" } as const;
         // Richest variant first. A word already generated at "full" contains
         // everything a "meaning" request needs, so it answers with no LLM call —
@@ -719,16 +750,16 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         }
         const key = base + SUFFIX[input.parts];
 
-        const type = detectInputType(input.term);
+        const type = detectInputType(term);
 
         // Disambiguation hints, appended to the prompt when the user set them.
         const hintNote = [
           input.wordTypeHint
             ? ` IMPORTANT — THE USER SPECIFIED THE WORD TYPE: ${input.wordTypeHint}. This spelling may have several readings; return the entry for its ${input.wordTypeHint} reading (e.g. "ferme" as a noun is la ferme = farm, as a verb it is a form of fermer) and set wordType to match.`
             : "",
-          input.langHint === "fr"
+          langHint === "fr"
             ? ` IMPORTANT — THE USER SPECIFIED THE INPUT LANGUAGE: French. Treat the input strictly as a French word, even if it is spelled identically to an English word.`
-            : input.langHint === "en"
+            : langHint === "en"
               ? ` IMPORTANT — THE USER SPECIFIED THE INPUT LANGUAGE: English. The input is an ENGLISH word: return the French dictionary entry for its primary French equivalent. Set "word" and "baseForm" to the FRENCH equivalent (never the English input) and "translation" to the English meaning. Do NOT mark it not-found just because the input itself isn't French.`
               : "",
         ].join("");
@@ -737,9 +768,9 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         // the tail — "Look up the French word: pain" dominates a tail note and
         // the model returns the French homograph (pain=bread) instead of the
         // English word's equivalent (douleur).
-        const wordIntro = input.langHint === "en"
-          ? `The user gives an ENGLISH word: "${input.term}". Find its primary FRENCH equivalent and return the dictionary entry FOR THAT FRENCH WORD — "word" and "baseForm" are the French equivalent (never the English input), "translation" is its English meaning.`
-          : `Look up the French word: "${input.term}".`;
+        const wordIntro = langHint === "en"
+          ? `The user gives an ENGLISH word: "${term}". Find its primary FRENCH equivalent and return the dictionary entry FOR THAT FRENCH WORD — "word" and "baseForm" are the French equivalent (never the English input), "translation" is its English meaning.`
+          : `Look up the French word: "${term}".`;
 
         // Build messages + structured response_format per input type
         let messages: { role: "system" | "user"; content: string }[];
@@ -748,7 +779,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         if (type === "question") {
           messages = [
             { role: "system", content: "You are a helpful French-English language assistant. Return only valid JSON." },
-            { role: "user", content: `Answer this French language question: "${input.term}". Return JSON with these exact keys: type (string, always "question"), question (string, restate the question clearly), answer (string, detailed helpful answer), options (array of 3 objects each with keys: french, english, summary).` },
+            { role: "user", content: `Answer this French language question: "${term}". Return JSON with these exact keys: type (string, always "question"), question (string, restate the question clearly), answer (string, detailed helpful answer), options (array of 3 objects each with keys: french, english, summary).` },
           ];
           responseFormat = {
             type: "json_schema",
@@ -783,7 +814,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         } else if (type === "phrase") {
           messages = [
             { role: "system", content: "You are a precise French-English dictionary. Return only valid JSON." },
-            { role: "user", content: `Look up this French phrase: "${input.term}". The user may have omitted accents; return proper French WITH accents. Provide a complete dictionary entry.${hintNote}` },
+            { role: "user", content: `Look up this French phrase: "${term}". The user may have omitted accents; return proper French WITH accents. Provide a complete dictionary entry.${hintNote}` },
           ];
           responseFormat = {
             type: "json_schema",
@@ -866,7 +897,7 @@ The user may have omitted accents; return proper French WITH accents. If it is n
           // Single word — use json_schema so special chars in conjugations never break JSON parsing
           messages = [
             { role: "system", content: "You are a precise French-English dictionary. Always set the \"type\" field to exactly the string \"word\". Return only valid JSON matching the schema exactly." },
-            { role: "user", content: `${wordIntro} The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) LEMMA RULE — this is the most important rule: BOTH the "word" and "baseForm" fields MUST be the canonical dictionary base form — the INFINITIVE for verbs, the MASCULINE SINGULAR for adjectives, the SINGULAR for nouns. NEVER put a conjugated, gendered, or plural form in "word", even when the user typed exactly that form. Examples: "allées"→"aller", "mangeait"→"manger", "irai"→"aller", "fut"→"être", "belle"→"beau", "heureuse"→"heureux", "chevaux"→"cheval", "yeux"→"œil". (3) Set isConjugated to true whenever the searched term "${input.term}" differs from that base form, and explain the transformation in conjugationInfo and formExplanation.
+            { role: "user", content: `${wordIntro} The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) LEMMA RULE — this is the most important rule: BOTH the "word" and "baseForm" fields MUST be the canonical dictionary base form — the INFINITIVE for verbs, the MASCULINE SINGULAR for adjectives, the SINGULAR for nouns. NEVER put a conjugated, gendered, or plural form in "word", even when the user typed exactly that form. Examples: "allées"→"aller", "mangeait"→"manger", "irai"→"aller", "fut"→"être", "belle"→"beau", "heureuse"→"heureux", "chevaux"→"cheval", "yeux"→"œil". (3) Set isConjugated to true whenever the searched term "${term}" differs from that base form, and explain the transformation in conjugationInfo and formExplanation.
 
 REFLEXIVE FIELDS (for verbs): set "isReflexive" true only if the base form is pronominal (has "se"/"s'", e.g. se souvenir). Set "hasReflexiveForm" true if the verb is normally non-reflexive but also has a common pronominal use (e.g. "laver" → "se laver", "appeler" → "s'appeler"). When either is true, fill "reflexiveForm" (e.g. "se laver") and "nonReflexiveForm" (e.g. "laver"), set "reflexiveType" (e.g. "reflexive", "reciprocal", "idiomatic"), and in "reflexiveExplanation" explain in English what the reflexive form means and how it differs from the plain verb. If the word is not a verb or has no reflexive use, set isReflexive and hasReflexiveForm to false and leave those string fields empty.
 
