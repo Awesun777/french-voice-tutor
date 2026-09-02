@@ -407,7 +407,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           and mode switcher are hidden while a video is open — so this bar owns
           the only way back. */}
       <div className="flex-shrink-0 bg-primary relative z-10 shadow-[0_12px_28px_-14px_rgb(23_63_107_/_0.65)]">
-        <div className="mx-auto w-full max-w-4xl flex items-center gap-3 px-1 py-2.5">
+        <div className="mx-auto w-full max-w-5xl flex items-center gap-3 px-1 py-2.5">
           <button
             onClick={onBack}
             className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10 transition-colors"
@@ -429,7 +429,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
             <Languages className="w-4 h-4" /> English
           </button>
         </div>
-        <div className="mx-auto w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]">
+        <div className="mx-auto w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]">
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
         <div className="h-3" />
@@ -447,9 +447,10 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           </button>
         )}
         <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto px-4 py-4">
-          {/* Same column width as the player, and shifted by the accent-bar
-              gutter so the TEXT's left edge lines up with the video's. */}
-          <div className="max-w-4xl mx-auto space-y-0.5 pb-32 sm:-translate-x-[19px]">
+          {/* Same column width as the player, flush left edges: the accent
+              bar (the transcript's visible left edge) lines up with the
+              video's left edge. */}
+          <div className="max-w-5xl mx-auto space-y-0.5 pb-32">
             {cues.map((cue, i) => (
               <p
                 key={cue.idx}
