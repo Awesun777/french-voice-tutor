@@ -679,21 +679,24 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
           {/* Nav arrows flanking the 3 grade buttons (hidden while editing) */}
           {!editing && (
           <div className="flex items-center gap-2">
-            <button onClick={handlePrev} disabled={idx === 0} className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+            <button onClick={(e) => { e.currentTarget.blur(); handlePrev(); }} disabled={idx === 0} className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
               <ChevronLeft className="w-5 h-5" />
             </button>
 
             {/* 3 grade buttons — always visible, rate from recall before or after flip */}
             <div className="flex-1 flex gap-1.5">
               {GRADES.map(({ grade, label, color }, i) => (
-                <button key={grade} onClick={() => handleGrade(grade)} className={cn("flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors flex items-center justify-center gap-1.5", color)}>
+                // blur() so the button doesn't keep focus after a click —
+                // a focused grade button re-fires on Enter/Space presses meant
+                // for shortcuts (e.g. the Shift+Return voice chord).
+                <button key={grade} onClick={(e) => { e.currentTarget.blur(); handleGrade(grade); }} className={cn("flex-1 py-2.5 rounded-xl text-xs font-semibold border transition-colors flex items-center justify-center gap-1.5", color)}>
                   {label}
                   <kbd className="text-[10px] font-mono opacity-60 border border-current rounded px-1 leading-tight">{i + 1}</kbd>
                 </button>
               ))}
             </div>
 
-            <button onClick={handleNext} disabled={idx === deck.length - 1} className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
+            <button onClick={(e) => { e.currentTarget.blur(); handleNext(); }} disabled={idx === deck.length - 1} className="p-3 rounded-xl bg-card border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors">
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>

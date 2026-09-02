@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 type SyncStep =
   | { step: "connecting" }
   | { step: "reading_doc" }
+  | { step: "up_to_date"; revisionId?: string }
   | { step: "analysing"; chunk: number; total: number }
   | { step: "needs_year"; dates: string[] }
   | { step: "saving"; count: number }
@@ -60,6 +61,7 @@ function stepToMessage(event: SyncStep): string {
   switch (event.step) {
     case "connecting":   return "Connecting to Google Drive…";
     case "reading_doc":  return "Reading your document…";
+    case "up_to_date":   return "Your vocab is already up to date.";
     case "analysing":    return event.chunk === 0
       ? `Analysing ${event.total} section${event.total === 1 ? "" : "s"}…`
       : `Analysing section ${event.chunk} of ${event.total}…`;
@@ -109,6 +111,12 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
    * milestone by less than one section's worth.
    */
   const [displayPct, setDisplayPct] = useState(0);
+  /** Post-sync verdict shown in the card subtitle for a few seconds — the
+      progress block disappears the instant syncing ends, so without this an
+      "up to date" run flashed by with no readable outcome at all. */
+  const [syncOutcome, setSyncOutcome] = useState("");
+  const outcomeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sawUpToDate = useRef(false);
   const esRef = useRef<EventSource | null>(null);
 
   // Year picker state
@@ -256,6 +264,9 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
     setSyncStatus("Connecting…");
     setSyncProgress(null);
     setDisplayPct(0);
+    setSyncOutcome("");
+    sawUpToDate.current = false;
+    if (outcomeTimer.current) clearTimeout(outcomeTimer.current);
 
     const es = new EventSource(url, { withCredentials: true });
     esRef.current = es;
@@ -270,7 +281,18 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
           setDisplayPct((p) => Math.max(p, (event.chunk / Math.max(1, event.total)) * 92));
         }
         if (event.step === "saving") setDisplayPct((p) => Math.max(p, 96));
-        if (event.step === "done") setDisplayPct(100);
+        if (event.step === "up_to_date") sawUpToDate.current = true;
+        if (event.step === "done") {
+          setDisplayPct(100);
+          setSyncOutcome(
+            sawUpToDate.current
+              ? "✓ Your vocab is up to date — nothing to sync"
+              : event.found > 0
+                ? `✓ Synced — ${event.found} new word${event.found === 1 ? "" : "s"} to review`
+                : "✓ Done — no new words found"
+          );
+          outcomeTimer.current = setTimeout(() => setSyncOutcome(""), 10_000);
+        }
 
         if (event.step === "needs_year") {
           setAmbiguousDates(event.dates);
@@ -415,12 +437,14 @@ export function GoogleDrivePanel({ onStartReview }: { onStartReview?: (dateKey?:
                   ? (syncStatus || "Syncing…")
                   : syncError
                     ? <span className="text-destructive">{syncError}</span>
-                    : (
-                      <>
-                        {autoSync === "off" ? "Manual sync" : `Syncs ${autoSync}`}
-                        {lastSynced ? ` · last ${lastSynced}` : ""}
-                      </>
-                    )}
+                    : syncOutcome
+                      ? <span className="text-emerald-700 font-semibold">{syncOutcome}</span>
+                      : (
+                        <>
+                          {autoSync === "off" ? "Manual sync" : `Syncs ${autoSync}`}
+                          {lastSynced ? ` · last ${lastSynced}` : ""}
+                        </>
+                      )}
             </p>
           </div>
 

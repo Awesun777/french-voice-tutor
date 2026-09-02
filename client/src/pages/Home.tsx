@@ -185,7 +185,15 @@ export default function Home() {
       // palette is open Return means "stop and ask", handled inside it.
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-      if (voiceAskOpenRef.current) return;
+      if (voiceAskOpenRef.current) {
+        // The chord is held for push-to-talk, so keydown REPEATS keep landing
+        // here while the palette is open. They must still be swallowed —
+        // returning without preventDefault let each repeat activate whatever
+        // was focused underneath (a flashcard grade button graded a card per
+        // repeat, flinging the deck around mid-recording).
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       // Captured here, before the palette opens: showing it takes focus, and on
       // some browsers that collapses the selection. Same trick the dictionary
