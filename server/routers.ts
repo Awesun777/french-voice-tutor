@@ -733,6 +733,14 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
               : "",
         ].join("");
 
+        // With langHint=en the OPENING framing must change, not just a note at
+        // the tail — "Look up the French word: pain" dominates a tail note and
+        // the model returns the French homograph (pain=bread) instead of the
+        // English word's equivalent (douleur).
+        const wordIntro = input.langHint === "en"
+          ? `The user gives an ENGLISH word: "${input.term}". Find its primary FRENCH equivalent and return the dictionary entry FOR THAT FRENCH WORD — "word" and "baseForm" are the French equivalent (never the English input), "translation" is its English meaning.`
+          : `Look up the French word: "${input.term}".`;
+
         // Build messages + structured response_format per input type
         let messages: { role: "system" | "user"; content: string }[];
         let responseFormat: unknown;
@@ -816,7 +824,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
           // tokens dominate, and this is roughly a tenth of them.
           messages = [
             { role: "system", content: "You are a precise French-English dictionary. Always set the \"type\" field to exactly the string \"word\". Return only valid JSON matching the schema exactly." },
-            { role: "user", content: `Look up the French word: "${input.term}". Return ONLY the core meaning — no examples, no grammar notes, no explanations.
+            { role: "user", content: `${wordIntro} Return ONLY the core meaning — no examples, no grammar notes, no explanations.
 
 LEMMA RULE — the most important rule: BOTH "word" and "baseForm" MUST be the canonical dictionary base form: the INFINITIVE for verbs, the MASCULINE SINGULAR for adjectives, the SINGULAR for nouns. Never return a conjugated, gendered or plural form, even when the user typed exactly that. Examples: "allées"→"aller", "mangeait"→"manger", "fut"→"être", "belle"→"beau", "heureuse"→"heureux", "chevaux"→"cheval", "yeux"→"œil".
 
@@ -858,7 +866,7 @@ The user may have omitted accents; return proper French WITH accents. If it is n
           // Single word — use json_schema so special chars in conjugations never break JSON parsing
           messages = [
             { role: "system", content: "You are a precise French-English dictionary. Always set the \"type\" field to exactly the string \"word\". Return only valid JSON matching the schema exactly." },
-            { role: "user", content: `Look up the French word: "${input.term}". The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) LEMMA RULE — this is the most important rule: BOTH the "word" and "baseForm" fields MUST be the canonical dictionary base form — the INFINITIVE for verbs, the MASCULINE SINGULAR for adjectives, the SINGULAR for nouns. NEVER put a conjugated, gendered, or plural form in "word", even when the user typed exactly that form. Examples: "allées"→"aller", "mangeait"→"manger", "irai"→"aller", "fut"→"être", "belle"→"beau", "heureuse"→"heureux", "chevaux"→"cheval", "yeux"→"œil". (3) Set isConjugated to true whenever the searched term "${input.term}" differs from that base form, and explain the transformation in conjugationInfo and formExplanation.
+            { role: "user", content: `${wordIntro} The user may have omitted accents; return proper French WITH accents. IMPORTANT: (1) set the "type" field to exactly "word". (2) LEMMA RULE — this is the most important rule: BOTH the "word" and "baseForm" fields MUST be the canonical dictionary base form — the INFINITIVE for verbs, the MASCULINE SINGULAR for adjectives, the SINGULAR for nouns. NEVER put a conjugated, gendered, or plural form in "word", even when the user typed exactly that form. Examples: "allées"→"aller", "mangeait"→"manger", "irai"→"aller", "fut"→"être", "belle"→"beau", "heureuse"→"heureux", "chevaux"→"cheval", "yeux"→"œil". (3) Set isConjugated to true whenever the searched term "${input.term}" differs from that base form, and explain the transformation in conjugationInfo and formExplanation.
 
 REFLEXIVE FIELDS (for verbs): set "isReflexive" true only if the base form is pronominal (has "se"/"s'", e.g. se souvenir). Set "hasReflexiveForm" true if the verb is normally non-reflexive but also has a common pronominal use (e.g. "laver" → "se laver", "appeler" → "s'appeler"). When either is true, fill "reflexiveForm" (e.g. "se laver") and "nonReflexiveForm" (e.g. "laver"), set "reflexiveType" (e.g. "reflexive", "reciprocal", "idiomatic"), and in "reflexiveExplanation" explain in English what the reflexive form means and how it differs from the plain verb. If the word is not a verb or has no reflexive use, set isReflexive and hasReflexiveForm to false and leave those string fields empty.
 
