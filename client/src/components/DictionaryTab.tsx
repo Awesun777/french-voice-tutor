@@ -4,7 +4,7 @@ import { DictResult, DictWordResult, DictPhraseResult, DictQuestionResult, DictW
 import {
   Volume2, Plus, Loader2, Search, ChevronDown, ChevronUp, Keyboard,
   MessageCircle, Send, Sparkles, RefreshCw, ArrowLeftRight,
-  BookmarkCheck, BookmarkX, MousePointerClick, X,
+  BookmarkCheck, BookmarkX, MousePointerClick, X, SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -786,6 +786,11 @@ export default function DictionaryTab() {
   const [lastNotFoundTerm, setLastNotFoundTerm] = useState(persisted.lastNotFoundTerm ?? "");
   const [selectedIdx, setSelectedIdx] = useState<number | null>(persisted.selectedIdx ?? null);
   const [accentsOpen, setAccentsOpen] = useState(false);
+  // Disambiguation hints for same-spelling words — "" = automatic.
+  const [typeHint, setTypeHint] = useState<"" | "noun" | "adjective" | "adverb" | "verb">("");
+  const [langHint, setLangHint] = useState<"" | "fr" | "en">("");
+  const [hintsOpen, setHintsOpen] = useState(false);
+  const hintsActive = !!(typeHint || langHint);
   // On narrow (mobile) screens the "Ask your tutor" panel is folded away by
   // default to give results the full width; tapping the bar unfolds it.
   const [tutorOpen, setTutorOpen] = useState(false);
@@ -994,9 +999,14 @@ export default function DictionaryTab() {
       setSelectedIdx(null);
       setAddedMap({});
       if (!history.includes(term)) setHistory((prev) => [term, ...prev.slice(0, 19)]);
-      searchMutation.mutate({ term, parts: "quick" });
+      searchMutation.mutate({
+        term,
+        parts: "quick",
+        ...(typeHint ? { wordTypeHint: typeHint } : {}),
+        ...(langHint ? { langHint } : {}),
+      });
     },
-    [searchTerm, history, searchMutation]
+    [searchTerm, history, searchMutation, typeHint, langHint]
   );
 
   const handleAdd = (term: string, translation: string, kind: "word" | "phrase", resultIdx?: number) => {
@@ -1118,6 +1128,73 @@ export default function DictionaryTab() {
                 >
                   <X className="w-4 h-4" />
                 </button>
+              )}
+            </div>
+            {/* Disambiguation hints — word type + input language, for spellings
+                shared between readings ("ferme") or languages ("pain"). */}
+            <div className="relative flex-shrink-0">
+              <button
+                onClick={() => setHintsOpen((o) => !o)}
+                aria-expanded={hintsOpen}
+                title="Specify word type / language"
+                className={cn(
+                  "h-[42px] flex items-center gap-1.5 px-3 border rounded-xl text-xs font-semibold transition-colors",
+                  hintsActive
+                    ? "bg-primary/10 border-primary/50 text-primary"
+                    : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                {hintsActive && (
+                  <span className="hidden sm:inline">
+                    {[typeHint, langHint === "fr" ? "FR" : langHint === "en" ? "EN" : ""].filter(Boolean).join(" · ")}
+                  </span>
+                )}
+              </button>
+              {hintsOpen && (
+                <>
+                  {/* click-away catcher */}
+                  <div className="fixed inset-0 z-20" onClick={() => setHintsOpen(false)} />
+                  <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-64 rounded-2xl bg-popover p-3.5 shadow-[0_12px_32px_-8px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5 space-y-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Word type</p>
+                      <div className="flex flex-wrap gap-1">
+                        {([["", "Any"], ["noun", "Noun"], ["adjective", "Adj"], ["adverb", "Adv"], ["verb", "Verb"]] as const).map(([v, label]) => (
+                          <button
+                            key={v}
+                            onClick={() => setTypeHint(v)}
+                            className={cn(
+                              "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                              typeHint === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Input language</p>
+                      <div className="flex gap-1">
+                        {([["", "Auto"], ["fr", "French"], ["en", "English"]] as const).map(([v, label]) => (
+                          <button
+                            key={v}
+                            onClick={() => setLangHint(v)}
+                            className={cn(
+                              "flex-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                              langHint === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-snug">
+                      Helps with same-spelling words — «ferme» as noun vs verb, or "pain" in English vs French.
+                    </p>
+                  </div>
+                </>
               )}
             </div>
             <button

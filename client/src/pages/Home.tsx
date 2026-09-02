@@ -114,6 +114,10 @@ export default function Home() {
   // the Dictionary and Tutor Chat tabs, where a search box is already the main
   // UI and a second one would just be in the way.
   const [dictOpen, setDictOpen] = useState(false);
+  // Read via refs inside the once-bound key listeners (palette swap).
+  const dictOpenRef = useRef(false);
+  dictOpenRef.current = dictOpen;
+  const closeDictRef = useRef<() => void>(() => {});
   const dictSuppressed = activeTab === "dictionary" || activeTab === "tutor";
   const [dictSeed, setDictSeed] = useState<string | undefined>(undefined);
   /** The sentence the selection sat in — fuels the drawer's "In this context". */
@@ -149,6 +153,8 @@ export default function Home() {
       setDictSeed(seeded ? selected : undefined);
       // Captured now, before the drawer takes focus and the selection collapses.
       setDictSentence(seeded ? surroundingSentence(selected) : undefined);
+      // One palette at a time: opening the dictionary replaces the voice one.
+      setVoiceAskOpen(false);
       setDictOpen(true);
     };
     window.addEventListener("keydown", onKey);
@@ -187,6 +193,8 @@ export default function Home() {
       // asking "what does it mean?" resolves against it.
       const selected = window.getSelection()?.toString().trim() ?? "";
       setVoiceAskContext(selected ? selected.slice(0, 500) : undefined);
+      // One palette at a time: opening voice replaces the dictionary drawer.
+      if (dictOpenRef.current) closeDictRef.current();
       setVoiceAskOpen(true);
     };
     // Letting go of either key ends the recording. Both are watched because
@@ -219,6 +227,7 @@ export default function Home() {
     focusBeforeDict.current?.focus?.();
     focusBeforeDict.current = null;
   }, []);
+  closeDictRef.current = closeDict;
 
   if (loading) {
     return (

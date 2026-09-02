@@ -688,11 +688,20 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         // the heavy folded fields (conjugations/synonyms/confusing); "full" is
         // the complete entry (default, so existing callers are unchanged).
         parts: z.enum(["meaning", "quick", "full"]).default("full"),
+        // Disambiguation hints for same-spelling words ("ferme" noun vs verb,
+        // "pain" FR bread vs EN pain). Optional; absent = today's behaviour.
+        wordTypeHint: z.enum(["noun", "adjective", "adverb", "verb"]).optional(),
+        langHint: z.enum(["fr", "en"]).optional(),
       }))
       .mutation(async ({ input }) => {
         // "v2" cache generation — bumped when the word schema gained noun gender,
         // so previously-cached entries re-fetch and pick up the gender field.
-        const base = "v2::" + input.term.toLowerCase().trim();
+        // Hints are part of the key: a hinted answer is a different entry, and
+        // unhinted searches must keep hitting the existing warm cache.
+        const hintKey =
+          (input.wordTypeHint ? `::t=${input.wordTypeHint}` : "") +
+          (input.langHint ? `::l=${input.langHint}` : "");
+        const base = "v2::" + input.term.toLowerCase().trim() + hintKey;
         const SUFFIX = { full: "", quick: "::q", meaning: "::m" } as const;
         // Richest variant first. A word already generated at "full" contains
         // everything a "meaning" request needs, so it answers with no LLM call —
@@ -711,6 +720,18 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         const key = base + SUFFIX[input.parts];
 
         const type = detectInputType(input.term);
+
+        // Disambiguation hints, appended to the prompt when the user set them.
+        const hintNote = [
+          input.wordTypeHint
+            ? ` IMPORTANT — THE USER SPECIFIED THE WORD TYPE: ${input.wordTypeHint}. This spelling may have several readings; return the entry for its ${input.wordTypeHint} reading (e.g. "ferme" as a noun is la ferme = farm, as a verb it is a form of fermer) and set wordType to match.`
+            : "",
+          input.langHint === "fr"
+            ? ` IMPORTANT — THE USER SPECIFIED THE INPUT LANGUAGE: French. Treat the input strictly as a French word, even if it is spelled identically to an English word.`
+            : input.langHint === "en"
+              ? ` IMPORTANT — THE USER SPECIFIED THE INPUT LANGUAGE: English. The input is an ENGLISH word: return the French dictionary entry for its primary French equivalent. Set "word" and "baseForm" to the FRENCH equivalent (never the English input) and "translation" to the English meaning. Do NOT mark it not-found just because the input itself isn't French.`
+              : "",
+        ].join("");
 
         // Build messages + structured response_format per input type
         let messages: { role: "system" | "user"; content: string }[];
@@ -754,7 +775,7 @@ If no plausible suggestion exists, return {"suggestions":[]}.`,
         } else if (type === "phrase") {
           messages = [
             { role: "system", content: "You are a precise French-English dictionary. Return only valid JSON." },
-            { role: "user", content: `Look up this French phrase: "${input.term}". The user may have omitted accents; return proper French WITH accents. Provide a complete dictionary entry.` },
+            { role: "user", content: `Look up this French phrase: "${input.term}". The user may have omitted accents; return proper French WITH accents. Provide a complete dictionary entry.${hintNote}` },
           ];
           responseFormat = {
             type: "json_schema",
@@ -847,7 +868,7 @@ ADJECTIVE / STATE AUXILIARY: if the word is an adjective or expresses a personal
 
 NOUN GENDER: if the word is a noun, set "gender" to "masculine" or "feminine" (its grammatical gender — e.g. chien→masculine, maison→feminine), or "both" if it is genuinely used as either gender (e.g. après-midi, enfant). For anything that is NOT a noun (verb, adjective, adverb, preposition, etc.) set "gender" to "".
 
-Provide 2 example sentences. ${detailsInstruction} If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.` },
+Provide 2 example sentences. ${detailsInstruction} If the input is not a real French word, set found to false and leave other fields as empty strings or empty arrays.${hintNote}` },
           ];
           const wordProps: Record<string, unknown> = {
             type: { type: "string", enum: ["word"] },
