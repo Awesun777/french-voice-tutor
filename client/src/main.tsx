@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { httpBatchLink, httpLink, splitLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -37,17 +37,19 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+const fetchWithCreds: NonNullable<Parameters<typeof httpLink>[0]["fetch"]> = (input, init) =>
+  globalThis.fetch(input, { ...(init ?? {}), credentials: "include" });
+
 const trpcClient = trpc.createClient({
   links: [
-    httpBatchLink({
-      url: "/api/trpc",
-      transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
-      },
+    // Slow calls (TTS synthesis, LLM detail fetches) opt out of batching with
+    // `trpc: { context: { skipBatch: true } }`. A batch's response arrives only
+    // when its SLOWEST member finishes — saving a word used to ride the same
+    // HTTP request as audio generation and sit there for seconds.
+    splitLink({
+      condition: (op) => op.context.skipBatch === true,
+      true: httpLink({ url: "/api/trpc", transformer: superjson, fetch: fetchWithCreds }),
+      false: httpBatchLink({ url: "/api/trpc", transformer: superjson, fetch: fetchWithCreds }),
     }),
   ],
 });

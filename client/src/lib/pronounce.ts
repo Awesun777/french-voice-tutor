@@ -58,7 +58,9 @@ export function usePronounce() {
 
   // voice.pronounce serves native Lingua Libre recordings for single words
   // (with attribution in the payload) and falls back to TTS for everything else.
-  const ttsMutation = trpc.voice.pronounce.useMutation();
+  // skipBatch: audio synthesis can take seconds and must never share an HTTP
+  // batch with (and therefore delay) cheap mutations like saving a word.
+  const ttsMutation = trpc.voice.pronounce.useMutation({ trpc: { context: { skipBatch: true } } });
 
   // Fetch + cache the audio for `text` WITHOUT playing it, so a later speak()
   // is instant. Used to warm the next flashcard while the current one shows.

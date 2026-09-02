@@ -170,13 +170,15 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
   const addCurrent = async () => {
     if (!savable || addVocab.isPending) return;
     if (isSaved) { setSaved((s) => new Set(s).add(savedKey)); return; }
+    // Optimistic: mark saved NOW; the insert runs in the background and only
+    // an actual failure reverts the tick.
+    setSaved((s) => new Set(s).add(savedKey));
     try {
       await addVocab.mutateAsync({ ...savable, lessonSource: "Dictionary" });
-      setSaved((s) => new Set(s).add(savedKey));
       utils.vocab.list.invalidate();
-      toast.success(`Saved “${savable.term}” to your library`);
     } catch {
-      toast.error(`Couldn't save the ${savable.entryKind}`);
+      setSaved((s) => { const next = new Set(s); next.delete(savedKey); return next; });
+      toast.error(`Couldn't save the ${savable.entryKind} — try again`);
     }
   };
 

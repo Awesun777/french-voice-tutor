@@ -861,7 +861,9 @@ export default function DictionaryTab() {
 
   // Background-loaded heavy fields: which word is currently fetching details.
   const [detailsWord, setDetailsWord] = useState<string | null>(null);
-  const detailsMutation = trpc.dictionary.searchDetails.useMutation();
+  // skipBatch: this is an LLM call that can take seconds — it must never share
+  // an HTTP batch with (and delay) the auto-save or other cheap mutations.
+  const detailsMutation = trpc.dictionary.searchDetails.useMutation({ trpc: { context: { skipBatch: true } } });
 
   const searchMutation = trpc.dictionary.search.useMutation({
     onSuccess: (data) => {
@@ -1010,6 +1012,12 @@ export default function DictionaryTab() {
   );
 
   const handleAdd = (term: string, translation: string, kind: "word" | "phrase", resultIdx?: number) => {
+    // Optimistic: the icon turns green NOW; the insert happens in the
+    // background (id -1 marks "saving" until the real id arrives) and only an
+    // actual failure reverts it.
+    if (resultIdx !== undefined) {
+      setAddedMap((prev) => ({ ...prev, [resultIdx]: { id: -1, term } }));
+    }
     addMutation.mutate(
       { term, translation, entryKind: kind },
       {
@@ -1017,8 +1025,17 @@ export default function DictionaryTab() {
           if (resultIdx !== undefined) {
             setAddedMap((prev) => ({ ...prev, [resultIdx]: { id: data.id, term } }));
           }
-          toast.success("Added to library!");
           utils.vocab.list.invalidate();
+        },
+        onError: () => {
+          if (resultIdx !== undefined) {
+            setAddedMap((prev) => {
+              const next = { ...prev };
+              delete next[resultIdx];
+              return next;
+            });
+          }
+          toast.error("Couldn't save — try again");
         },
       }
     );
@@ -1026,7 +1043,7 @@ export default function DictionaryTab() {
 
   const handleRemove = (resultIdx: number) => {
     const entry = addedMap[resultIdx];
-    if (!entry) return;
+    if (!entry || entry.id < 0) return; // still saving — nothing to remove yet
     deleteMutation.mutate({ id: entry.id });
     setAddedMap((prev) => {
       const next = { ...prev };
