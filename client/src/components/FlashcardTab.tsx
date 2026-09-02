@@ -5,6 +5,7 @@ import { Star, Mic, MicOff, ChevronLeft, ChevronRight, Loader2, Trash2, Combine,
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { usePronounce } from "@/lib/pronounce";
+import { setScreenContext } from "@/lib/screenContext";
 import { PronounceButton } from "@/components/PronounceButton";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
@@ -207,6 +208,15 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
 
   // Close the edit panel whenever the displayed card changes.
   useEffect(() => { setEditing(false); }, [currentCardId]);
+
+  // Publish the visible card as the voice-ask fallback context: Shift+Return
+  // and "break down this sentence" with nothing selected means THIS card.
+  useEffect(() => {
+    const cur = deck[idx];
+    if (!choice || sessionDone || !cur) { setScreenContext(null); return; }
+    setScreenContext(`${cur.term} (my current flashcard — English: ${cur.translation})`);
+    return () => setScreenContext(null);
+  }, [deck, idx, choice, sessionDone]);
 
   // Launch a session: fetch the chosen queue, then build the deck. Fetching
   // imperatively (vs a reactive query) keeps a restored deck from being clobbered.

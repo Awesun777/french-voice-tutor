@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 import { usePronounce } from "@/lib/pronounce";
+import { setScreenContext } from "@/lib/screenContext";
 import { PronounceButton } from "@/components/PronounceButton";
 import ReviewLaunch, { ReviewLaunchChoice } from "@/components/ReviewLaunch";
 import { AvatarVideo } from "@/components/AvatarVideo";
@@ -152,6 +153,15 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
     const term = questions[qIndex]?.word?.term;
     if (term) void preload(term);
   }, [phase, qIndex, questions, preload]);
+
+  // Publish the on-screen question as the voice-ask fallback context, so
+  // Shift+Return + "explain this" with nothing selected means THIS question.
+  useEffect(() => {
+    const w = phase === "quiz" ? questions[qIndex]?.word : undefined;
+    if (!w) { setScreenContext(null); return; }
+    setScreenContext(`${w.term} (the quiz question on my screen — English: ${w.translation})`);
+    return () => setScreenContext(null);
+  }, [phase, questions, qIndex]);
 
   const gradeMutation = trpc.quiz.gradeAnswer.useMutation();
   const saveSessionMutation = trpc.quiz.saveSession.useMutation();

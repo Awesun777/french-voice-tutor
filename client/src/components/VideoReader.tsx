@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { Loader2, ArrowLeft, Check, Plus, Crosshair, Languages } from "lucide-react";
 import { toast } from "sonner";
 import { usePronounce } from "@/lib/pronounce";
+import { setScreenContext } from "@/lib/screenContext";
 import { PronounceButton } from "@/components/PronounceButton";
 import { EmptyVideoState } from "@/components/VideoReaderEmpty";
 
@@ -288,6 +289,14 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
   }, [cues, timeMs]);
 
   // ─── Autoscroll ────────────────────────────────────────────────────────────
+  // Publish the line currently playing as the voice-ask fallback context, so
+  // Shift+Return + "break this down" with nothing selected means THIS line.
+  useEffect(() => {
+    const cue = activeIdx >= 0 ? cues[activeIdx] : undefined;
+    setScreenContext(cue ? `${cue.text} (the line currently playing in the video I'm watching)` : null);
+    return () => setScreenContext(null);
+  }, [cues, activeIdx]);
+
   useEffect(() => {
     if (!following || !playing || activeIdx < 0) return;
     const el = cueRefs.current[activeIdx];

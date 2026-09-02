@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SidebarTab } from "@/types";
 import { DictionaryFab, DictionarySearchDrawer } from "@/components/DictionarySearchDrawer";
 import { VoiceAskDrawer } from "@/components/VoiceAskDrawer";
+import { getScreenContext } from "@/lib/screenContext";
 import Sidebar from "@/components/Sidebar";
 import IngestTab from "@/components/IngestTab";
 import OpsTab from "@/components/OpsTab";
@@ -199,8 +200,12 @@ export default function Home() {
       // some browsers that collapses the selection. Same trick the dictionary
       // shortcut uses, so highlighting a word in a transcript or an article and
       // asking "what does it mean?" resolves against it.
+      // An explicit selection wins; otherwise fall back to whatever the
+      // active tab says is on screen (current flashcard, quiz question,
+      // playing video line) so "break down this sentence" needs no selecting.
       const selected = window.getSelection()?.toString().trim() ?? "";
-      setVoiceAskContext(selected ? selected.slice(0, 500) : undefined);
+      const ctx = selected || getScreenContext() || "";
+      setVoiceAskContext(ctx ? ctx.slice(0, 500) : undefined);
       // One palette at a time: opening voice replaces the dictionary drawer.
       if (dictOpenRef.current) closeDictRef.current();
       setVoiceAskOpen(true);
