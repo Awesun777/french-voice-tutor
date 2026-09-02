@@ -718,6 +718,10 @@ export async function extractVocabGroups(
   const batchResults: ExtractedWord[][] = new Array(batches.length);
   let nextBatch = 0;
   let completedBatches = 0;
+  // Announce the total up front: the first per-batch event only fires when a
+  // batch COMPLETES, which with a reasoning model can be minutes in — until
+  // then the UI had nothing real to show.
+  onProgress?.(0, totalBatches);
   await Promise.all(
     Array.from({ length: Math.min(BATCH_CONCURRENCY, batches.length) }, async () => {
       while (true) {
