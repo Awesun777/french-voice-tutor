@@ -144,6 +144,10 @@ export default function AccountsTab() {
   const [q, setQ] = useState("");
   const [confirming, setConfirming] = useState<number | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  /** Row whose role-toggle is awaiting a second, explicit click. The shield
+      used to flip admin in ONE unconfirmed click right next to delete — a
+      stray hover-click silently promoted a random user to admin. */
+  const [roleConfirm, setRoleConfirm] = useState<number | null>(null);
   const utils = trpc.useUtils();
 
   const overview = trpc.admin.overview.useQuery();
@@ -274,11 +278,26 @@ export default function AccountsTab() {
                     <td className="px-2 py-2.5 text-right tabular-nums">{u.articleViews}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {roleConfirm === u.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => { setRole.mutate({ id: u.id, role: u.role === "admin" ? "user" : "admin" }); setRoleConfirm(null); }}
+                              className="px-2 py-1 rounded-lg bg-primary text-primary-foreground text-[10px] font-bold whitespace-nowrap"
+                            >
+                              {u.role === "admin" ? "Remove admin" : "Make admin"}
+                            </button>
+                            <button
+                              onClick={() => setRoleConfirm(null)}
+                              className="px-1.5 py-1 rounded-lg bg-muted text-muted-foreground text-[10px] font-bold"
+                            >✕</button>
+                          </div>
+                        ) : (
                         <button
-                          onClick={() => setRole.mutate({ id: u.id, role: u.role === "admin" ? "user" : "admin" })}
+                          onClick={() => setRoleConfirm(u.id)}
                           title={u.role === "admin" ? "Remove admin" : "Make admin"}
                           className="p-1 rounded text-muted-foreground hover:text-foreground"
                         ><ShieldCheck className="w-3.5 h-3.5" /></button>
+                        )}
                         <button
                           onClick={() => { setConfirming(u.id); setConfirmText(""); }}
                           title="Delete account and all its data"

@@ -2742,6 +2742,9 @@ ${input.transcript}`,
           throw new TRPCError({ code: "BAD_REQUEST", message: "You can't remove your own admin access." });
         }
         await db.update(users).set({ role: input.role }).where(eq(users.id, input.id));
+        // Audit trail in the server logs — when "why is X an admin?" comes up,
+        // this line is the answer. (Learned the hard way 2026-09-02.)
+        console.log(`[Admin] user ${ctx.user.id} set role of user ${input.id} to "${input.role}"`);
         return { ok: true };
       }),
 
