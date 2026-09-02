@@ -406,8 +406,13 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
       {/* Player. The reader takes over the whole pane — the Listening Lab header
           and mode switcher are hidden while a video is open — so this bar owns
           the only way back. */}
-      <div className="flex-shrink-0 bg-primary relative z-10 shadow-[0_12px_28px_-14px_rgb(23_63_107_/_0.65)]">
-        <div className="mx-auto w-full max-w-5xl flex items-center gap-3 px-1 py-2.5">
+      {/* The horizontal padding mirrors the transcript pane exactly: pl-4 =
+          its px-4, and on lg the right side is the saved-words rail (w-64 =
+          256px) plus that same 16px — so the player centres in the SAME
+          effective width as the transcript column, keeping their left edges
+          flush at every viewport. */}
+      <div className="flex-shrink-0 bg-primary relative z-10 shadow-[0_12px_28px_-14px_rgb(23_63_107_/_0.65)] pl-4 pr-4 lg:pr-[272px]">
+        <div className="mx-auto w-full max-w-5xl flex items-center gap-3 py-2.5">
           <button
             onClick={onBack}
             className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10 transition-colors"
