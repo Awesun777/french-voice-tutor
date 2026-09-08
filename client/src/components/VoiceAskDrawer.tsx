@@ -38,11 +38,25 @@ function extFor(mime: string): string {
   return "webm";
 }
 
+/**
+ * "How do you say X" detector — same trigger the browser extension uses, so
+ * both surfaces behave identically.
+ */
+const SAY_TRIGGER =
+  /^(?:how (?:do|would|does|can|could) (?:you|i|we|one) say|how to say|what(?:'s| is) the french (?:word |phrase )?for|comment dit[- ]on|comment est[- ]ce qu'on dit|comment on dit)[\s:,]+(.+?)(?:\s+in french|\s+en français)?\s*[?.!…]*$/i;
+function sayTriggerPhrase(question: string): string | null {
+  const m = question.trim().match(SAY_TRIGGER);
+  if (!m) return null;
+  const phrase = m[1].trim().replace(/^["'«»“”\s]+|["'«»“”\s]+$/g, "");
+  return phrase && phrase.length <= 300 ? phrase : null;
+}
+
 export function VoiceAskDrawer({
   open,
   onClose,
   contextText,
   releaseSignal = 0,
+  autoCopyTranslation = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -50,10 +64,13 @@ export function VoiceAskDrawer({
   contextText?: string;
   /** Increments when Shift or Return is released — ends the recording. */
   releaseSignal?: number;
+  /** Writing tab: "how do you say X" auto-copies the French, ready to paste. */
+  autoCopyTranslation?: boolean;
 }) {
   const [phase, setPhase] = useState<Phase>("recording");
   const [question, setQuestion] = useState("");
   const [reply, setReply] = useState("");
+  const [copied, setCopied] = useState<{ text: string; ok: boolean } | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [seconds, setSeconds] = useState(0);
 
@@ -74,6 +91,8 @@ export function VoiceAskDrawer({
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
   const voiceAsk = trpc.tutor.voiceAsk.useMutation();
+  const toFrench = trpc.tutor.toFrench.useMutation();
+  const toFrenchRef = useRef(toFrench); toFrenchRef.current = toFrench;
 
   const stopTracks = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -101,12 +120,27 @@ export function VoiceAskDrawer({
         setPhase("answered");
         // The exchange is saved to the same history Tutor Chat reads.
         utils.tutor.history.invalidate();
+        // Writing tab: "how do you say X" puts the French straight on the
+        // clipboard, ready to paste into the draft — same as the extension.
+        if (autoCopyTranslation) {
+          const phrase = sayTriggerPhrase(res.question);
+          if (phrase) {
+            try {
+              const fr = await toFrenchRef.current.mutateAsync({ phrase });
+              if (fr?.french) {
+                let ok = false;
+                try { await navigator.clipboard.writeText(fr.french); ok = true; } catch { /* show manual copy */ }
+                setCopied({ text: fr.french, ok });
+              }
+            } catch { /* best-effort — never sink the answer */ }
+          }
+        }
       } catch (e) {
         setErrorMsg(e instanceof Error ? e.message : "Something went wrong");
         setPhase("error");
       }
     },
-    [voiceAsk, utils, contextText]
+    [voiceAsk, utils, contextText, autoCopyTranslation]
   );
 
   const beginRecording = useCallback(async () => {
@@ -116,6 +150,7 @@ export function VoiceAskDrawer({
     setPhase("recording");
     setQuestion("");
     setReply("");
+    setCopied(null);
     setErrorMsg("");
     setSeconds(0);
     chunksRef.current = [];
@@ -318,6 +353,25 @@ export function VoiceAskDrawer({
                   <div className="prose prose-sm max-w-none text-sm text-foreground mt-1.5 leading-relaxed">
                     <Streamdown>{reply}</Streamdown>
                   </div>
+                  {/* "How do you say X" from the Writing tab: the French is
+                      already on the clipboard, ready to paste into the draft. */}
+                  {copied && (
+                    <div className="mt-2 flex items-center gap-2 rounded-xl bg-primary/10 border border-primary/30 px-3 py-2">
+                      <span className="text-sm font-bold text-foreground">« {copied.text} »</span>
+                      {copied.ok ? (
+                        <span className="ml-auto text-xs font-semibold text-emerald-700">✓ Copied — just paste</span>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            try { await navigator.clipboard.writeText(copied.text); setCopied({ ...copied, ok: true }); } catch { /* keep button */ }
+                          }}
+                          className="ml-auto px-2.5 py-1 rounded-lg bg-primary text-primary-foreground text-xs font-bold"
+                        >
+                          📋 Copy
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={beginRecording}

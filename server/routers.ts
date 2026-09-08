@@ -2907,7 +2907,14 @@ ${input.text}
 
 Return JSON exactly like:
 {"corrected":"<the full corrected text>","fixes":[{"before":"<original fragment>","after":"<corrected fragment>","kind":"accent","note":"<one short English sentence explaining the fix>"}]}
-"kind" must be "accent" (accent/diacritic restoration only), "grammar" (conjugation, agreement, articles, word order), or "spelling". List EVERY change as its own fix, accent restorations included. If the text is already correct, return it unchanged with an empty fixes array.` },
+"kind" must be "accent" (accent/diacritic restoration only), "grammar" (conjugation, agreement, articles, word order), or "spelling". List EVERY change as its own fix, accent restorations included.
+
+STRICT RULES:
+- Flag ONLY genuine errors. A sentence that is already correct French must be left completely untouched — no fix, no mention.
+- NEVER suggest typography, punctuation or spacing changes: apostrophe style (' vs ’), quote style, dashes, spaces before ? ! : », capitalisation of headings. These are not errors.
+- Do not rephrase, do not upgrade vocabulary, do not change register.
+- When in doubt, prefer NO fix over a doubtful one.
+If the text is already correct, return it unchanged with an empty fixes array.` },
         ];
         // Gemini 2.5 Flash with thinking disabled is the fast path (~1-2s vs
         // 3-6s on the default chain) — this check runs live while typing, so
@@ -2922,6 +2929,13 @@ Return JSON exactly like:
           });
           raw = resp.choices[0].message.content ?? "{}";
         }
+        // Typography folding: a "fix" that only changes apostrophe style,
+        // quote style, NBSP/spacing, or edge punctuation is noise regardless
+        // of what the model claims. Accents are NOT folded — they are the
+        // whole point of this checker.
+        const foldTypography = (t: string) =>
+          t.replace(/[’‘]/g, "'").replace(/[«»“”]/g, '"').replace(/ /g, " ")
+           .replace(/\s+/g, " ").replace(/^[\s.,!?…:;"']+|[\s.,!?…:;"']+$/g, "").trim();
         try {
           const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
           return {
@@ -2935,6 +2949,7 @@ Return JSON exactly like:
                     kind: (["accent", "grammar", "spelling"].includes(String(f.kind)) ? String(f.kind) : "grammar") as "accent" | "grammar" | "spelling",
                     note: String(f.note ?? ""),
                   }))
+                  .filter((f: { before: string; after: string }) => foldTypography(f.before) !== foldTypography(f.after))
               : [],
           };
         } catch {

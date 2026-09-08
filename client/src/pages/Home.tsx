@@ -334,6 +334,7 @@ export default function Home() {
         open={voiceAskOpen}
         contextText={voiceAskContext}
         releaseSignal={voiceAskRelease}
+        autoCopyTranslation={activeTab === "writing"}
         onClose={() => { setVoiceAskOpen(false); setVoiceAskContext(undefined); }}
       />
     </div>

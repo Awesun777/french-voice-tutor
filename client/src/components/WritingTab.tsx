@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, PenLine, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft } from "lucide-react";
+import { Loader2, PenLine, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette } from "lucide-react";
 
 const ACCENTS = ["é", "è", "ê", "ë", "à", "â", "ç", "î", "ï", "ô", "œ", "ù", "û", "ü", "É", "À", "Ç", "«", "»", "’"];
 
@@ -175,21 +175,60 @@ export default function WritingTab() {
   }, [flush]);
 
   // ── Live proofreading ───────────────────────────────────────────────────────
+  /**
+   * The paragraph (contiguous non-empty block lines) the caret sits in, or
+   * null when it can't be determined. Live checks are scoped to this: faster
+   * (less text to the model) and it guarantees a pasted homework prompt at
+   * the top of the page is never re-litigated while answers are written
+   * below it — the "Check all" button covers the whole passage on demand.
+   */
+  const caretParagraph = (): string | null => {
+    const root = editorRef.current;
+    const sel = window.getSelection();
+    if (!root || !sel || sel.rangeCount === 0) return null;
+    let node: Node | null = sel.getRangeAt(0).startContainer;
+    if (!root.contains(node)) return null;
+    while (node && node !== root && node.parentNode !== root) node = node.parentNode;
+    if (!node || node === root) return null; // flat editor — fall back to full text
+    const nonEmpty = (el: Node | null) => !!el && !!(el.textContent ?? "").trim();
+    let a: Node = node, b: Node = node;
+    while (a.previousSibling && nonEmpty(a.previousSibling)) a = a.previousSibling;
+    while (b.nextSibling && nonEmpty(b.nextSibling)) b = b.nextSibling;
+    const parts: string[] = [];
+    for (let cur: Node | null = a; cur; cur = cur.nextSibling) {
+      parts.push(cur.textContent ?? "");
+      if (cur === b) break;
+    }
+    const text = parts.join("\n").trim();
+    return text || null;
+  };
+
+  const runCheck = useCallback(async (scope: "paragraph" | "all") => {
+    const text = (scope === "paragraph" ? (caretParagraph() ?? editorText()) : editorText()).trim();
+    if (text.length < 10 || (scope === "paragraph" && text === lastCheckedRef.current)) return;
+    lastCheckedRef.current = text;
+    setChecking(true);
+    try {
+      const res = await checkMutationRef.current.mutateAsync({ text });
+      const current = editorText();
+      setFixes((prev) => {
+        const fresh = (res.fixes as Fix[]).filter((f: Fix) => current.includes(f.before));
+        if (scope === "all") return fresh; // full pass replaces everything
+        // Paragraph pass: keep fixes from other paragraphs, replace this one's.
+        const kept = prev.filter((f) => current.includes(f.before) && !text.includes(f.before));
+        return [...kept, ...fresh.filter((f) => !kept.some((k) => k.before === f.before))];
+      });
+    } catch {
+      if (scope === "all") toast.error("Check failed — try again");
+    }
+    setChecking(false);
+  }, []);
+  const runCheckRef = useRef(runCheck); runCheckRef.current = runCheck;
+
   const checkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleCheck = useCallback(() => {
     if (checkTimer.current) clearTimeout(checkTimer.current);
-    checkTimer.current = setTimeout(async () => {
-      const text = editorText().trim();
-      if (text.length < 10 || text === lastCheckedRef.current) return;
-      lastCheckedRef.current = text;
-      setChecking(true);
-      try {
-        const res = await checkMutationRef.current.mutateAsync({ text });
-        const current = editorText();
-        setFixes((res.fixes as Fix[]).filter((f: Fix) => current.includes(f.before)));
-      } catch { /* quiet — live checking must never nag */ }
-      setChecking(false);
-    }, 1600);
+    checkTimer.current = setTimeout(() => void runCheckRef.current("paragraph"), 1600);
   }, []);
 
   const onEdited = useCallback(() => {
@@ -249,9 +288,19 @@ export default function WritingTab() {
   }, []);
 
   // ── Formatting ──────────────────────────────────────────────────────────────
+  const [colorOpen, setColorOpen] = useState(false);
   const format = (cmd: string) => {
     editorRef.current?.focus();
     document.execCommand(cmd);
+    onEdited();
+  };
+  const applyColor = (c: string) => {
+    const root = editorRef.current;
+    if (!root) return;
+    root.focus();
+    // "" = back to the theme's default text colour.
+    document.execCommand("foreColor", false, c || getComputedStyle(root).color);
+    setColorOpen(false);
     onEdited();
   };
 
@@ -383,6 +432,43 @@ export default function WritingTab() {
               {b.icon}
             </button>
           ))}
+          {/* Text colour */}
+          <div className="relative">
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setColorOpen((o) => !o)}
+              title="Text colour"
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Palette className="w-4 h-4" />
+            </button>
+            {colorOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setColorOpen(false)} />
+                <div className="absolute left-0 top-[calc(100%+4px)] z-30 flex gap-1.5 p-2 rounded-xl bg-popover shadow-lg ring-1 ring-black/5">
+                  {["", "#B3372E", "#1D7A4F", "#2F5FA8", "#B45309", "#7C3AED"].map((c) => (
+                    <button
+                      key={c || "default"}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => applyColor(c)}
+                      title={c ? c : "Default"}
+                      className="w-6 h-6 rounded-full border border-border hover:scale-110 transition-transform"
+                      style={{ background: c || "var(--foreground, #1f2b3d)" }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          {/* Full-passage check — live checks only cover the paragraph being
+              edited, so this is the "proof the whole page" button. */}
+          <button
+            onClick={() => void runCheck("all")}
+            disabled={checking}
+            className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-colors disabled:opacity-50"
+          >
+            <SpellCheck className="w-3.5 h-3.5" /> Check all
+          </button>
           <div className="ml-auto flex items-center gap-3">
             {checking && (
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -463,8 +549,8 @@ export default function WritingTab() {
           </div>
         </div>
 
-        {/* Floating accent pad */}
-        <div className="hidden md:flex flex-col gap-1 absolute right-3 top-1/2 -translate-y-1/2 z-10 p-1.5 rounded-2xl bg-card/90 backdrop-blur border border-border shadow-sm max-h-[72vh] overflow-y-auto scrollbar-none">
+        {/* Floating accent bar — bottom centre, always within reach. */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex flex-row flex-wrap justify-center gap-1 p-1.5 rounded-2xl bg-card/95 backdrop-blur border border-border shadow-[0_10px_30px_-12px_rgb(23_63_107_/_0.4)] max-w-[min(46rem,92%)]">
           {ACCENTS.map((ch) => (
             <button
               key={ch}
