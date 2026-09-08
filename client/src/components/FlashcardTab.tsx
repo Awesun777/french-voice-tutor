@@ -1,3 +1,4 @@
+import type { ReviewTarget } from "@/types";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
@@ -142,7 +143,7 @@ interface SavedFlashcardSession {
 }
 let savedFlashcardSession: SavedFlashcardSession | null = null;
 
-export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKey: string } | null }) {
+export default function FlashcardTab({ reviewTarget }: { reviewTarget?: ReviewTarget | null }) {
   const utils = trpc.useUtils();
   const { speak, preload, state: pronounceState, activeText } = usePronounce();
   // Refs so the autoplay effect can call the latest speak/preload without
@@ -224,7 +225,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
     setStarting(true);
     try {
       // Only the queue fields go to the server; `front` is a display choice.
-      const words = (await utils.review.getQueue.fetch({ mode: c.mode, dateKey: c.dateKey, limit: c.limit })) as VocabEntry[];
+      const words = (await utils.review.getQueue.fetch({ mode: c.mode, dateKey: c.dateKey, limit: c.limit, wordIds: c.wordIds })) as VocabEntry[];
       setChoice(c);
       setDeck([...words]);
       setIdx(0);
@@ -453,9 +454,10 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
           </div>
         ) : (
           <ReviewLaunch
-            key={reviewTarget?.dateKey ?? "none"}
+            key={JSON.stringify(reviewTarget ?? null)}
             kind="flashcards"
             initialDateKey={reviewTarget?.dateKey}
+            initialTarget={reviewTarget}
             onStart={startSession}
             header={<FlipCardMotif />}
           />

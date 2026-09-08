@@ -1,3 +1,6 @@
+import AdminTutorChooser from "@/components/admin/AdminTutorChooser";
+import { useAdminPreview } from "@/contexts/AdminPreviewContext";
+import type { ReviewTarget } from "@/types";
 /**
  * VoiceAgentChooser — the entry screen for Voice Chat.
  *
@@ -114,7 +117,8 @@ function AgentAvatar({ agent, active }: { agent: AgentConfig; active: boolean })
   );
 }
 
-function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string) => void }) {
+function VoiceAgentChooser({ onStartReview }: { onStartReview: (target?: string | ReviewTarget) => void }) {
+  const adminPreview = useAdminPreview();
   const [selected, setSelected] = useState<VoiceAgent | null>(null);
   const [started, setStarted] = useState<VoiceAgent | null>(null);
   const [mode, setMode] = useState<SpeakingMode>("casual");
@@ -152,19 +156,19 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
               {activeStarted === "marc" ? "Speaking" : "Tutors"}
             </button>
             <span className="text-sm font-semibold">{startedAgent.name}</span>
-            <span className="text-[10px] text-muted-foreground">{startedAgent.tag}</span>
+            <span className="text-[10px] text-muted-foreground">{adminPreview ? "French conversation" : startedAgent.tag}</span>
           </div>
           <div className="flex-1 overflow-hidden">
             {activeStarted === "romain" ? (
               <VoiceChatTab onStartReview={onStartReview} />
             ) : activeStarted === "anna" ? (
-              <AnnaVoiceTab />
+              <AnnaVoiceTab onStartReview={onStartReview} />
             ) : (
               <MarcExamTab />
             )}
           </div>
         </div>
-      ) : (
+      ) : adminPreview ? <AdminTutorChooser userId={user!.id} start={setStarted} /> : (
         // ── Chooser: flip between casual tutors and the mock-exam examiner. ──
         <div className="relative h-full w-full flex flex-col overflow-hidden">
           {/* Mode flip — a two-sided pill pinned above the chooser content. */}

@@ -1,3 +1,4 @@
+import type { ReviewTarget } from "@/types";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { VocabEntry } from "@/types";
@@ -110,7 +111,7 @@ interface PersistedQuiz {
 // Module-level variable so it persists across component unmounts
 let savedQuizState: PersistedQuiz | null = null;
 
-export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: string } | null }) {
+export default function QuizTab({ reviewTarget }: { reviewTarget?: ReviewTarget | null }) {
   const { data: words = [] } = trpc.vocab.list.useQuery();
   const submitQuizResultMutation = trpc.review.submitQuizResult.useMutation({
     onSuccess: () => { utils.review.getStats.invalidate(); utils.review.getDates.invalidate(); },
@@ -674,9 +675,10 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
         </div>
       ) : (
         <ReviewLaunch
-          key={reviewTarget?.dateKey ?? "none"}
+          key={JSON.stringify(reviewTarget ?? null)}
           kind="quiz"
           initialDateKey={reviewTarget?.dateKey}
+            initialTarget={reviewTarget}
           onStart={startQuiz}
           header={
             /* Same treatment as the Romain/Anna avatars in VoiceAgentChooser:

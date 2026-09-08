@@ -1,3 +1,5 @@
+import { useAdminPreview } from "@/contexts/AdminPreviewContext";
+import type { ReviewTarget } from "@/types";
 /**
  * AnnaVoiceTab — Real-time voice conversation with Anna, a French tutor AI.
  *
@@ -58,6 +60,7 @@ interface TranscriptLine {
 }
 
 interface SavedWord {
+  id?: number;
   term: string;
   translation: string;
   kind: string;
@@ -139,7 +142,9 @@ function PastSessionCard({ session }: { session: any }) {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export function AnnaVoiceTab() {
+export function AnnaVoiceTab({ onStartReview }: { onStartReview?: (target?: string | ReviewTarget) => void } = {}) {
+  const adminPreview = useAdminPreview();
+  const [sessionSaveError, setSessionSaveError] = useState(false);
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -465,15 +470,17 @@ export function AnnaVoiceTab() {
           save_vocab: async ({ term, translation, kind }: { term: string; translation: string; kind: string }): Promise<string> => {
             if (!term) return "error: missing term";
             const word: SavedWord = { term, translation: translation ?? "", kind: kind ?? "word" };
-            setSavedWords((prev) => [...prev, word]);
+            if (!adminPreview) setSavedWords((prev) => [...prev, word]);
             try {
-              await saveWordMutation.mutateAsync(
+              const result = await saveWordMutation.mutateAsync(
                 { term: word.term, translation: word.translation, kind: word.kind as "word" | "phrase" }
               );
+              if (adminPreview) setSavedWords(prev => [...prev, { ...word, id: result.id }]);
               toast.success(`Saved "${word.term}" to your library`);
               utils.vocab.list.invalidate();
             } catch {
               toast.error(`Failed to save "${word.term}"`);
+              if (adminPreview) return "error: word was not saved; please try again";
             }
             return `saved:${term}`;
           },
@@ -529,6 +536,7 @@ export function AnnaVoiceTab() {
   const endSession = async () => {
     if (endingRef.current || !sessionId) return;
     endingRef.current = true;
+    setSessionSaveError(false);
     setSessionState("ending");
     cleanup();
     try {
@@ -544,6 +552,7 @@ export function AnnaVoiceTab() {
       refetchSessions();
     } catch {
       toast.error("Failed to save session");
+      if (adminPreview) { setSessionSaveError(true); endingRef.current = false; }
       setSessionState("ended");
     }
   };
@@ -667,15 +676,17 @@ export function AnnaVoiceTab() {
             save_vocab: async ({ term, translation, kind }: { term: string; translation: string; kind: string }): Promise<string> => {
               if (!term) return "error: missing term";
               const word: SavedWord = { term, translation: translation ?? "", kind: kind ?? "word" };
-              setSavedWords((prev) => [...prev, word]);
+              if (!adminPreview) setSavedWords((prev) => [...prev, word]);
               try {
-                await saveWordMutation.mutateAsync(
+                const result = await saveWordMutation.mutateAsync(
                   { term: word.term, translation: word.translation, kind: word.kind as "word" | "phrase" }
                 );
-                toast.success(`Saved "${word.term}" to your library`);
+                if (adminPreview) setSavedWords(prev => [...prev, { ...word, id: result.id }]);
+              toast.success(`Saved "${word.term}" to your library`);
                 utils.vocab.list.invalidate();
               } catch {
                 toast.error(`Failed to save "${word.term}"`);
+              if (adminPreview) return "error: word was not saved; please try again";
               }
               return `saved:${term}`;
             },
@@ -995,7 +1006,8 @@ export function AnnaVoiceTab() {
             <div className="w-14 h-14 rounded-full bg-speaking/10 border-2 border-speaking/30 flex items-center justify-center">
               <MessageSquare className="w-6 h-6 text-speaking" />
             </div>
-            <h2 className="font-display text-lg font-bold text-foreground">Session Complete</h2>
+            <h2 className="font-display text-lg font-bold text-foreground">{adminPreview && sessionSaveError ? "Conversation ended" : "Session Complete"}</h2>
+            {adminPreview && sessionSaveError && <div role="alert" className="w-full border border-destructive/40 rounded-lg p-4"><p className="text-sm">The session summary couldn’t be saved. Keep this page open to retry. Words already saved remain in your library.</p><button className="underline font-semibold py-3 text-sm" onClick={() => void endSession()}>Retry saving session</button></div>}
 
             {endedSummary && (
               <div className="w-full bg-card card-float rounded-xl p-4">
@@ -1007,6 +1019,7 @@ export function AnnaVoiceTab() {
             {savedWords.length > 0 && (
               <div className="w-full bg-speaking-surface/70 border border-speaking/20 rounded-xl p-4">
                 <p className="font-display text-xs font-bold text-speaking uppercase tracking-wider mb-2">Words Saved ({savedWords.length})</p>
+                {adminPreview && onStartReview && <button className="rounded-lg bg-primary text-primary-foreground px-4 py-3 mb-4 text-sm font-semibold" onClick={() => onStartReview({ wordIds: savedWords.flatMap(w => w.id ? [w.id] : []) })}>Review these {savedWords.length} saved words</button>}
                 <div className="flex flex-wrap gap-2">
                   {savedWords.map((w, i) => (
                     <span key={i} className="px-2.5 py-1 bg-speaking/15 text-speaking rounded-full text-xs font-medium">

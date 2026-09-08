@@ -619,10 +619,19 @@ export function orderForReview(words: VocabEntry[]): VocabEntry[] {
  */
 export async function getReviewQueue(
   userId: number,
-  opts: { mode: "due" | "all" | "latest"; dateKey?: string; limit?: number }
+  opts: { mode: "due" | "all" | "latest"; dateKey?: string; limit?: number; wordIds?: number[] }
 ): Promise<VocabEntry[]> {
   const db = await getDb();
   if (!db) return [];
+
+  // IDs always remain scoped to the authenticated owner, including admin callers.
+  if (opts.wordIds) {
+    if (!opts.wordIds.length) return [];
+    const rows = await db.select().from(vocabEntries).where(
+      and(eq(vocabEntries.userId, userId), inArray(vocabEntries.id, Array.from(new Set(opts.wordIds))))
+    );
+    return orderForReview(rows).slice(0, opts.limit ?? 500);
+  }
 
   if (opts.mode === "latest") {
     const rows = await db

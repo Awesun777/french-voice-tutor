@@ -1,3 +1,6 @@
+import { useAdminPreview } from "@/contexts/AdminPreviewContext";
+import AdminReviewLaunch from "@/components/admin/AdminReviewLaunch";
+import type { ReviewTarget } from "@/types";
 /**
  * ReviewLaunch — the shared first screen for both Quiz and Flashcards.
  *
@@ -44,6 +47,7 @@ function fmtDateLabel(dk: string) {
  * news-radar applications calendar, in this app's tokens.
  */
 export interface ReviewLaunchChoice {
+  wordIds?: number[];
   mode: "due" | "all" | "latest";
   dateKey?: string;
   limit?: number;
@@ -52,6 +56,7 @@ export interface ReviewLaunchChoice {
 }
 
 interface ReviewLaunchProps {
+  initialTarget?: ReviewTarget | null;
   /** What kind of session this launches into — only affects the copy. */
   kind: "quiz" | "flashcards";
   /** Pre-select this date and jump to the count chooser (used by CTAs). */
@@ -165,7 +170,12 @@ const BUCKETS = [
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
-export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: ReviewLaunchProps) {
+export default function ReviewLaunch(props: ReviewLaunchProps) {
+  const admin = useAdminPreview();
+  return admin ? <AdminReviewLaunch {...props} /> : <LegacyReviewLaunch {...props} />;
+}
+
+function LegacyReviewLaunch({ kind, initialDateKey, onStart, header }: ReviewLaunchProps) {
   const { data: stats } = trpc.review.getStats.useQuery();
   const { data: dates = [] } = trpc.review.getDates.useQuery();
   const reduce = useReducedMotion();
