@@ -35,14 +35,14 @@ const MASCOT_LINES = [
  *  hello rather than reciting a fixed header. The "|" marks where the ink
  *  switches from navy to burgundy: the line's closing beat gets the warm color. */
 const GREETINGS = [
-  "Time for a new |French day!",
-  "Bonjour! Ready to play |in French?",
-  "Another day, |another jolie phrase!",
-  "Let's make today sound |français!",
-  "Your French adventure |starts here!",
-  "Allons-y — |today's French awaits!",
-  "One more day of |magnifique French!",
-  "Oh là là, |look who's back!",
+  "Time For A New |French Day!",
+  "Bonjour! Ready To Play |In French?",
+  "Another Day, |Another Jolie Phrase!",
+  "Let's Make Today Sound |Français!",
+  "Your French Adventure |Starts Here!",
+  "Allons-y — |Today's French Awaits!",
+  "One More Day Of |Magnifique French!",
+  "Oh Là Là, |Look Who's Back!",
 ];
 
 // ─── Mascot ───────────────────────────────────────────────────────────────────
