@@ -9,7 +9,7 @@
  * French phrase through the same TTS the rest of the app uses, so the first
  * thing on the page is already French coming out loud.
  */
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useLayoutEffect } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -159,6 +159,23 @@ export default function DashboardTab({
   // Picked once per visit, stable across re-renders so the reveal never restarts.
   const [greeting] = useState(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
 
+  // The hero must stay on ONE line at any viewport: start from the class size,
+  // measure, and shrink the font just enough for the greeting to fit its row.
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.fontSize = "";
+      const base = parseFloat(window.getComputedStyle(el).fontSize);
+      const ratio = el.clientWidth / el.scrollWidth;
+      if (ratio < 1) el.style.fontSize = `${base * ratio * 0.98}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [greeting]);
+
   return (
     <div className="relative flex-1 overflow-y-auto">
       {/* Same drifting fields as the review launch screen, so the two entry
@@ -184,9 +201,10 @@ export default function DashboardTab({
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
           className="flex items-center gap-6 sm:gap-10"
         >
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1
-              className="text-5xl sm:text-6xl text-foreground leading-tight"
+              ref={titleRef}
+              className="text-5xl sm:text-6xl text-foreground leading-tight whitespace-nowrap"
               style={{ fontFamily: "'Sedgwick Ave', cursive" }}
               aria-label={greeting}
             >

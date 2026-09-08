@@ -254,7 +254,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
 
   // ── Resizable player ────────────────────────────────────────────────────────
   // One width drives the header row, the video, AND the transcript column, so
-  // their left edges stay flush at any size. Dragging the blue band's bottom
+  // their left edges stay flush at any size. Dragging the player band's bottom
   // edge maps vertical movement to width via the 16:9 ratio. Persisted.
   const [playerW, setPlayerW] = useState<number>(() => {
     try {
@@ -489,24 +489,24 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 min-h-0 flex">
+      {/* Left column: player above transcript. The saved-words rail is a
+          sibling of this whole column, so it owns the entire right side. Player
+          and transcript centre in the same column width, keeping their left
+          edges flush at every viewport. */}
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
       {/* Player. The reader takes over the whole pane — the Listening Lab header
           and mode switcher are hidden while a video is open — so this bar owns
           the only way back. */}
-      {/* The horizontal padding mirrors the transcript pane exactly: pl-4 =
-          its px-4, and on lg the right side is the saved-words rail (w-64 =
-          256px) plus that same 16px — so the player centres in the SAME
-          effective width as the transcript column, keeping their left edges
-          flush at every viewport. */}
-      <div className="flex-shrink-0 bg-primary relative z-10 shadow-[0_12px_28px_-14px_rgb(23_63_107_/_0.65)] pl-4 pr-4 lg:pr-[272px]">
+      <div className="flex-shrink-0 relative z-10 px-4">
         <div className="mx-auto w-full flex items-center gap-3 py-2.5" style={{ maxWidth: playerW }}>
           <button
             onClick={onBack}
-            className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10 transition-colors"
+            className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Videos
           </button>
-          <p className="text-sm font-semibold text-primary-foreground/90 truncate">{data?.lesson.title}</p>
+          <p className="text-sm font-semibold text-foreground truncate">{data?.lesson.title}</p>
           <button
             onClick={() => setShowEnglish((v) => !v)}
             aria-pressed={showEnglish}
@@ -514,8 +514,8 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
             className={cn(
               "ml-auto flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
               showEnglish
-                ? "bg-white/20 text-primary-foreground"
-                : "text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10"
+                ? "bg-primary/15 text-primary"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
             )}
           >
             <Languages className="w-4 h-4" /> English
@@ -548,13 +548,12 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
         >
           <div className={cn(
             "h-1 w-16 rounded-full transition-colors",
-            resizing ? "bg-white/70" : "bg-white/25 group-hover/rs:bg-white/50"
+            resizing ? "bg-primary/60" : "bg-primary/20 group-hover/rs:bg-primary/45"
           )} />
         </div>
       </div>
 
-      {/* Transcript + saved-words rail */}
-      <div className="flex-1 min-h-0 flex">
+      {/* Transcript */}
       <div className="flex-1 min-h-0 relative">
         {!following && (
           <button
@@ -649,23 +648,31 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
         )}
       </div>
 
-      {/* Saved-words rail. Reads from the library filtered by this lesson, so it
-          survives leaving and coming back rather than only showing this
-          session's saves. */}
-      <aside className="hidden lg:flex w-64 flex-shrink-0 flex-col bg-background">
-        <div className="px-4 pt-5 pb-2">
+      </div>
+
+      {/* Saved-words rail — the whole right side. Reads from the library
+          filtered by this lesson, so it survives leaving and coming back rather
+          than only showing this session's saves. Each word floats in its own
+          card, per the reference mock. */}
+      <aside className="hidden lg:flex w-72 flex-shrink-0 flex-col min-h-0">
+        <div className="px-5 pt-5 pb-3">
           <p className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
             Saved from this video
           </p>
         </div>
         {savedHere.length === 0 ? (
-          <p className="px-4 text-xs text-muted-foreground/80 leading-relaxed">
-            Hover any underlined word for its meaning, then save it — it will collect here.
-          </p>
+          <div className="mx-4 rounded-2xl bg-card px-4 py-3.5 shadow-[0_10px_26px_-12px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5">
+            <p className="text-xs text-muted-foreground/80 leading-relaxed">
+              Hover any underlined word for its meaning, then save it — it will collect here.
+            </p>
+          </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-4 space-y-1">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 pt-1 space-y-2.5">
             {savedHere.map((w) => (
-              <div key={w.id} className="rounded-xl px-2.5 py-2 hover:bg-muted/40 transition-colors">
+              <div
+                key={w.id}
+                className="rounded-2xl bg-card px-3.5 py-2.5 shadow-[0_10px_26px_-12px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5 transition-shadow hover:shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.45)]"
+              >
                 <p className="text-sm font-semibold text-foreground break-words">{w.term}</p>
                 <p className="text-xs text-muted-foreground break-words">{w.translation}</p>
               </div>
@@ -673,12 +680,11 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           </div>
         )}
         {savedHere.length > 0 && (
-          <div className="px-4 py-3 text-xs text-muted-foreground">
+          <div className="px-5 py-3 text-xs text-muted-foreground">
             {savedHere.length} word{savedHere.length === 1 ? "" : "s"} saved
           </div>
         )}
       </aside>
-      </div>
     </div>
   );
 }
