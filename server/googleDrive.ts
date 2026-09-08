@@ -61,7 +61,7 @@ async function callDeepSeek(messages: { role: string; content: string }[], useJs
  * Call Gemini 2.5 Flash via Google AI Studio API.
  * Requires GOOGLE_AI_API_KEY to be set.
  */
-async function callGemini(messages: { role: string; content: string }[]): Promise<string> {
+export async function callGemini(messages: { role: string; content: string }[]): Promise<string> {
   if (!ENV.googleAiApiKey) {
     throw new Error("GOOGLE_AI_API_KEY is not configured. Please add your Google AI API key in settings.");
   }
