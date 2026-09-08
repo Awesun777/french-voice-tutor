@@ -31,6 +31,19 @@ const MASCOT_LINES = [
   { fr: "Encore un mot ?", en: "One more word?" },
 ];
 
+/** Hero greetings — bubbly, and a different one each visit so the page says
+ *  hello rather than reciting a fixed header. */
+const GREETINGS = [
+  "Time for a new French day!",
+  "Bonjour! Ready to play in French?",
+  "Another day, another jolie phrase!",
+  "Let's make today sound français!",
+  "Your French adventure starts here!",
+  "Allons-y — today's French awaits!",
+  "One more day of magnifique French!",
+  "Oh là là, look who's back!",
+];
+
 // ─── Mascot ───────────────────────────────────────────────────────────────────
 
 function Mascot() {
@@ -143,6 +156,8 @@ export default function DashboardTab({
   const reduce = useReducedMotion();
   const { data: videos = [] } = trpc.videos.list.useQuery();
   const { data: articles = [] } = trpc.articles.list.useQuery();
+  // Picked once per visit, stable across re-renders so the reveal never restarts.
+  const [greeting] = useState(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
 
   return (
     <div className="relative flex-1 overflow-y-auto">
@@ -172,12 +187,12 @@ export default function DashboardTab({
           <div className="min-w-0">
             <h1
               className="text-5xl sm:text-6xl text-foreground leading-tight"
-              style={{ fontFamily: "'Shadows Into Light Two', cursive" }}
-              aria-label="How do you want to learn today?"
+              style={{ fontFamily: "'Sedgwick Ave', cursive" }}
+              aria-label={greeting}
             >
               {/* Letter-by-letter reveal, so the script face reads as being
                   written across the page rather than just appearing. */}
-              {"How do you want to learn today?".split("").map((ch, i) => (
+              {greeting.split("").map((ch, i) => (
                 <motion.span
                   key={i}
                   aria-hidden
