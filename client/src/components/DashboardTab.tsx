@@ -207,13 +207,13 @@ export default function DashboardTab({
             </p>
 
             {/* The tutors, so the card shows who you'd actually be talking to. */}
-            <div className="flex items-center gap-3 mt-6">
+            <div className="flex-1 flex items-center justify-center gap-10 mt-6">
               {[
                 { src: "/avatars/romain.mp4", name: "Romain" },
                 { src: "/avatars/anna.mp4", name: "Anna" },
               ].map((a) => (
-                <div key={a.name} className="flex items-center gap-2.5">
-                  <div className="w-14 h-14 rounded-full overflow-hidden ring-2 ring-white/25 flex-shrink-0">
+                <div key={a.name} className="flex flex-col items-center gap-2.5">
+                  <div className="w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden ring-2 ring-white/25 flex-shrink-0">
                     <AvatarVideo src={a.src} />
                   </div>
                   <span className="text-sm font-semibold">{a.name}</span>
