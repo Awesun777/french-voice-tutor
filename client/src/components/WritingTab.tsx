@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, PenLine, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette } from "lucide-react";
+import { Loader2, PenLine, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette, BookmarkPlus, Check } from "lucide-react";
 
 const ACCENTS = ["é", "è", "ê", "ë", "à", "â", "ç", "î", "ï", "ô", "œ", "ù", "û", "ü", "É", "À", "Ç", "«", "»", "’"];
 
@@ -113,6 +113,10 @@ export default function WritingTab() {
   const saveMutation = trpc.writing.save.useMutation();
   const removeMutation = trpc.writing.remove.useMutation();
   const checkMutation = trpc.writing.check.useMutation({ trpc: { context: { skipBatch: true } } });
+  const lookupMutation = trpc.dictionary.search.useMutation({ trpc: { context: { skipBatch: true } } });
+  const addVocabMutation = trpc.vocab.add.useMutation();
+  const lookupMutationRef = useRef(lookupMutation); lookupMutationRef.current = lookupMutation;
+  const addVocabMutationRef = useRef(addVocabMutation); addVocabMutationRef.current = addVocabMutation;
   const saveMutationRef = useRef(saveMutation); saveMutationRef.current = saveMutation;
   const checkMutationRef = useRef(checkMutation); checkMutationRef.current = checkMutation;
   const utilsRef = useRef(utils); utilsRef.current = utils;
@@ -286,6 +290,68 @@ export default function WritingTab() {
       window.removeEventListener("keyup", onUp, true);
     };
   }, []);
+
+  // ── Selection → save to vocab ───────────────────────────────────────────────
+  // Selecting words in the draft floats a "+ Save to vocab" chip above the
+  // selection; clicking looks up the translation and files it in the library.
+  const [selSave, setSelSave] = useState<{ text: string; left: number; top: number; state: "idle" | "busy" | "done" } | null>(null);
+  const selTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const onSelChange = () => {
+      if (selTimer.current) clearTimeout(selTimer.current);
+      selTimer.current = setTimeout(() => {
+        const root = editorRef.current;
+        const page = pageRef.current;
+        const sel = window.getSelection();
+        if (!root || !page || !sel || sel.rangeCount === 0 || sel.isCollapsed) { setSelSave(null); return; }
+        const range = sel.getRangeAt(0);
+        if (!root.contains(range.commonAncestorContainer)) { setSelSave(null); return; }
+        const text = sel.toString().replace(/\s+/g, " ").trim();
+        if (text.length < 2 || text.length > 120) { setSelSave(null); return; }
+        const r = range.getBoundingClientRect();
+        const pageBox = page.getBoundingClientRect();
+        setSelSave((prev) => ({
+          text,
+          left: r.left - pageBox.left,
+          top: r.top - pageBox.top,
+          state: prev?.text === text ? prev.state : "idle",
+        }));
+      }, 180);
+    };
+    document.addEventListener("selectionchange", onSelChange);
+    return () => {
+      document.removeEventListener("selectionchange", onSelChange);
+      if (selTimer.current) clearTimeout(selTimer.current);
+    };
+  }, []);
+
+  const saveSelection = async () => {
+    if (!selSave || selSave.state !== "idle") return;
+    const term = selSave.text;
+    setSelSave({ ...selSave, state: "busy" });
+    try {
+      // A quick meaning lookup supplies the translation (cached server-side).
+      const res = (await lookupMutationRef.current.mutateAsync({ term, parts: "meaning" })) as {
+        type?: string; found?: boolean; word?: string; phrase?: string; translation?: string;
+      };
+      const translation = res?.translation?.trim();
+      if (!translation) { toast.error(`Couldn't translate «${term}»`); setSelSave(null); return; }
+      await addVocabMutationRef.current.mutateAsync({
+        term,
+        translation,
+        // Same ≥3-words rule the rest of the app uses.
+        entryKind: term.split(/\s+/).length >= 3 ? "phrase" : "word",
+        lessonSource: "Writing",
+      });
+      utilsRef.current.vocab.list.invalidate();
+      toast.success(`Saved «${term}» — ${translation}`);
+      setSelSave((prev) => (prev && prev.text === term ? { ...prev, state: "done" } : prev));
+      setTimeout(() => setSelSave((prev) => (prev?.text === term ? null : prev)), 1500);
+    } catch {
+      toast.error("Couldn't save — try again");
+      setSelSave((prev) => (prev && prev.text === term ? { ...prev, state: "idle" } : prev));
+    }
+  };
 
   // ── Formatting ──────────────────────────────────────────────────────────────
   const [colorOpen, setColorOpen] = useState(false);
@@ -521,6 +587,30 @@ export default function WritingTab() {
             </div>
             <div className="h-40" />
 
+            {/* Selection chip: floats above selected words — one click files
+                them (with a looked-up translation) into the vocab library. */}
+            {selSave && (
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void saveSelection()}
+                className={cn(
+                  "absolute z-30 flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold shadow-[0_10px_28px_-8px_rgb(23_63_107_/_0.5)] transition-colors whitespace-nowrap",
+                  selSave.state === "done"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-primary text-primary-foreground hover:bg-primary/90"
+                )}
+                style={{ left: selSave.left, top: selSave.top - 36 }}
+              >
+                {selSave.state === "busy" ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving…</>
+                ) : selSave.state === "done" ? (
+                  <><Check className="w-3.5 h-3.5" /> Saved</>
+                ) : (
+                  <><BookmarkPlus className="w-3.5 h-3.5" /> Save to vocab</>
+                )}
+              </button>
+            )}
+
             {/* Inline fix overlays: a soft underline under the word, and a
                 chip floating right above it — click to accept in place. */}
             {marks.map((m, i) => (
@@ -547,15 +637,16 @@ export default function WritingTab() {
           </div>
         </div>
 
-        {/* Floating accent bar — bottom centre, always within reach. */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex flex-row flex-wrap justify-center gap-1 p-1.5 rounded-2xl bg-card/95 backdrop-blur border border-border shadow-[0_10px_30px_-12px_rgb(23_63_107_/_0.4)] max-w-[min(46rem,92%)]">
+        {/* Floating accent bar — bottom centre; same elevation treatment as
+            the pop-up dictionary palette so it reads as a floating layer. */}
+        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-10 flex flex-row flex-wrap justify-center gap-1.5 p-2.5 rounded-3xl bg-popover ring-1 ring-black/5 shadow-[0_24px_60px_-12px_rgb(23_63_107_/_0.45)] max-w-[min(52rem,94%)]">
           {ACCENTS.map((ch) => (
             <button
               key={ch}
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => insert(ch)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-primary/15 hover:text-primary text-foreground/80 text-[15px] font-medium transition-colors"
+              className="w-11 h-11 flex items-center justify-center rounded-xl bg-muted/50 hover:bg-primary/15 hover:text-primary text-foreground text-lg font-medium transition-colors"
             >
               {ch}
             </button>
