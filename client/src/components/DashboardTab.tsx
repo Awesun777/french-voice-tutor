@@ -257,8 +257,8 @@ export default function DashboardTab({
                   label: "Watch",
                   sub: `${videos.length} video${videos.length === 1 ? "" : "s"}`,
                   tone: "bg-speaking-surface text-speaking",
-                  img: "/brand/watch-banner.png",
-                  imgCls: "object-[center_30%]",
+                  img: "/brand/dashboard-watch.png",
+                  imgCls: "object-[center_38%]",
                 },
                 {
                   tab: "reading" as const,
@@ -266,8 +266,8 @@ export default function DashboardTab({
                   label: "Read",
                   sub: `${articles.length} article${articles.length === 1 ? "" : "s"}`,
                   tone: "bg-secondary text-primary",
-                  img: "/brand/reading-dog.png",
-                  imgCls: "object-[center_42%]",
+                  img: "/brand/dashboard-read.png",
+                  imgCls: "object-[center_45%]",
                 },
               ].map((o) => (
                 <motion.button
@@ -275,9 +275,9 @@ export default function DashboardTab({
                   onClick={() => setActiveTab(o.tab)}
                   whileHover={reduce ? undefined : { y: -3 }}
                   whileTap={reduce ? undefined : { scale: 0.98 }}
-                  className="group flex items-stretch flex-1 min-h-24 text-left rounded-2xl bg-background overflow-hidden shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.2)] hover:shadow-[0_12px_26px_-10px_rgb(23_63_107_/_0.35)] transition-shadow"
+                  className="group flex items-stretch h-20 text-left rounded-2xl bg-background overflow-hidden shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.2)] hover:shadow-[0_12px_26px_-10px_rgb(23_63_107_/_0.35)] transition-shadow"
                 >
-                  <div className="flex items-center gap-3.5 p-4 flex-1 min-w-0">
+                  <div className="flex items-center gap-3 px-4 py-2.5 flex-1 min-w-0">
                     <span className={cn("inline-flex w-10 h-10 rounded-xl items-center justify-center flex-shrink-0", o.tone)}>
                       {o.icon}
                     </span>
@@ -293,7 +293,7 @@ export default function DashboardTab({
                     src={o.img}
                     alt=""
                     loading="lazy"
-                    className={cn("hidden sm:block w-40 md:w-48 object-cover flex-shrink-0", o.imgCls)}
+                    className={cn("hidden sm:block ml-auto w-32 md:w-36 h-full object-cover flex-shrink-0", o.imgCls)}
                   />
                 </motion.button>
               ))}
