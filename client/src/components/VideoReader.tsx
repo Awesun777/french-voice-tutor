@@ -221,23 +221,29 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
     } catch { return 1024; }
   });
   const [resizing, setResizing] = useState(false);
+  // The freshest width lives in a ref: pointerup can fire before React
+  // re-renders with the last pointermove's state, and persisting from the
+  // render closure would save a stale value.
+  const playerWRef = useRef(playerW);
   const resizeStart = useRef<{ y: number; w: number } | null>(null);
   const clampW = (w: number) => Math.max(560, Math.min(1800, w));
   const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
-    resizeStart.current = { y: e.clientY, w: playerW };
+    resizeStart.current = { y: e.clientY, w: playerWRef.current };
     setResizing(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* synthetic/lost pointer */ }
   };
   const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!resizeStart.current) return;
-    setPlayerW(clampW(resizeStart.current.w + (e.clientY - resizeStart.current.y) * (16 / 9)));
+    const w = clampW(resizeStart.current.w + (e.clientY - resizeStart.current.y) * (16 / 9));
+    playerWRef.current = w;
+    setPlayerW(w);
   };
   const onResizeUp = () => {
     if (!resizeStart.current) return;
     resizeStart.current = null;
     setResizing(false);
-    try { localStorage.setItem("rt-player-w", String(Math.round(playerW))); } catch { /* private mode */ }
+    try { localStorage.setItem("rt-player-w", String(Math.round(playerWRef.current))); } catch { /* private mode */ }
   };
   // English stays hidden by default: the point of the reader is to work out the
   // French first, and a translation sitting under every line removes the work.
