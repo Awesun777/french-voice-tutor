@@ -454,8 +454,8 @@ export default function WritingTab() {
 
   return (
     <div className="flex-1 min-h-0 flex">
-      {/* ── Entries rail ─────────────────────────────────────────────────── */}
-      <aside className="w-72 flex-shrink-0 border-r border-border bg-muted/20 flex flex-col min-h-0">
+      {/* ── Entries rail (rendered on the right via order-last) ──────────── */}
+      <aside className="order-last w-72 flex-shrink-0 border-l border-border bg-muted/20 flex flex-col min-h-0">
         <div className="flex-shrink-0 h-14 px-4 flex items-center justify-between border-b border-border">
           <p className="font-display text-sm font-bold text-foreground flex items-center gap-2">
             <PenLine className="w-4 h-4 text-primary" /> Journal
