@@ -271,11 +271,13 @@ export function VoiceAskDrawer({
   useEffect(() => {
     if (open) {
       focusBefore.current = document.activeElement as HTMLElement | null;
-      requestAnimationFrame(() => panelRef.current?.focus());
-    } else {
-      focusBefore.current?.focus?.();
-      focusBefore.current = null;
+      // A lone rAF fires before the slide-in mount settles and the focus()
+      // silently fails (verified) — a short delay lands reliably.
+      const t = setTimeout(() => panelRef.current?.focus(), 80);
+      return () => clearTimeout(t);
     }
+    focusBefore.current?.focus?.();
+    focusBefore.current = null;
   }, [open]);
 
   if (!open) return null;
