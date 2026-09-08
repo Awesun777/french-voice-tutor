@@ -246,19 +246,37 @@ export function VoiceAskDrawer({
 
   // Escape closes. Holding the chord again after an answer asks another
   // question, so you never have to reach for the mouse.
+  // CAPTURE phase: the palette can open over surfaces whose own keydown
+  // handlers stop propagation (the Writing editor did), and its keys must
+  // win regardless of what has focus underneath.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); return; }
       if (e.key !== "Enter" || !e.shiftKey || e.repeat) return;
       if (phase === "answered" || phase === "error") {
         e.preventDefault();
         beginRecording();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [open, phase, onClose, beginRecording]);
+
+  // While open, the palette holds focus — keystrokes during a recording must
+  // not keep typing into whatever was focused underneath (they were landing
+  // in the Writing draft), and focus goes back where it was on close.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const focusBefore = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (open) {
+      focusBefore.current = document.activeElement as HTMLElement | null;
+      requestAnimationFrame(() => panelRef.current?.focus());
+    } else {
+      focusBefore.current?.focus?.();
+      focusBefore.current = null;
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -271,7 +289,11 @@ export function VoiceAskDrawer({
         onClick={onClose}
       />
       <aside className="fixed z-50 inset-x-0 bottom-0 sm:bottom-6 flex justify-center px-0 sm:px-4 pointer-events-none">
-        <div className="pointer-events-auto w-full sm:max-w-2xl max-h-[76vh] flex flex-col bg-popover rounded-t-3xl sm:rounded-3xl ring-1 ring-black/5 shadow-[0_24px_60px_-12px_rgb(23_63_107_/_0.45)] animate-in fade-in slide-in-from-bottom-8 duration-200 ease-out overflow-hidden">
+        <div
+          ref={panelRef}
+          tabIndex={-1}
+          className="pointer-events-auto outline-none w-full sm:max-w-2xl max-h-[76vh] flex flex-col bg-popover rounded-t-3xl sm:rounded-3xl ring-1 ring-black/5 shadow-[0_24px_60px_-12px_rgb(23_63_107_/_0.45)] animate-in fade-in slide-in-from-bottom-8 duration-200 ease-out overflow-hidden"
+        >
           {/* Header */}
           <div className="flex items-center gap-2 px-5 pt-4 pb-3">
             <MessageCircle className="w-4 h-4 text-speaking" />

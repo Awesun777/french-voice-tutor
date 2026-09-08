@@ -502,7 +502,6 @@ export default function WritingTab() {
             <input
               value={title}
               onChange={(e) => { setTitle(e.target.value); scheduleSave(); }}
-              onKeyDown={(e) => e.stopPropagation()}
               placeholder={todayTitle()}
               className="w-full bg-transparent border-none outline-none font-display text-3xl sm:text-4xl font-bold text-foreground placeholder-muted-foreground/50 mb-6"
             />
@@ -517,7 +516,6 @@ export default function WritingTab() {
                 contentEditable
                 suppressContentEditableWarning
                 onInput={onEdited}
-                onKeyDown={(e) => e.stopPropagation()}
                 className="min-h-[60vh] outline-none text-[17px] leading-8 text-foreground [&_b]:font-bold [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-6"
               />
             </div>
