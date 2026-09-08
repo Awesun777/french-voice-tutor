@@ -2844,6 +2844,54 @@ ${input.transcript}`,
       }),
   }),
 
+  // ─── Writing practice (admin) ───────────────────────────────────────────────
+  writing: router({
+    /**
+     * Proofread a French draft: restore missing accents (the author types on
+     * an English keyboard, so accents are the most common omission), fix
+     * grammar/spelling, and explain each change. Wording and style are kept.
+     */
+    check: adminProcedure
+      .input(z.object({ text: z.string().min(1).max(4000) }))
+      .mutation(async ({ input }) => {
+        const resp = await invokeLLM({
+          messages: [
+            { role: "system", content: "You are a precise French writing corrector for a learner. Return only valid JSON." },
+            { role: "user", content: `Proofread this French text written by a learner typing on an ENGLISH keyboard — missing accents are the most common problem (e.g. "chateau"→"château", "eleve"→"élève", "a"→"à" / "ou"→"où" where context requires). Restore ALL accents, and fix grammar, conjugation, agreement and spelling. Keep the author's wording and meaning — do NOT rewrite style or upgrade vocabulary.
+
+Text:
+"""
+${input.text}
+"""
+
+Return JSON exactly like:
+{"corrected":"<the full corrected text>","fixes":[{"before":"<original fragment>","after":"<corrected fragment>","kind":"accent","note":"<one short English sentence explaining the fix>"}]}
+"kind" must be "accent" (accent/diacritic restoration only), "grammar" (conjugation, agreement, articles, word order), or "spelling". List EVERY change as its own fix, accent restorations included. If the text is already correct, return it unchanged with an empty fixes array.` },
+          ],
+          response_format: { type: "json_object" } as any,
+        });
+        const raw = resp.choices[0].message.content ?? "{}";
+        try {
+          const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+          return {
+            corrected: String(parsed.corrected ?? input.text),
+            fixes: Array.isArray(parsed.fixes)
+              ? parsed.fixes
+                  .filter((f: unknown): f is Record<string, unknown> => !!f && typeof f === "object" && !!(f as any).before && !!(f as any).after)
+                  .map((f) => ({
+                    before: String(f.before),
+                    after: String(f.after),
+                    kind: (["accent", "grammar", "spelling"].includes(String(f.kind)) ? String(f.kind) : "grammar") as "accent" | "grammar" | "spelling",
+                    note: String(f.note ?? ""),
+                  }))
+              : [],
+          };
+        } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Couldn't parse the correction — try again." });
+        }
+      }),
+  }),
+
   // ─── Voice-chat test logs (admin) ───────────────────────────────────────────
   testLogs: router({
     list: adminProcedure.query(async () => {
