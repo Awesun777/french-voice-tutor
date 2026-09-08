@@ -101,10 +101,3 @@ export interface ImportItem {
   entryKind?: "word" | "phrase";
   dateKey?: string; // YYYY-MM-DD, set when document has date headers
 }
-
-export interface ReviewTarget {
-  dateKey?: string;
-  wordIds?: number[];
-  mode?: "due" | "latest";
-  limit?: number;
-}

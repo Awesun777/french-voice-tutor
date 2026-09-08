@@ -1,4 +1,3 @@
-import LandingPreview from "@/components/admin/LandingPreview";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
@@ -10,7 +9,6 @@ import Home from "./pages/Home";
 function Router() {
   return (
     <Switch>
-      <Route path="/admin/landing-preview" component={LandingPreview} />
       <Route path={"/"} component={Home} />
       {/* /privacy is a static no-JS page served by Express (client/public/
           privacy.html) so automated reviewers see the text; links to it are

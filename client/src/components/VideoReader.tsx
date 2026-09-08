@@ -1,6 +1,3 @@
-import { useContext } from "react";
-import { useAdminPreview, AdminReviewContext } from "@/contexts/AdminPreviewContext";
-import GlossSurface from "@/components/admin/GlossSurface";
 /**
  * VideoReader — curated YouTube lessons with a timed, glossed transcript.
  *
@@ -241,9 +238,7 @@ function YouTubePlayer({
 // ─── Reader ───────────────────────────────────────────────────────────────────
 
 export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: () => void }) {
-  const adminPreview = useAdminPreview();
-  const reviewSaved = useContext(AdminReviewContext);
-  const { data, isLoading, isError, refetch } = trpc.videos.get.useQuery({ youtubeId });
+  const { data, isLoading } = trpc.videos.get.useQuery({ youtubeId });
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
 
@@ -485,7 +480,6 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
     }
   };
 
-  if (adminPreview && isError) return <div role="alert" className="p-6"><h2 className="font-bold text-xl">This content couldn’t load.</h2><p className="mt-2">Try again, or return to choose something else.</p><button className="underline py-3 mr-5" onClick={() => void refetch()}>Try again</button><button className="underline py-3" onClick={onBack}>Back to the collection</button></div>;
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -496,7 +490,6 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {adminPreview && <div className="px-4 py-2 border-b flex flex-wrap items-center gap-3 text-sm"><span className="text-muted-foreground">Tap or focus a word, then press Enter for its meaning.</span>{savedHere.length > 0 && <button className="ml-auto underline py-2 font-semibold" onClick={() => reviewSaved?.({ wordIds: savedHere.map(w => w.id).slice(0, 500) })}>Review {Math.min(savedHere.length, 500)} words saved from this video</button>}</div>}
       {/* Player. The reader takes over the whole pane — the Listening Lab header
           and mode switcher are hidden while a video is open — so this bar owns
           the only way back. */}
@@ -613,7 +606,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
         </div>
 
         {hover && (
-          <GlossSurface enabled={adminPreview} close={() => setHover(null)}
+          <div
             style={{ top: hover.top, bottom: hover.bottom, left: hover.left }}
             onMouseEnter={() => { cancelHoverClose(); cancelPendingOpen(); }}
             onMouseLeave={scheduleHoverClose}
@@ -652,7 +645,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
                 ? <><Check className="w-3.5 h-3.5" /> Saved</>
                 : <><Plus className="w-3.5 h-3.5" /> Save to library</>}
             </button>
-          </GlossSurface>
+          </div>
         )}
       </div>
 
@@ -720,23 +713,17 @@ function CueText({
     return found;
   }, [cue.tokens, isActive, timeMs]);
 
-  const adminPreview = useAdminPreview();
-  const Word = adminPreview ? "button" : "span";
   const parts: React.ReactNode[] = [];
   let at = 0;
   cue.tokens.forEach((t, i) => {
     if (t.s > at) parts.push(<span key={`gap-${at}`}>{cue.text.slice(at, t.s)}</span>);
     parts.push(
-      <Word
+      <span
         key={`tok-${t.s}`}
-        type={adminPreview ? "button" : undefined}
-        aria-label={adminPreview ? `Meaning of ${t.surface}` : undefined}
-        onClick={adminPreview ? (e) => { e.stopPropagation(); onHover(t, e.currentTarget); } : undefined}
-        onMouseEnter={adminPreview ? undefined : (e) => onHover(t, e.currentTarget)}
-        onMouseLeave={adminPreview ? undefined : onLeave}
+        onMouseEnter={(e) => onHover(t, e.currentTarget)}
+        onMouseLeave={onLeave}
         className={cn(
           "cursor-help transition-colors",
-          adminPreview && "inline p-0 text-inherit text-left rounded-sm focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2",
           t.kind === "expression"
             ? "border-b-2 border-dashed border-speaking/60 hover:bg-speaking-surface"
             : "border-b border-dashed border-muted-foreground/40 hover:bg-primary/10",
@@ -744,7 +731,7 @@ function CueText({
         )}
       >
         {cue.text.slice(t.s, t.e)}
-      </Word>
+      </span>
     );
     at = t.e;
   });

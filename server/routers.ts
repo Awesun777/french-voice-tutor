@@ -1,4 +1,3 @@
-import { tutorVoicePreview } from "./tutorPreview";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
@@ -1687,12 +1686,6 @@ The user is asking about this specific word/phrase. Answer in the context of thi
   }),
 
   voice: router({
-    tutorPreview: adminProcedure
-      .input(z.object({ agent: z.enum(["romain", "anna"]) }))
-      .mutation(async ({ input }) => {
-        try { return await tutorVoicePreview(input.agent); }
-        catch { throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Voice sample unavailable. Please try again." }); }
-      }),
     // OpenAI TTS: accepts French text, returns base64-encoded MP3 audio
     tts: protectedProcedure
       .input(z.object({ text: z.string().min(1).max(500) }))
@@ -2236,12 +2229,8 @@ The user is asking about this specific word/phrase. Answer in the context of thi
         mode: z.enum(["due", "all", "latest"]),
         dateKey: z.string().max(100).optional(),
         limit: z.number().min(1).max(500).optional(),
-        wordIds: z.array(z.number().int().positive()).min(1).max(500).optional(),
       }))
       .query(async ({ ctx, input }) => {
-        if (input.wordIds && ctx.user.role !== "admin") {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Selected-word review is in admin preview." });
-        }
         return getReviewQueue(ctx.user.id, input);
       }),
 

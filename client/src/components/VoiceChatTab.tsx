@@ -1,5 +1,3 @@
-import { useAdminPreview } from "@/contexts/AdminPreviewContext";
-import type { ReviewTarget } from "@/types";
 /**
  * VoiceChatTab — Real-time voice conversation with Romain, a French tutor AI.
  *
@@ -113,7 +111,6 @@ interface TranscriptLine {
 }
 
 interface SavedWord {
-  id?: number;
   term: string;
   translation: string;
   kind: string;
@@ -239,9 +236,7 @@ function PastSessionCard({ session }: { session: any }) {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export default function VoiceChatTab({ onStartReview }: { onStartReview?: (target?: string | ReviewTarget) => void } = {}) {
-  const adminPreview = useAdminPreview();
-  const [sessionSaveError, setSessionSaveError] = useState(false);
+export default function VoiceChatTab({ onStartReview }: { onStartReview?: (dateKey?: string) => void } = {}) {
   const [sessionState, setSessionState] = useState<SessionState>("idle");
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -667,33 +662,28 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (targe
             kind: args.kind ?? "word",
           };
           if (word.term) {
-            const input = { term: word.term, translation: word.translation, kind: word.kind as "word" | "phrase" };
-            const acknowledge = (success: boolean) => {
-              if (dcRef.current?.readyState !== "open") return;
+            setSavedWords((prev) => [...prev, word]);
+            saveWordMutation.mutate(
+              { term: word.term, translation: word.translation, kind: word.kind as "word" | "phrase" },
+              {
+                onSuccess: () => {
+                  toast.success(`Saved "${word.term}" to your library`);
+                  utils.vocab.list.invalidate();
+                },
+                onError: () => toast.error(`Failed to save "${word.term}"`),
+              }
+            );
+            // Send tool result back to the AI so it can confirm
+            if (dcRef.current?.readyState === "open") {
               dcRef.current.send(JSON.stringify({
                 type: "conversation.item.create",
-                item: { type: "function_call_output", call_id: msg.call_id, output: JSON.stringify({ success, term: word.term }) },
+                item: {
+                  type: "function_call_output",
+                  call_id: msg.call_id,
+                  output: JSON.stringify({ success: true, term: word.term }),
+                },
               }));
               dcRef.current.send(JSON.stringify({ type: "response.create" }));
-            };
-            if (adminPreview) {
-              // Promise handlers run for every save, including concurrent tool calls.
-              void saveWordMutation.mutateAsync(input).then(result => {
-                setSavedWords(prev => [...prev, { ...word, id: result.id }]);
-                toast.success(`Saved "${word.term}" to your library`);
-                void utils.vocab.list.invalidate();
-                acknowledge(true);
-              }).catch(() => {
-                toast.error(`Failed to save "${word.term}"`);
-                acknowledge(false);
-              });
-            } else {
-              setSavedWords(prev => [...prev, word]);
-              saveWordMutation.mutate(input, {
-                onSuccess: () => { toast.success(`Saved "${word.term}" to your library`); void utils.vocab.list.invalidate(); },
-                onError: () => toast.error(`Failed to save "${word.term}"`),
-              });
-              acknowledge(true);
             }
           }
         } catch {
@@ -925,7 +915,6 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (targe
   const endSession = async () => {
     if (endingRef.current || !sessionId) return;
     endingRef.current = true;
-    setSessionSaveError(false);
     setSessionState("ending");
     cleanupWebRTC();
     try {
@@ -944,7 +933,6 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (targe
       refetchSessions();
     } catch {
       toast.error("Failed to save session");
-      if (adminPreview) { setSessionSaveError(true); endingRef.current = false; }
       setSessionState("ended");
     }
   };
@@ -1304,8 +1292,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (targe
             <div className="w-14 h-14 rounded-full bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-center">
               <MessageSquare className="w-6 h-6 text-emerald-700" />
             </div>
-            <h2 className="font-display text-lg font-bold text-foreground">{adminPreview && sessionSaveError ? "Conversation ended" : "Session Complete"}</h2>
-            {adminPreview && sessionSaveError && <div role="alert" className="w-full border border-destructive/40 rounded-lg p-4"><p className="text-sm">The session summary couldn’t be saved. Keep this page open to retry. Words already saved remain in your library.</p><button className="underline font-semibold py-3 text-sm" onClick={() => void endSession()}>Retry saving session</button></div>}
+            <h2 className="font-display text-lg font-bold text-foreground">Session Complete</h2>
 
             {endedSummary && (
               <div className="w-full bg-card card-float rounded-xl p-4">
@@ -1320,7 +1307,7 @@ export default function VoiceChatTab({ onStartReview }: { onStartReview?: (targe
                   <p className="font-display text-xs font-bold text-primary uppercase tracking-wider">Words Saved ({savedWords.length})</p>
                   {onStartReview && (
                     <button
-                      onClick={() => onStartReview(adminPreview ? { wordIds: savedWords.flatMap(w => w.id ? [w.id] : []) } : new Date().toISOString().split("T")[0])}
+                      onClick={() => onStartReview(new Date().toISOString().split("T")[0])}
                       className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold transition-colors"
                     >
                       Review the {savedWords.length} word{savedWords.length === 1 ? "" : "s"} you saved →

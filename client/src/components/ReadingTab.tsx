@@ -1,6 +1,3 @@
-import { useContext } from "react";
-import { useAdminPreview, AdminReviewContext } from "@/contexts/AdminPreviewContext";
-import GlossSurface from "@/components/admin/GlossSurface";
 /**
  * ReadingTab ("Reading").
  *
@@ -369,9 +366,7 @@ function EmptyReadingState() {
 const HOVER_CARD_H = 170;
 
 function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
-  const adminPreview = useAdminPreview();
-  const reviewSaved = useContext(AdminReviewContext);
-  const { data, isLoading, isError, refetch } = trpc.articles.get.useQuery({ slug });
+  const { data, isLoading } = trpc.articles.get.useQuery({ slug });
   const utils = trpc.useUtils();
   const { speak, state: pronounceState, activeText } = usePronounce();
 
@@ -449,7 +444,6 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
     }
   };
 
-  if (adminPreview && isError) return <div role="alert" className="p-6"><h2 className="font-bold text-xl">This content couldn’t load.</h2><p className="mt-2">Try again, or return to choose something else.</p><button className="underline py-3 mr-5" onClick={() => void refetch()}>Try again</button><button className="underline py-3" onClick={onBack}>Back to the collection</button></div>;
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -463,7 +457,6 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {adminPreview && <div className="px-4 py-2 border-b flex flex-wrap items-center gap-3 text-sm"><span className="text-muted-foreground">Tap or focus a word, then press Enter for its meaning.</span>{savedHere.length > 0 && <button className="ml-auto underline py-2 font-semibold" onClick={() => reviewSaved?.({ wordIds: savedHere.map(w => w.id).slice(0, 500) })}>Review {Math.min(savedHere.length, 500)} words saved from this article</button>}</div>}
       {/* Back bar. The reader takes over the whole pane — the Reading header and
           feed are hidden while an article is open — so this owns the way back. */}
       <div className="flex-shrink-0 bg-background relative z-10 shadow-[0_10px_24px_-18px_rgb(23_63_107_/_0.55)]">
@@ -560,7 +553,7 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
           </div>
 
           {hover && (
-            <GlossSurface enabled={adminPreview} close={() => setHover(null)}
+            <div
               style={{ top: hover.top, left: hover.left }}
               onMouseEnter={cancelHoverClose}
               onMouseLeave={scheduleHoverClose}
@@ -599,7 +592,7 @@ function ArticleReader({ slug, onBack }: { slug: string; onBack: () => void }) {
                   ? <><Check className="w-3.5 h-3.5" /> Saved</>
                   : <><Plus className="w-3.5 h-3.5" /> Save to library</>}
               </button>
-            </GlossSurface>
+            </div>
           )}
         </div>
 
@@ -653,30 +646,24 @@ function BlockText({
   onHover: (t: Token, el: HTMLElement) => void;
   onLeave: () => void;
 }) {
-  const adminPreview = useAdminPreview();
-  const Word = adminPreview ? "button" : "span";
   const parts: React.ReactNode[] = [];
   let at = 0;
   block.tokens.forEach((t) => {
     if (t.s > at) parts.push(<span key={`gap-${at}`}>{block.text.slice(at, t.s)}</span>);
     parts.push(
-      <Word
+      <span
         key={`tok-${t.s}`}
-        type={adminPreview ? "button" : undefined}
-        aria-label={adminPreview ? `Meaning of ${t.surface}` : undefined}
-        onClick={adminPreview ? (e) => { e.stopPropagation(); onHover(t, e.currentTarget); } : undefined}
-        onMouseEnter={adminPreview ? undefined : (e) => onHover(t, e.currentTarget)}
-        onMouseLeave={adminPreview ? undefined : onLeave}
+        onMouseEnter={(e) => onHover(t, e.currentTarget)}
+        onMouseLeave={onLeave}
         className={cn(
           "cursor-help transition-colors",
-          adminPreview && "inline p-0 text-inherit text-left rounded-sm focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2",
           t.kind === "expression"
             ? "border-b-2 border-dashed border-speaking/60 hover:bg-speaking-surface"
             : "border-b border-dashed border-muted-foreground/40 hover:bg-primary/10"
         )}
       >
         {block.text.slice(t.s, t.e)}
-      </Word>
+      </span>
     );
     at = t.e;
   });

@@ -1,8 +1,3 @@
-import { AdminPreviewContext, AdminReviewContext, canUseAdminPreview } from "@/contexts/AdminPreviewContext";
-import TodayDashboard from "@/components/admin/TodayDashboard";
-import LearningProgress from "@/components/admin/LearningProgress";
-import AdminNavigation from "@/components/admin/AdminNavigation";
-import type { ReviewTarget } from "@/types";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { SidebarTab } from "@/types";
@@ -81,20 +76,15 @@ function initialTab(): SidebarTab {
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const adminPreview = canUseAdminPreview(user);
   const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab);
 
   // Persist the section in the URL (replaceState — switching tabs shouldn't
   // pile up history entries) and in localStorage, so a refresh, a reopened
   // browser, or a pasted link all land where the user was.
   useEffect(() => {
-    const nextHash = `#${activeTab}`;
-    if (window.location.hash !== nextHash) {
-      if (adminPreview && window.location.hash) window.history.pushState(null, "", nextHash);
-      else window.history.replaceState(null, "", nextHash);
-    }
+    window.history.replaceState(null, "", `#${activeTab}`);
     localStorage.setItem("rt-active-tab", activeTab);
-  }, [activeTab, adminPreview]);
+  }, [activeTab]);
 
   // Back/forward or a hand-edited hash still navigates.
   useEffect(() => {
@@ -103,8 +93,7 @@ export default function Home() {
       if (TAB_IDS.includes(t)) setActiveTab(t);
     };
     window.addEventListener("hashchange", onHash);
-    window.addEventListener("popstate", onHash);
-    return () => { window.removeEventListener("hashchange", onHash); window.removeEventListener("popstate", onHash); };
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   // A non-admin restoring an admin tab (stale hash, shared link) would land on
@@ -119,8 +108,8 @@ export default function Home() {
   // Set by an import/voice "Review these words" CTA: pre-selects a date in the
   // review launch screen. Cleared on manual sidebar navigation so it doesn't
   // keep forcing an old date.
-  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
-  const startReview = (target?: string | ReviewTarget) => { setReviewTarget(typeof target === "string" ? { dateKey: target } : target ?? null); setActiveTab("flashcards"); };
+  const [reviewTarget, setReviewTarget] = useState<{ dateKey: string } | null>(null);
+  const startReview = (dateKey?: string) => { setReviewTarget(dateKey ? { dateKey } : null); setActiveTab("flashcards"); };
   const navTab = (tab: SidebarTab) => { setReviewTarget(null); setActiveTab(tab); };
 
   // Dictionary lookup palette — Shift+\ or the floating button. Skipped on
@@ -305,19 +294,16 @@ export default function Home() {
   if (!user) return <LandingPage />;
 
   return (
-    <AdminPreviewContext.Provider value={adminPreview}>
-    <AdminReviewContext.Provider value={adminPreview ? startReview : null}>
-    <div className={adminPreview ? "admin-preview flex flex-col md:flex-row h-dvh bg-background overflow-hidden" : "flex h-screen bg-background overflow-hidden"}>
-      {adminPreview ? <AdminNavigation active={activeTab} navigate={navTab} /> : (
+    <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar
         activeTab={activeTab}
         setActiveTab={navTab}
         open={sidebarOpen}
         setOpen={setSidebarOpen}
         user={user}
-      />)}
+      />
       <main className="flex-1 overflow-hidden flex flex-col min-w-0">
-        {activeTab === "dashboard" && (adminPreview ? <TodayDashboard name={user.name} navigate={navTab} review={startReview} /> : <DashboardTab setActiveTab={navTab} />)}
+        {activeTab === "dashboard" && <DashboardTab setActiveTab={navTab} />}
         {activeTab === "dictionary" && <DictionaryTab />}
         {activeTab === "library" && <LibraryTab setActiveTab={setActiveTab} onStartReview={startReview} />}
         {activeTab === "quiz" && <QuizTab reviewTarget={reviewTarget} />}
@@ -333,7 +319,7 @@ export default function Home() {
         {activeTab === "reading" && <ReadingTab />}
         {activeTab === "tutor" && <TutorTab />}
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}
-        {activeTab === "progress" && (adminPreview ? <LearningProgress review={startReview} /> : <ProgressTab />)}
+        {activeTab === "progress" && <ProgressTab />}
         {activeTab === "settings" && <SettingsTab user={user} />}
       </main>
       {!dictSuppressed && (
@@ -352,7 +338,5 @@ export default function Home() {
         onClose={() => { setVoiceAskOpen(false); setVoiceAskContext(undefined); }}
       />
     </div>
-    </AdminReviewContext.Provider>
-    </AdminPreviewContext.Provider>
   );
 }
