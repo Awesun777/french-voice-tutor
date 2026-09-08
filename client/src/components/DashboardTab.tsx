@@ -245,25 +245,29 @@ export default function DashboardTab({
               French, and every word is one hover away from its meaning.
             </p>
 
-            {/* flex-1 lets the tiles absorb the height freed by the removed
-                Test Prep footnote, so the panel bottoms stay level. The
-                reading-dog mascot sits beside the Read tile. */}
-            <div className="flex items-stretch gap-3 mt-6 flex-1">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 content-stretch">
+            {/* Two wide, short banner rows — Watch above Read. Text and count
+                on the left, each row's artwork filling the right edge (the
+                dogs watching Le Journal for Watch; the reading mascot for
+                Read). flex-1 on the stack keeps the panel bottoms level. */}
+            <div className="flex flex-col gap-3 mt-6 flex-1">
               {[
                 {
                   tab: "listening" as const,
                   icon: <Youtube className="w-5 h-5" />,
                   label: "Watch",
-                  sub: `${videos.length} video${videos.length === 1 ? "" : "s"}`,
+                  sub: `${videos.length} video${videos.length === 1 ? "" : "s"} with live transcripts`,
                   tone: "bg-speaking-surface text-speaking",
+                  img: "/brand/watch-banner.png",
+                  imgCls: "object-[center_30%]",
                 },
                 {
                   tab: "reading" as const,
                   icon: <Newspaper className="w-5 h-5" />,
                   label: "Read",
-                  sub: `${articles.length} article${articles.length === 1 ? "" : "s"}`,
+                  sub: `${articles.length} article${articles.length === 1 ? "" : "s"}, every word hoverable`,
                   tone: "bg-secondary text-primary",
+                  img: "/brand/reading-dog.png",
+                  imgCls: "object-[center_42%]",
                 },
               ].map((o) => (
                 <motion.button
@@ -271,28 +275,28 @@ export default function DashboardTab({
                   onClick={() => setActiveTab(o.tab)}
                   whileHover={reduce ? undefined : { y: -3 }}
                   whileTap={reduce ? undefined : { scale: 0.98 }}
-                  className="group text-left rounded-2xl bg-background p-4 shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.2)] hover:shadow-[0_12px_26px_-10px_rgb(23_63_107_/_0.35)] transition-shadow"
+                  className="group flex items-stretch flex-1 min-h-24 text-left rounded-2xl bg-background overflow-hidden shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.2)] hover:shadow-[0_12px_26px_-10px_rgb(23_63_107_/_0.35)] transition-shadow"
                 >
-                  <span className={cn("inline-flex w-10 h-10 rounded-xl items-center justify-center", o.tone)}>
-                    {o.icon}
-                  </span>
-                  <p className="font-display text-base font-bold text-foreground mt-3 flex items-center gap-1.5">
-                    {o.label}
-                    <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0" />
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{o.sub}</p>
+                  <div className="flex items-center gap-3.5 p-4 flex-1 min-w-0">
+                    <span className={cn("inline-flex w-10 h-10 rounded-xl items-center justify-center flex-shrink-0", o.tone)}>
+                      {o.icon}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-display text-base font-bold text-foreground flex items-center gap-1.5">
+                        {o.label}
+                        <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-1 transition-all group-hover:opacity-100 group-hover:translate-x-0" />
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{o.sub}</p>
+                    </div>
+                  </div>
+                  <img
+                    src={o.img}
+                    alt=""
+                    loading="lazy"
+                    className={cn("hidden sm:block w-40 md:w-48 object-cover flex-shrink-0", o.imgCls)}
+                  />
                 </motion.button>
               ))}
-            </div>
-            {/* The mascot, mid-study — decorative, so empty alt. Cream
-                background in the artwork sits naturally on the white card
-                inside a soft rounded frame. */}
-            <img
-              src="/brand/reading-dog.png"
-              alt=""
-              loading="lazy"
-              className="hidden sm:block w-32 md:w-36 self-center rounded-2xl shadow-[0_10px_24px_-10px_rgb(23_63_107_/_0.35)] flex-shrink-0"
-            />
             </div>
 
           </Panel>
