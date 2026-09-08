@@ -32,16 +32,17 @@ const MASCOT_LINES = [
 ];
 
 /** Hero greetings — bubbly, and a different one each visit so the page says
- *  hello rather than reciting a fixed header. */
+ *  hello rather than reciting a fixed header. The "|" marks where the ink
+ *  switches from navy to burgundy: the line's closing beat gets the warm color. */
 const GREETINGS = [
-  "Time for a new French day!",
-  "Bonjour! Ready to play in French?",
-  "Another day, another jolie phrase!",
-  "Let's make today sound français!",
-  "Your French adventure starts here!",
-  "Allons-y — today's French awaits!",
-  "One more day of magnifique French!",
-  "Oh là là, look who's back!",
+  "Time for a new |French day!",
+  "Bonjour! Ready to play |in French?",
+  "Another day, |another jolie phrase!",
+  "Let's make today sound |français!",
+  "Your French adventure |starts here!",
+  "Allons-y — |today's French awaits!",
+  "One more day of |magnifique French!",
+  "Oh là là, |look who's back!",
 ];
 
 // ─── Mascot ───────────────────────────────────────────────────────────────────
@@ -204,17 +205,21 @@ export default function DashboardTab({
           <div className="min-w-0 flex-1">
             <h1
               ref={titleRef}
-              className="text-5xl sm:text-6xl text-foreground leading-tight whitespace-nowrap"
+              className="text-5xl sm:text-6xl text-primary leading-tight whitespace-nowrap"
               style={{ fontFamily: "'Sedgwick Ave', cursive" }}
-              aria-label={greeting}
+              aria-label={greeting.replace("|", "")}
             >
               {/* Letter-by-letter reveal, so the script face reads as being
-                  written across the page rather than just appearing. */}
-              {greeting.split("").map((ch, i) => (
+                  written across the page rather than just appearing. The chars
+                  past the "|" pivot switch to the burgundy speaking ink. */}
+              {greeting.replace("|", "").split("").map((ch, i) => (
                 <motion.span
                   key={i}
                   aria-hidden
-                  className="inline-block whitespace-pre"
+                  className={cn(
+                    "inline-block whitespace-pre",
+                    greeting.indexOf("|") !== -1 && i >= greeting.indexOf("|") && "text-speaking"
+                  )}
                   initial={reduce ? false : { opacity: 0, y: 10, rotate: -6 }}
                   animate={{ opacity: 1, y: 0, rotate: 0 }}
                   transition={{ duration: 0.28, delay: 0.15 + i * 0.035, ease: "easeOut" }}
