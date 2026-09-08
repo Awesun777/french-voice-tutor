@@ -127,6 +127,37 @@ export default function Home() {
   // Where focus was when the drawer opened, so Escape can put it back.
   const focusBeforeDict = useRef<HTMLElement | null>(null);
 
+  // ── Shared palette openers ─────────────────────────────────────────────────
+  // Both chord sets (Shift+\ / Shift+Return and the extension-style Alt+D /
+  // Alt+S) open the palettes identically. Kept in refs so the once-bound key
+  // listeners always call the freshest closure.
+  const openDictRef = useRef(() => {});
+  openDictRef.current = () => {
+    // A selection anywhere becomes the query, so you can highlight a word in
+    // a transcript or a tutor reply and look it up without retyping it.
+    const selected = window.getSelection()?.toString().trim() ?? "";
+    focusBeforeDict.current = document.activeElement as HTMLElement | null;
+    const seeded = !!selected && selected.length <= 120;
+    setDictSeed(seeded ? selected : undefined);
+    // Captured now, before the drawer takes focus and the selection collapses.
+    setDictSentence(seeded ? surroundingSentence(selected) : undefined);
+    // One palette at a time: opening the dictionary replaces the voice one.
+    setVoiceAskOpen(false);
+    setDictOpen(true);
+  };
+  const openVoiceRef = useRef(() => {});
+  openVoiceRef.current = () => {
+    // An explicit selection wins; otherwise fall back to whatever the active
+    // tab says is on screen (current flashcard, quiz question, playing video
+    // line) so "break down this sentence" needs no selecting.
+    const selected = window.getSelection()?.toString().trim() ?? "";
+    const ctx = selected || getScreenContext() || "";
+    setVoiceAskContext(ctx ? ctx.slice(0, 500) : undefined);
+    // One palette at a time: opening voice replaces the dictionary drawer.
+    if (dictOpenRef.current) closeDictRef.current();
+    setVoiceAskOpen(true);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Shift+\ (the "|" key). Every ⌘ chord we tried failed the same way:
@@ -147,17 +178,7 @@ export default function Home() {
       const el = document.activeElement as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
       e.preventDefault();
-      // A selection anywhere becomes the query, so you can highlight a word in
-      // a transcript or a tutor reply and look it up without retyping it.
-      const selected = window.getSelection()?.toString().trim() ?? "";
-      focusBeforeDict.current = document.activeElement as HTMLElement | null;
-      const seeded = !!selected && selected.length <= 120;
-      setDictSeed(seeded ? selected : undefined);
-      // Captured now, before the drawer takes focus and the selection collapses.
-      setDictSentence(seeded ? surroundingSentence(selected) : undefined);
-      // One palette at a time: opening the dictionary replaces the voice one.
-      setVoiceAskOpen(false);
-      setDictOpen(true);
+      openDictRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -197,24 +218,13 @@ export default function Home() {
         return;
       }
       e.preventDefault();
-      // Captured here, before the palette opens: showing it takes focus, and on
-      // some browsers that collapses the selection. Same trick the dictionary
-      // shortcut uses, so highlighting a word in a transcript or an article and
-      // asking "what does it mean?" resolves against it.
-      // An explicit selection wins; otherwise fall back to whatever the
-      // active tab says is on screen (current flashcard, quiz question,
-      // playing video line) so "break down this sentence" needs no selecting.
-      const selected = window.getSelection()?.toString().trim() ?? "";
-      const ctx = selected || getScreenContext() || "";
-      setVoiceAskContext(ctx ? ctx.slice(0, 500) : undefined);
-      // One palette at a time: opening voice replaces the dictionary drawer.
-      if (dictOpenRef.current) closeDictRef.current();
-      setVoiceAskOpen(true);
+      openVoiceRef.current();
     };
-    // Letting go of either key ends the recording. Both are watched because
-    // there is no telling which one the user lifts first.
+    // Letting go of any held chord key ends the recording — Shift+Return or
+    // Alt+S, whichever started it; there's no telling which key lifts first.
+    // KeyS is matched on `code`: macOS reports the release as "ß".
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key !== "Enter" && e.key !== "Shift") return;
+      if (e.key !== "Enter" && e.key !== "Shift" && e.key !== "Alt" && e.code !== "KeyS") return;
       if (!voiceAskOpenRef.current) return;
       setVoiceAskRelease((n) => n + 1);
     };
@@ -224,6 +234,31 @@ export default function Home() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
     };
+  }, []);
+
+  // Alt+D / Alt+S — the same chords the browser extension uses on every other
+  // site, now on the site itself. Capture phase: the Writing tab's editor
+  // stops keydown propagation (to protect its own shortcuts), and these must
+  // still work from inside it. Matched on `code` — macOS Option rewrites the
+  // character (Alt+D → "∂", Alt+S → "ß") — and preventDefault keeps those
+  // characters out of whatever is focused. Neither ∂ nor ß is used for French
+  // accent typing, so the chords are safe to take everywhere, inputs included.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (e.code === "KeyD") {
+        if (suppressedRef.current) return;
+        e.preventDefault();
+        openDictRef.current();
+      } else if (e.code === "KeyS") {
+        // Auto-repeat while held must not restart the palette (push-to-talk).
+        e.preventDefault();
+        if (e.repeat || voiceAskOpenRef.current) return;
+        openVoiceRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
   // Read through a ref so the key listener stays mounted once rather than
