@@ -165,6 +165,20 @@ export const contentViews = mysqlTable("content_views", {
 export type ContentView = typeof contentViews.$inferSelect;
 
 /**
+ * Journal entries for the admin Writing tab — drafts persist and autosave.
+ * (drizzle migrate is broken — DDL applied manually, see drizzle/manual/.)
+ */
+export const writingEntries = mysqlTable("writing_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  title: varchar("title", { length: 256 }).notNull().default(""),
+  body: text("body").notNull(),
+  createdAt: bigint("createdAt", { mode: "number" }).notNull(),
+  updatedAt: bigint("updatedAt", { mode: "number" }).notNull(),
+});
+export type WritingEntry = typeof writingEntries.$inferSelect;
+
+/**
  * Shared dictionary cache — stores completed LLM lookup results keyed by
  * normalized term so any user's first lookup populates the cache for all.
  */

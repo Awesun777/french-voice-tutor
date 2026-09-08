@@ -34,6 +34,7 @@ import {
   emailCredentials,
   wordAudio,
   contentViews,
+  writingEntries,
 } from "../drizzle/schema";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "./db";
@@ -2846,6 +2847,46 @@ ${input.transcript}`,
 
   // ─── Writing practice (admin) ───────────────────────────────────────────────
   writing: router({
+    /** Journal entries, newest-touched first. Bodies included — entries are small. */
+    list: adminProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const rows = await db.select().from(writingEntries).where(eq(writingEntries.userId, ctx.user.id));
+      return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+    }),
+
+    /** Create (no id) or update (id) an entry. Autosave calls this. */
+    save: adminProcedure
+      .input(z.object({
+        id: z.number().optional(),
+        title: z.string().max(256).default(""),
+        body: z.string().max(50_000).default(""),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No database" });
+        const now = Date.now();
+        if (input.id) {
+          await db.update(writingEntries)
+            .set({ title: input.title, body: input.body, updatedAt: now })
+            .where(and(eq(writingEntries.id, input.id), eq(writingEntries.userId, ctx.user.id)));
+          return { id: input.id };
+        }
+        const res = await db.insert(writingEntries).values({
+          userId: ctx.user.id, title: input.title, body: input.body, createdAt: now, updatedAt: now,
+        });
+        return { id: (res as any)[0]?.insertId ?? 0 };
+      }),
+
+    remove: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No database" });
+        await db.delete(writingEntries).where(and(eq(writingEntries.id, input.id), eq(writingEntries.userId, ctx.user.id)));
+        return { ok: true };
+      }),
+
     /**
      * Proofread a French draft: restore missing accents (the author types on
      * an English keyboard, so accents are the most common omission), fix
