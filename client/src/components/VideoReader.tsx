@@ -75,6 +75,91 @@ function fmtDuration(sec: number) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+interface FeedVideo {
+  youtubeId: string;
+  title: string;
+  channel: string | null;
+  durationSec: number;
+  thumbnailUrl: string | null;
+  channelAvatarUrl: string | null;
+  level: string | null;
+  shelf: "innerfrench" | "chanson" | "podcast" | null;
+}
+
+function VideoCard({ v, onOpen, compact }: { v: FeedVideo; onOpen: (id: string) => void; compact?: boolean }) {
+  return (
+    <button
+      key={v.youtubeId}
+      onClick={() => onOpen(v.youtubeId)}
+      // flex-col defeats the button's native vertical centering: the grid
+      // stretches every card in a row to the same height, and a centered
+      // short card would sag its thumbnail out of line with its neighbors.
+      className={cn("text-left group flex flex-col items-stretch", compact && "w-72 flex-shrink-0")}
+    >
+      <div className="relative aspect-video bg-muted overflow-hidden rounded-xl">
+        {v.thumbnailUrl && (
+          <img
+            src={v.thumbnailUrl}
+            alt=""
+            loading="lazy"
+            className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-200"
+          />
+        )}
+        <span className="absolute bottom-2 right-2 px-2 py-1 rounded-md bg-black/85 text-white text-[13px] font-bold leading-none tabular-nums">
+          {fmtDuration(v.durationSec)}
+        </span>
+      </div>
+      <div className="mt-2.5 flex gap-3">
+        {/* The channel's real avatar when the ingest captured one; the
+            initial stays underneath as the fallback if it's missing or
+            the image 404s. */}
+        <div className="relative flex-shrink-0 w-9 h-9 rounded-full overflow-hidden bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
+          {(v.channel || "R").charAt(0).toUpperCase()}
+          {v.channelAvatarUrl && (
+            <img
+              src={v.channelAvatarUrl}
+              alt=""
+              loading="lazy"
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={(e) => e.currentTarget.remove()}
+            />
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+            {v.title}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
+            <span className="truncate">{v.channel || "RomainTube"}</span>
+            {v.level && (
+              <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold leading-none">
+                {v.level}
+              </span>
+            )}
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/** One horizontally-scrollable shelf, YouTube-style. Hidden when empty. */
+function Shelf({ title, videos, onOpen }: { title: string; videos: FeedVideo[]; onOpen: (id: string) => void }) {
+  if (!videos.length) return null;
+  return (
+    <section className="mt-8">
+      <h2 className="font-display text-lg font-bold text-foreground mb-3">{title}</h2>
+      <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory scrollbar-none">
+        {videos.map((v) => (
+          <div key={v.youtubeId} className="snap-start">
+            <VideoCard v={v} onOpen={onOpen} compact />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
   const { data: videos = [], isLoading } = trpc.videos.list.useQuery();
 
@@ -87,67 +172,24 @@ export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
   }
   if (!videos.length) return <EmptyVideoState />;
 
+  const all = videos as FeedVideo[];
+  const general = all.filter((v) => !v.shelf);
+  const podcasts = all.filter((v) => v.shelf === "podcast");
+  const innerFrench = all.filter((v) => v.shelf === "innerfrench");
+  const chansons = all.filter((v) => v.shelf === "chanson");
+
   return (
-    // YouTube-style feed: full pane width, bare rounded thumbnails with a
-    // duration pill, and the meta row below the image instead of a card box —
-    // the grid reads as content, not chrome.
-    <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-8">
+    // YouTube-style feed: a two-row general grid up top, then themed shelves
+    // that scroll horizontally — grouped server-side from the ingest's tags.
+    <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-x-4 gap-y-7">
-        {videos.map((v) => (
-          <button
-            key={v.youtubeId}
-            onClick={() => onOpen(v.youtubeId)}
-            // flex-col defeats the button's native vertical centering: the grid
-            // stretches every card in a row to the same height, and a centered
-            // short card would sag its thumbnail out of line with its neighbors.
-            className="text-left group flex flex-col items-stretch"
-          >
-            <div className="relative aspect-video bg-muted overflow-hidden rounded-xl">
-              {v.thumbnailUrl && (
-                <img
-                  src={v.thumbnailUrl}
-                  alt=""
-                  loading="lazy"
-                  className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-200"
-                />
-              )}
-              <span className="absolute bottom-2 right-2 px-2 py-1 rounded-md bg-black/85 text-white text-[13px] font-bold leading-none tabular-nums">
-                {fmtDuration(v.durationSec)}
-              </span>
-            </div>
-            <div className="mt-2.5 flex gap-3">
-              {/* The channel's real avatar when the ingest captured one; the
-                  initial stays underneath as the fallback if it's missing or
-                  the image 404s. */}
-              <div className="relative flex-shrink-0 w-9 h-9 rounded-full overflow-hidden bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold">
-                {(v.channel || "R").charAt(0).toUpperCase()}
-                {v.channelAvatarUrl && (
-                  <img
-                    src={v.channelAvatarUrl}
-                    alt=""
-                    loading="lazy"
-                    className="absolute inset-0 w-full h-full object-cover"
-                    onError={(e) => e.currentTarget.remove()}
-                  />
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground leading-snug line-clamp-2 group-hover:text-primary transition-colors">
-                  {v.title}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
-                  <span className="truncate">{v.channel || "RomainTube"}</span>
-                  {v.level && (
-                    <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold leading-none">
-                      {v.level}
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-          </button>
+        {(general.length ? general : all).slice(0, 8).map((v) => (
+          <VideoCard key={v.youtubeId} v={v} onOpen={onOpen} />
         ))}
       </div>
+      <Shelf title="Video Podcasts" videos={podcasts} onOpen={onOpen} />
+      <Shelf title="Must-Listen for French Learners" videos={innerFrench} onOpen={onOpen} />
+      <Shelf title="Les Belles Chansons" videos={chansons} onOpen={onOpen} />
     </div>
   );
 }

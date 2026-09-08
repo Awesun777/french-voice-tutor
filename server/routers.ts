@@ -3344,6 +3344,17 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
       const db = await getDb();
       if (!db) return [];
       const rows = await db.select().from(videoLessonsTable);
+      // Shelf assignment for the YouTube-style feed. Derived from the ingest
+      // tags + channel, but only the shelf name ships to the client — raw
+      // tags stay admin-only by design.
+      const shelfFor = (r: { channel: string | null; tags: string | null }): "innerfrench" | "chanson" | "podcast" | null => {
+        if (/inner\s*french/i.test(r.channel ?? "")) return "innerfrench";
+        let tags: string[] = [];
+        try { tags = JSON.parse(r.tags ?? "[]"); } catch { /* unreadable tags → general */ }
+        if (tags.includes("music")) return "chanson";
+        if (tags.includes("podcast")) return "podcast";
+        return null;
+      };
       return rows
         .sort((a, b) => b.addedAt - a.addedAt)
         .map((r) => ({
@@ -3354,6 +3365,7 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
           thumbnailUrl: r.thumbnailUrl,
           channelAvatarUrl: r.channelAvatarUrl,
           level: r.level,
+          shelf: shelfFor(r),
         }));
     }),
 
