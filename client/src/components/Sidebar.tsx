@@ -217,7 +217,9 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
             <img
               src="/brand/romaintalk-wordmark.png"
               alt="RomainTalk"
-              className="h-8 w-auto max-w-full object-contain object-left"
+              // Fixed px so it matches the RomainTube lockup (42-50px), which
+              // is also px-sized and thus unaffected by the root type scale.
+              className="h-[46px] w-auto max-w-full object-contain object-left"
             />
           </span>
         )}

@@ -49,6 +49,15 @@
   --color-accent-strong: var(--accent-strong);
 }
 
+/* Global type scale: every Tailwind size and spacing unit is rem-based, so
+   scaling the root scales the whole UI proportionally. 133.333% turns the
+   ubiquitous text-xs (12px) into 16px — the app's new effective floor —
+   with text-sm at 18.7px and text-base at 21.3px. Tune the entire app's
+   density by changing this ONE number. */
+html {
+  font-size: 133.333%;
+}
+
 :root {
   --radius: 0.75rem;
   color-scheme: light;
