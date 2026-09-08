@@ -62,24 +62,39 @@ export default function WritingTab() {
   const saveMutation = trpc.writing.save.useMutation();
   const removeMutation = trpc.writing.remove.useMutation();
   const checkMutation = trpc.writing.check.useMutation({ trpc: { context: { skipBatch: true } } });
+  // Mutation objects change identity every render — flush must NOT depend on
+  // them, or every effect built on it re-fires per render (v1 of this file
+  // inserted a blank entry per render that way).
+  const saveMutationRef = useRef(saveMutation);
+  saveMutationRef.current = saveMutation;
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
+  const checkMutationRef = useRef(checkMutation);
+  checkMutationRef.current = checkMutation;
 
   // ── Autosave (debounced) ────────────────────────────────────────────────────
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlight = useRef(false);
   const flush = useCallback(async () => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
     const s = stateRef.current;
-    if (!s.body.trim() && !s.title.trim()) return; // nothing worth persisting
+    if (!s.body.trim()) return; // an empty page isn't worth a row — title is just the date
+    // Never run two saves at once: with no id yet, parallel saves each INSERT.
+    if (saveInFlight.current) { saveTimer.current = setTimeout(() => void flush(), 600); return; }
+    saveInFlight.current = true;
     setSaveState("saving");
     try {
-      const { id } = await saveMutation.mutateAsync({ id: s.activeId ?? undefined, title: s.title, body: s.body });
+      const { id } = await saveMutationRef.current.mutateAsync({ id: s.activeId ?? undefined, title: s.title, body: s.body });
       if (s.activeId === null) setActiveId(id);
       setSaveState("saved");
-      utils.writing.list.invalidate();
+      utilsRef.current.writing.list.invalidate();
     } catch {
       setSaveState("dirty");
       toast.error("Couldn't save — will retry on next edit");
+    } finally {
+      saveInFlight.current = false;
     }
-  }, [saveMutation, utils]);
+  }, []);
 
   const scheduleSave = useCallback(() => {
     setSaveState("dirty");
@@ -97,13 +112,13 @@ export default function WritingTab() {
       lastCheckedRef.current = text;
       setChecking(true);
       try {
-        const res = await checkMutation.mutateAsync({ text });
+        const res = await checkMutationRef.current.mutateAsync({ text });
         // Only keep fixes that still apply to what's in the editor now.
         setFixes((res.fixes as Fix[]).filter((f: Fix) => stateRef.current.body.includes(f.before)));
       } catch { /* quiet — live checking must never nag */ }
       setChecking(false);
     }, 2500);
-  }, [checkMutation]);
+  }, []);
 
   const onBodyChange = (next: string) => {
     setBody(next);
@@ -192,8 +207,10 @@ export default function WritingTab() {
     }
   }, [isLoading, entries]);
 
-  // Flush pending edits when the tab unmounts.
-  useEffect(() => () => { void flush(); }, [flush]);
+  // Flush pending edits when the tab unmounts — and ONLY then (flush is
+  // dependency-stable, so this effect mounts exactly once).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => { void flush(); }, []);
 
   const deleteEntry = async () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
