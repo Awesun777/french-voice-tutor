@@ -209,6 +209,36 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
   const [playerReady, setPlayerReady] = useState(false);
   /** Autoscroll follows playback until the reader scrolls by hand. */
   const [following, setFollowing] = useState(true);
+
+  // ── Resizable player ────────────────────────────────────────────────────────
+  // One width drives the header row, the video, AND the transcript column, so
+  // their left edges stay flush at any size. Dragging the blue band's bottom
+  // edge maps vertical movement to width via the 16:9 ratio. Persisted.
+  const [playerW, setPlayerW] = useState<number>(() => {
+    try {
+      const v = Number(localStorage.getItem("rt-player-w"));
+      return v >= 560 && v <= 1800 ? v : 1024;
+    } catch { return 1024; }
+  });
+  const [resizing, setResizing] = useState(false);
+  const resizeStart = useRef<{ y: number; w: number } | null>(null);
+  const clampW = (w: number) => Math.max(560, Math.min(1800, w));
+  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    resizeStart.current = { y: e.clientY, w: playerW };
+    setResizing(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeStart.current) return;
+    setPlayerW(clampW(resizeStart.current.w + (e.clientY - resizeStart.current.y) * (16 / 9)));
+  };
+  const onResizeUp = () => {
+    if (!resizeStart.current) return;
+    resizeStart.current = null;
+    setResizing(false);
+    try { localStorage.setItem("rt-player-w", String(Math.round(playerW))); } catch { /* private mode */ }
+  };
   // English stays hidden by default: the point of the reader is to work out the
   // French first, and a translation sitting under every line removes the work.
   const [showEnglish, setShowEnglish] = useState(false);
@@ -421,7 +451,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           effective width as the transcript column, keeping their left edges
           flush at every viewport. */}
       <div className="flex-shrink-0 bg-primary relative z-10 shadow-[0_12px_28px_-14px_rgb(23_63_107_/_0.65)] pl-4 pr-4 lg:pr-[272px]">
-        <div className="mx-auto w-full max-w-5xl flex items-center gap-3 py-2.5">
+        <div className="mx-auto w-full flex items-center gap-3 py-2.5" style={{ maxWidth: playerW }}>
           <button
             onClick={onBack}
             className="flex-shrink-0 flex items-center gap-1.5 pl-2 pr-3 py-1.5 rounded-lg text-xs font-semibold text-primary-foreground/70 hover:text-primary-foreground hover:bg-white/10 transition-colors"
@@ -443,10 +473,36 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
             <Languages className="w-4 h-4" /> English
           </button>
         </div>
-        <div className="mx-auto w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]">
+        <div
+          className={cn(
+            "mx-auto w-full aspect-video bg-black rounded-2xl overflow-hidden shadow-[0_18px_44px_-14px_rgb(0_0_0_/_0.55)]",
+            // While dragging, the iframe must not swallow pointer events.
+            resizing && "pointer-events-none select-none"
+          )}
+          style={{ maxWidth: playerW }}
+        >
           <YouTubePlayer videoId={youtubeId} onPlayer={handlePlayer} onState={handleState} />
         </div>
-        <div className="h-3" />
+        {/* Drag the band's bottom edge to resize the player. */}
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize video player"
+          title="Drag to resize the video"
+          onPointerDown={onResizeDown}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeUp}
+          onPointerCancel={onResizeUp}
+          className={cn(
+            "h-3 flex items-center justify-center cursor-row-resize touch-none group/rs",
+            resizing && "cursor-row-resize"
+          )}
+        >
+          <div className={cn(
+            "h-1 w-16 rounded-full transition-colors",
+            resizing ? "bg-white/70" : "bg-white/25 group-hover/rs:bg-white/50"
+          )} />
+        </div>
       </div>
 
       {/* Transcript + saved-words rail */}
@@ -464,7 +520,7 @@ export function VideoReader({ youtubeId, onBack }: { youtubeId: string; onBack: 
           {/* Same column width as the player, flush left edges: the accent
               bar (the transcript's visible left edge) lines up with the
               video's left edge. */}
-          <div className="max-w-5xl mx-auto space-y-0.5 pb-32">
+          <div className="mx-auto space-y-0.5 pb-32" style={{ maxWidth: playerW }}>
             {cues.map((cue, i) => (
               <p
                 key={cue.idx}
