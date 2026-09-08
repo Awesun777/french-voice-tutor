@@ -99,6 +99,19 @@ export default function WritingTab() {
   const [marks, setMarks] = useState<Mark[]>([]);
   const [checking, setChecking] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
+  // ── Handwriting font ────────────────────────────────────────────────────────
+  // Indie Flower (Google Fonts) as an alternate journal voice. Handwriting
+  // faces run small, so it gets a size bump when active. Persisted.
+  const [handwriting, setHandwriting] = useState<boolean>(() => {
+    try { return localStorage.getItem("rt-writing-font") === "indie"; } catch { return false; }
+  });
+  const toggleHandwriting = () => {
+    setHandwriting((h) => {
+      try { localStorage.setItem("rt-writing-font", h ? "default" : "indie"); } catch { /* private mode */ }
+      return !h;
+    });
+  };
+
 
   const editorRef = useRef<HTMLDivElement | null>(null);
   /** The positioning parent for overlays — the padded page column. */
@@ -142,6 +155,12 @@ export default function WritingTab() {
   }, []);
 
   useEffect(() => { reposition(); }, [fixes, reposition]);
+  // Fix chips anchor to text positions — a font swap reflows everything, so
+  // recompute once the new face has applied (double-rAF spans the reflow).
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => requestAnimationFrame(reposition));
+    return () => cancelAnimationFrame(raf);
+  }, [handwriting, reposition]);
   useEffect(() => {
     const onResize = () => reposition();
     window.addEventListener("resize", onResize);
@@ -526,6 +545,19 @@ export default function WritingTab() {
               </>
             )}
           </div>
+          {/* Handwriting font toggle — Indie Flower for the journal voice. */}
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={toggleHandwriting}
+            title={handwriting ? "Back to the standard font" : "Handwriting font (Indie Flower)"}
+            className={cn(
+              "px-2.5 py-1.5 rounded-lg text-[15px] leading-none transition-colors",
+              handwriting ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+            style={{ fontFamily: "'Indie Flower', cursive" }}
+          >
+            Aa
+          </button>
           {/* Full-passage check — live checks only cover the paragraph being
               edited, so this is the "proof the whole page" button. */}
           <button
@@ -570,6 +602,7 @@ export default function WritingTab() {
               onChange={(e) => { setTitle(e.target.value); scheduleSave(); }}
               placeholder={todayTitle()}
               className="w-full bg-transparent border-none outline-none font-display text-3xl sm:text-4xl font-bold text-foreground placeholder-muted-foreground/50 mb-6"
+              style={handwriting ? { fontFamily: "'Indie Flower', cursive" } : undefined}
             />
             <div className="relative">
               {isEmpty && (
@@ -582,7 +615,12 @@ export default function WritingTab() {
                 contentEditable
                 suppressContentEditableWarning
                 onInput={onEdited}
-                className="min-h-[60vh] outline-none text-[17px] leading-8 text-foreground [&_b]:font-bold [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-6"
+                className={cn(
+                  "min-h-[60vh] outline-none text-foreground [&_b]:font-bold [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-6",
+                  // Handwriting faces run small — Indie Flower gets a bump.
+                  handwriting ? "text-[22px] leading-9" : "text-[17px] leading-8"
+                )}
+                style={handwriting ? { fontFamily: "'Indie Flower', cursive" } : undefined}
               />
             </div>
             <div className="h-40" />
