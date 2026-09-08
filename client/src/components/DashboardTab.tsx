@@ -170,15 +170,26 @@ export default function DashboardTab({
           className="flex items-center gap-6 sm:gap-10"
         >
           <div className="min-w-0">
-            <p className="font-display text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground">
-              RomainTalk
-            </p>
-            <h1 className="font-display text-3xl sm:text-4xl font-bold text-foreground leading-tight mt-1.5">
-              How do you want to learn today?
+            <h1
+              className="text-5xl sm:text-6xl text-foreground leading-tight"
+              style={{ fontFamily: "'Shadows Into Light Two', cursive" }}
+              aria-label="How do you want to learn today?"
+            >
+              {/* Letter-by-letter reveal, so the script face reads as being
+                  written across the page rather than just appearing. */}
+              {"How do you want to learn today?".split("").map((ch, i) => (
+                <motion.span
+                  key={i}
+                  aria-hidden
+                  className="inline-block whitespace-pre"
+                  initial={reduce ? false : { opacity: 0, y: 10, rotate: -6 }}
+                  animate={{ opacity: 1, y: 0, rotate: 0 }}
+                  transition={{ duration: 0.28, delay: 0.15 + i * 0.035, ease: "easeOut" }}
+                >
+                  {ch}
+                </motion.span>
+              ))}
             </h1>
-            <p className="text-muted-foreground mt-2 max-w-md">
-              Two ways in: open your mouth, or just carry on with your day — in French.
-            </p>
           </div>
           <div className="ml-auto hidden sm:block">
             <Mascot />
@@ -202,8 +213,7 @@ export default function DashboardTab({
             </div>
             <h2 className="font-display text-2xl font-bold mt-2">Learn by Speaking</h2>
             <p className="text-sm text-primary-foreground/80 mt-2 leading-relaxed">
-              Have a real conversation with Romain or Anna. They talk back, correct you gently,
-              and you can save any word straight to your library.
+              A language is learned out loud — pick your partner and start talking.
             </p>
 
             {/* The tutors, so the card shows who you'd actually be talking to. */}
