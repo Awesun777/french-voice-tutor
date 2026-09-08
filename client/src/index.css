@@ -52,11 +52,10 @@
 /* Global type scale: every Tailwind size and spacing unit is rem-based, so
    scaling the root scales the whole UI proportionally. Tune the entire
    app's density by changing this ONE number.
-   History: 133.333% too big → 106.667% → 120% → Chen settled on a flat
-   90% (text-xs 10.8px, text-sm 12.6px, base 14.4px) — denser than the
-   original design, like browsing at 90% zoom. */
+   History: 133.333% → 106.667% → 120% → 90% → settled at 100%: the
+   original design sizes. The knob stays here for future tuning. */
 html {
-  font-size: 90%;
+  font-size: 100%;
 }
 
 :root {

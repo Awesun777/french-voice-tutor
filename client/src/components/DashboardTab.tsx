@@ -245,7 +245,9 @@ export default function DashboardTab({
               French, and every word is one hover away from its meaning.
             </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6">
+            {/* flex-1 lets the tiles absorb the height freed by the removed
+                Test Prep footnote, so the panel bottoms stay level. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6 flex-1 content-stretch">
               {[
                 {
                   tab: "listening" as const,
@@ -281,10 +283,6 @@ export default function DashboardTab({
               ))}
             </div>
 
-            <p className="text-xs text-muted-foreground/80 mt-auto pt-6">
-              Both live under <span className="font-semibold text-foreground">Test Prep</span> in the
-              sidebar, alongside the grammar test.
-            </p>
           </Panel>
         </div>
 

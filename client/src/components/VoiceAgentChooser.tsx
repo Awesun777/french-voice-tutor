@@ -46,14 +46,21 @@ type AgentConfig = {
   tint: string;
   button: string;
   placeholder: string;
+  blurb: string;
+  level: string;
+  levelCls: string;
+  traits: string[];
 };
 
 const AGENTS: AgentConfig[] = [
   {
     id: "romain",
     name: "Romain",
-    // Keep in sync with the realtime model in server/_core/index.ts.
-    tag: "gpt-realtime-2.1 · OpenAI",
+    tag: "The patient professor",
+    blurb: "Mature and structured — speaks slowly, steps in often, and corrects you as you go.",
+    level: "Best for A2–B1",
+    levelCls: "bg-primary/15 text-primary",
+    traits: ["Patient pace", "Corrects as you go"],
     video: "/avatars/romain.mp4",
     ring: "ring-primary",
     glow: "shadow-[0_0_60px_-12px] shadow-primary/50",
@@ -64,7 +71,11 @@ const AGENTS: AgentConfig[] = [
   {
     id: "anna",
     name: "Anna",
-    tag: "ElevenLabs",
+    tag: "The lively conversation partner",
+    blurb: "Enthusiastic and chatty — natural, faster French, and she lets you keep talking.",
+    level: "Best for B1–B2",
+    levelCls: "bg-speaking-surface text-speaking",
+    traits: ["Faster, natural speech", "Fewer interruptions"],
     video: "/avatars/anna.mp4",
     ring: "ring-speaking",
     glow: "shadow-[0_0_60px_-12px] shadow-speaking/40",
@@ -82,7 +93,7 @@ const AGENTS: AgentConfig[] = [
 const MARC = {
   id: "marc" as const,
   name: "Marc",
-  tag: "TCF Examiner · ElevenLabs",
+  tag: "TCF speaking examiner",
 };
 
 function AgentAvatar({ agent, active }: { agent: AgentConfig; active: boolean }) {
@@ -253,9 +264,22 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 <div className={cn("transition-transform duration-300", !isDimmed && "group-hover:scale-105")}>
                   <AgentAvatar agent={agent} active={isSelected} />
                 </div>
-                <div className="flex flex-col items-center gap-1">
+                <div className="flex flex-col items-center gap-1.5 max-w-xs">
                   <span className="text-2xl md:text-3xl font-bold tracking-tight">{agent.name}</span>
-                  <span className="text-xs md:text-sm text-muted-foreground">{agent.tag}</span>
+                  <span className="text-xs md:text-sm font-semibold text-muted-foreground">{agent.tag}</span>
+                  <p className="text-xs md:text-sm text-muted-foreground/90 text-center leading-relaxed">
+                    {agent.blurb}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1.5">
+                    <span className={cn("px-2.5 py-1 rounded-full text-[11px] font-bold", agent.levelCls)}>
+                      {agent.level}
+                    </span>
+                    {agent.traits.map((t) => (
+                      <span key={t} className="px-2.5 py-1 rounded-full bg-muted/70 text-muted-foreground text-[11px] font-semibold">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <span
                   className={cn(
