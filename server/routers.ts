@@ -2878,7 +2878,7 @@ Return JSON exactly like:
             fixes: Array.isArray(parsed.fixes)
               ? parsed.fixes
                   .filter((f: unknown): f is Record<string, unknown> => !!f && typeof f === "object" && !!(f as any).before && !!(f as any).after)
-                  .map((f) => ({
+                  .map((f: Record<string, unknown>) => ({
                     before: String(f.before),
                     after: String(f.after),
                     kind: (["accent", "grammar", "spelling"].includes(String(f.kind)) ? String(f.kind) : "grammar") as "accent" | "grammar" | "spelling",
