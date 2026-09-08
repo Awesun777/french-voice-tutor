@@ -246,8 +246,10 @@ export default function DashboardTab({
             </p>
 
             {/* flex-1 lets the tiles absorb the height freed by the removed
-                Test Prep footnote, so the panel bottoms stay level. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6 flex-1 content-stretch">
+                Test Prep footnote, so the panel bottoms stay level. The
+                reading-dog mascot sits beside the Read tile. */}
+            <div className="flex items-stretch gap-3 mt-6 flex-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 content-stretch">
               {[
                 {
                   tab: "listening" as const,
@@ -281,6 +283,16 @@ export default function DashboardTab({
                   <p className="text-xs text-muted-foreground mt-0.5">{o.sub}</p>
                 </motion.button>
               ))}
+            </div>
+            {/* The mascot, mid-study — decorative, so empty alt. Cream
+                background in the artwork sits naturally on the white card
+                inside a soft rounded frame. */}
+            <img
+              src="/brand/reading-dog.png"
+              alt=""
+              loading="lazy"
+              className="hidden sm:block w-32 md:w-36 self-center rounded-2xl shadow-[0_10px_24px_-10px_rgb(23_63_107_/_0.35)] flex-shrink-0"
+            />
             </div>
 
           </Panel>
