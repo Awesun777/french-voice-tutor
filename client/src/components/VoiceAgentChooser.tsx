@@ -176,9 +176,26 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
         // ── Chooser: flip between casual tutors and the mock-exam examiner. ──
         <div className="relative h-full w-full flex flex-col overflow-hidden">
           {/* Mode flip — floats over the chooser so the halves (and their
-              selected tint) run all the way to the top edge. */}
+              selected tint) run all the way to the top edge.
+              On phones the pill is replaced by a single icon button top-left
+              (below): the pill's two labels crowded the simplified layout. */}
           {isAdmin && (
-          <div className="absolute top-5 inset-x-0 flex justify-center z-10 pointer-events-none [&>div]:pointer-events-auto">
+            <button
+              onClick={() => flipTo(activeMode === "casual" ? "test-mock" : "casual")}
+              aria-label={activeMode === "casual" ? "Switch to Test Mock" : "Switch to Casual"}
+              title={activeMode === "casual" ? "Switch to Test Mock" : "Switch to Casual"}
+              className={cn(
+                "md:hidden absolute top-3 left-3 z-10 w-10 h-10 rounded-full shadow-lg border border-black/5 flex items-center justify-center active:scale-95 transition-all",
+                activeMode === "test-mock" ? "bg-amber-600 text-white" : "bg-white text-muted-foreground",
+              )}
+            >
+              {activeMode === "test-mock"
+                ? <ClipboardCheck className="w-4.5 h-4.5" />
+                : <MessageCircle className="w-4.5 h-4.5" />}
+            </button>
+          )}
+          {isAdmin && (
+          <div className="absolute top-5 inset-x-0 hidden md:flex justify-center z-10 pointer-events-none [&>div]:pointer-events-auto">
             <div className="inline-flex items-center rounded-full border border-border bg-card p-1 shadow-sm">
               {(
                 [
@@ -252,9 +269,13 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 onClick={() => setSelected(agent.id)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "group relative flex-1 flex flex-col items-center justify-center gap-3 p-4 md:gap-5 md:p-8",
+                  "group relative flex-1 flex items-center justify-center gap-3 p-4 md:gap-5 md:p-8",
                   "bg-gradient-to-b to-transparent transition-all duration-300 outline-none",
-                  i === 0 ? "md:border-r border-b md:border-b-0 border-border" : "",
+                  // Phones stack the halves, so the top tutor's column is
+                  // mirrored (name above avatar) — both avatars then sit the
+                  // same distance from the divider between them. Desktop's
+                  // side-by-side halves are symmetric already.
+                  i === 0 ? "flex-col-reverse md:flex-col md:border-r border-b md:border-b-0 border-border" : "flex-col",
                   isSelected ? agent.tint : "from-transparent",
                   isDimmed ? "opacity-40 grayscale" : "opacity-100",
                 )}
@@ -278,7 +299,9 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 </div>
                 <span
                   className={cn(
-                    "text-lg transition-opacity",
+                    // Hover-only hint, so phones drop it — and its reserved
+                    // space would break the avatars' symmetry about the divider.
+                    "hidden md:block text-lg transition-opacity",
                     isSelected ? "opacity-0" : "opacity-0 group-hover:opacity-70",
                   )}
                   style={{ fontFamily: "'Indie Flower', cursive" }}
@@ -289,13 +312,19 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
             );
           })}
 
-          {/* Floating Start button — appears once a tutor is selected. */}
-          <div
-            className={cn(
-              "absolute bottom-8 left-1/2 -translate-x-1/2 transition-all duration-300",
-              selected ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none",
-            )}
-          >
+          {/* Floating Start button — appears once a tutor is selected.
+              Phones centre it on the divider between the stacked halves;
+              desktop keeps it at the bottom, over the vertical divider.
+              Position lives on the outer div, the show/hide animation on the
+              inner one — the centring translate and the entrance translate
+              would otherwise fight over the same transform. */}
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 md:top-auto md:bottom-8 md:translate-y-0 z-10">
+            <div
+              className={cn(
+                "transition-all duration-300",
+                selected ? "opacity-100 scale-100" : "opacity-0 scale-90 pointer-events-none",
+              )}
+            >
             {selected && selected !== "marc" && (
               <button
                 onClick={() => setStarted(selected)}
@@ -308,6 +337,7 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 Start with {AGENTS.find((a) => a.id === selected)!.name}
               </button>
             )}
+            </div>
           </div>
           </div>
           )}

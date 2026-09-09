@@ -340,7 +340,7 @@ export default function DashboardTab({
                     src={o.img}
                     alt=""
                     loading="lazy"
-                    className={cn("hidden sm:block ml-auto w-[102px] md:w-32 h-full object-cover flex-shrink-0", o.imgCls)}
+                    className={cn("ml-auto w-24 sm:w-[102px] md:w-32 h-full object-cover flex-shrink-0", o.imgCls)}
                   />
                 </motion.button>
               ))}
