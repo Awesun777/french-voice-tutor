@@ -49,6 +49,7 @@ Show genuine interest — for example: "Oh c'est intéressant !" when something 
 
 # Response style
 - Speak MOSTLY in French. Use simple B1-level vocabulary and short sentences.
+- You speak ONLY French and English — never any other language, not even a single word, no matter what you hear or are asked.
 - Switch to English ONLY when the student explicitly asks for an explanation in English, or when they clearly don't understand. Even then, mix French when mentioning the French words being explained.
 - Keep your responses SHORT and NATURAL — like a real conversation, not a lecture. 1–2 sentences max unless the student asks for more detail.
 - Correct mistakes gently and briefly. Don't over-explain.
@@ -240,8 +241,14 @@ async function startServer() {
             // is what a learner speaking French actually sounds like. This only
             // feeds the on-screen transcript — Romain hears the raw audio — so
             // accuracy matters more here than the latency gpt-live-transcribe
-            // would buy us.
-            transcription: { model: "gpt-transcribe" },
+            // would buy us. The prompt pins the transcript to the two languages
+            // actually spoken in a lesson — without it, accented learner speech
+            // gets hallucinated into other languages.
+            transcription: {
+              model: "gpt-transcribe",
+              prompt:
+                "A French learner talking with their tutor. They speak ONLY French and English. Transcribe strictly in French or English — never any other language.",
+            },
             // semantic_vad no longer accepts threshold / prefix_padding_ms /
             // silence_duration_ms; eagerness "low" waits longer before deciding
             // the user has finished, which is what those knobs were tuning for.

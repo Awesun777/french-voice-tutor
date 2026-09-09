@@ -175,9 +175,10 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
       ) : (
         // ── Chooser: flip between casual tutors and the mock-exam examiner. ──
         <div className="relative h-full w-full flex flex-col overflow-hidden">
-          {/* Mode flip — a two-sided pill pinned above the chooser content. */}
+          {/* Mode flip — floats over the chooser so the halves (and their
+              selected tint) run all the way to the top edge. */}
           {isAdmin && (
-          <div className="flex-shrink-0 flex justify-center pt-5 pb-1 z-10">
+          <div className="absolute top-5 inset-x-0 flex justify-center z-10 pointer-events-none [&>div]:pointer-events-auto">
             <div className="inline-flex items-center rounded-full border border-border bg-card p-1 shadow-sm">
               {(
                 [
@@ -277,9 +278,10 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 </div>
                 <span
                   className={cn(
-                    "font-display text-[11px] uppercase tracking-widest transition-opacity",
-                    isSelected ? "opacity-0" : "opacity-0 group-hover:opacity-60",
+                    "text-lg transition-opacity",
+                    isSelected ? "opacity-0" : "opacity-0 group-hover:opacity-70",
                   )}
+                  style={{ fontFamily: "'Indie Flower', cursive" }}
                 >
                   Click to choose
                 </span>
