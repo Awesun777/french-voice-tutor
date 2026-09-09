@@ -94,6 +94,17 @@ export default function WritingTab() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
+
+  // Quiet scrollbars: panes tag themselves .scrolling while the user scrolls,
+  // and the thumb (see index.css) is invisible otherwise.
+  const scrollTimers = useRef(new WeakMap<HTMLElement, number>());
+  const onQuietScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    el.classList.add("scrolling");
+    const prev = scrollTimers.current.get(el);
+    if (prev) window.clearTimeout(prev);
+    scrollTimers.current.set(el, window.setTimeout(() => el.classList.remove("scrolling"), 700));
+  }, []);
   const [title, setTitle] = useState(todayTitle());
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -462,7 +473,7 @@ export default function WritingTab() {
       <aside className="order-last w-72 flex-shrink-0 flex flex-col min-h-0">
         <div className="flex-shrink-0 px-4 pt-4 pb-2 flex items-center justify-end gap-1.5">
           {searchOpen && (
-            <div className="flex-1 min-w-0 flex items-center gap-1.5 rounded-xl bg-card pl-3 pr-2 py-1.5 shadow-[0_8px_22px_-10px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5">
+            <div className="flex-1 min-w-0 flex items-center gap-1.5 rounded-xl bg-card pl-3 pr-2 py-1.5 shadow-[0_8px_22px_-10px_rgb(23_63_107_/_0.35)]">
               <input
                 autoFocus
                 value={search}
@@ -495,8 +506,23 @@ export default function WritingTab() {
           >
             <Plus className="w-3.5 h-3.5" /> New
           </button>
+          {confirmDelete ? (
+            <div className="flex-shrink-0 flex items-center gap-1">
+              <button onClick={() => void deleteEntry()} className="px-2.5 py-1.5 rounded-lg bg-[#8E1F14] text-white text-xs font-bold hover:bg-[#761A11] transition-colors">Delete?</button>
+              <button onClick={() => setConfirmDelete(false)} aria-label="Cancel delete" className="px-2 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-bold">✕</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => void deleteEntry()}
+              title="Delete this entry"
+              aria-label="Delete this entry"
+              className="flex-shrink-0 p-[7px] rounded-lg bg-[#8E1F14] text-white hover:bg-[#761A11] transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto px-4 pb-4 pt-1 space-y-2.5">
+        <div onScroll={onQuietScroll} className="scroll-quiet flex-1 overflow-y-auto px-4 pb-4 pt-1 space-y-2.5">
           {isLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
           ) : entries.length === 0 && activeId === null && isEmpty ? (
@@ -520,10 +546,10 @@ export default function WritingTab() {
                   onClick={() => void openEntry(e.id)}
                   title={fmtWhen(e.updatedAt)}
                   className={cn(
-                    "w-full text-left rounded-2xl bg-card px-3.5 py-3 ring-1 transition-shadow",
+                    "w-full text-left rounded-2xl bg-card px-3.5 py-3 transition-shadow",
                     e.id === activeId
-                      ? "ring-primary/50 shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.5)]"
-                      : "ring-black/5 shadow-[0_10px_26px_-12px_rgb(23_63_107_/_0.35)] hover:shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.45)]"
+                      ? "shadow-[0_18px_40px_-12px_rgb(23_63_107_/_0.6)]"
+                      : "shadow-[0_10px_26px_-12px_rgb(23_63_107_/_0.3)] hover:shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.45)]"
                   )}
                 >
                   <p className="text-sm font-bold text-foreground truncate">{e.title || "Untitled"}</p>
@@ -537,7 +563,7 @@ export default function WritingTab() {
       {/* ── Editor ───────────────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex flex-col relative">
         {/* Toolbar + status */}
-        <div className="flex-shrink-0 h-14 px-6 flex items-center gap-1 border-b border-border bg-background/80">
+        <div className="flex-shrink-0 h-14 px-6 flex items-center gap-1 bg-background/80">
           {[
             { cmd: "bold", icon: <Bold className="w-4 h-4" />, hint: "Bold (⌘B)" },
             { cmd: "italic", icon: <Italic className="w-4 h-4" />, hint: "Italic (⌘I)" },
@@ -574,7 +600,7 @@ export default function WritingTab() {
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={() => applyColor(c)}
                       title={c ? c : "Default"}
-                      className="w-6 h-6 rounded-full border border-border hover:scale-110 transition-transform"
+                      className="w-6 h-6 rounded-full border border-black/10 hover:scale-110 transition-transform"
                       style={{ background: c || "var(--foreground, #1f2b3d)" }}
                     />
                   ))}
@@ -604,6 +630,9 @@ export default function WritingTab() {
           >
             <SpellCheck className="w-3.5 h-3.5" /> Check all
           </button>
+          <span className={cn("ml-3 text-xs font-semibold", saveState === "saved" ? "text-emerald-700" : "text-muted-foreground")}>
+            {saveState === "saved" ? "Saved" : saveState === "saving" ? "Saving…" : "Editing…"}
+          </span>
           <div className="ml-auto flex items-center gap-3">
             {checking && (
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -615,24 +644,11 @@ export default function WritingTab() {
                 <CornerDownLeft className="w-3 h-3" /> Accept all {fixes.length}
               </button>
             )}
-            <span className={cn("text-xs font-semibold", saveState === "saved" ? "text-emerald-700" : "text-muted-foreground")}>
-              {saveState === "saved" ? "Saved" : saveState === "saving" ? "Saving…" : "Editing…"}
-            </span>
-            {confirmDelete ? (
-              <div className="flex items-center gap-1">
-                <button onClick={() => void deleteEntry()} className="px-2.5 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-bold">Delete entry</button>
-                <button onClick={() => setConfirmDelete(false)} className="px-2 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-bold">✕</button>
-              </div>
-            ) : (
-              <button onClick={() => void deleteEntry()} className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors" title="Delete this entry">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
           </div>
         </div>
 
         {/* Page */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div onScroll={onQuietScroll} className="scroll-quiet flex-1 min-h-0 overflow-y-auto">
           <div ref={pageRef} className="relative max-w-4xl mx-auto px-8 sm:px-14 py-10 lg:pr-24">
             <input
               value={title}

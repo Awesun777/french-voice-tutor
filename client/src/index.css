@@ -247,3 +247,9 @@ html {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #D3CBBD; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #B5AC9C; }
+
+/* Quiet variant: the thumb only exists while the pane is actually scrolling
+   (a scroll handler tags the element with .scrolling, then removes it). */
+.scroll-quiet::-webkit-scrollbar-thumb,
+.scroll-quiet:not(.scrolling)::-webkit-scrollbar-thumb:hover { background: transparent; }
+.scroll-quiet.scrolling::-webkit-scrollbar-thumb { background: #D3CBBD; }
