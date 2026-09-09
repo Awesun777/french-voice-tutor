@@ -546,13 +546,15 @@ export default function WritingTab() {
                   onClick={() => void openEntry(e.id)}
                   title={fmtWhen(e.updatedAt)}
                   className={cn(
-                    "w-full text-left rounded-2xl bg-card px-3.5 py-3 transition-shadow",
+                    "w-full text-left rounded-2xl px-3.5 py-3 transition-all",
+                    // Two-tone rail: resting entries on warm grey, the open one
+                    // flips to a navy card so it's unmistakable.
                     e.id === activeId
-                      ? "shadow-[0_18px_40px_-12px_rgb(23_63_107_/_0.6)]"
-                      : "shadow-[0_10px_26px_-12px_rgb(23_63_107_/_0.3)] hover:shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.45)]"
+                      ? "bg-primary text-primary-foreground shadow-[0_18px_40px_-12px_rgb(23_63_107_/_0.6)]"
+                      : "bg-[#ECE9E2] text-foreground shadow-[0_10px_26px_-12px_rgb(23_63_107_/_0.25)] hover:bg-[#E4E0D6] hover:shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.4)]"
                   )}
                 >
-                  <p className="text-sm font-bold text-foreground truncate">{e.title || "Untitled"}</p>
+                  <p className="text-sm font-bold truncate">{e.title || "Untitled"}</p>
                 </button>
               ));
             })()
