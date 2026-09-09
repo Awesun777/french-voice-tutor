@@ -72,8 +72,10 @@ export default function ListeningTab() {
           </div>
 
           {/* Secondary entries. Videos is the main event, so the other sources
-              sit here as a compact control rather than competing with the feed. */}
-          <div className="flex-shrink-0 flex items-center gap-1 p-1 rounded-xl bg-speaking-surface border border-speaking/25">
+              sit here as a compact control rather than competing with the feed.
+              Hidden on phones (below the MobileNav breakpoint): the dedicated
+              mobile version is just the video feed, no mode switcher. */}
+          <div className="flex-shrink-0 hidden md:flex items-center gap-1 p-1 rounded-xl bg-speaking-surface border border-speaking/25">
             {([
               ["videos", "Videos", Youtube],
               ["url", "TCF", Link2],

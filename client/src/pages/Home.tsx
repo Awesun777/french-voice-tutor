@@ -5,6 +5,8 @@ import { DictionaryFab, DictionarySearchDrawer } from "@/components/DictionarySe
 import { VoiceAskDrawer } from "@/components/VoiceAskDrawer";
 import { getScreenContext } from "@/lib/screenContext";
 import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
+import { useIsMobile } from "@/hooks/useMobile";
 import IngestTab from "@/components/IngestTab";
 import OpsTab from "@/components/OpsTab";
 import TestLogsTab from "@/components/TestLogsTab";
@@ -77,6 +79,9 @@ function initialTab(): SidebarTab {
 
 export default function Home() {
   const { user, loading } = useAuth();
+  // Phones swap the sidebar for the floating bottom bar — a simpler,
+  // dedicated mobile chrome rather than a squeezed-down desktop rail.
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab);
 
   // Persist the section in the URL (replaceState — switching tabs shouldn't
@@ -299,13 +304,17 @@ export default function Home() {
 
   return (
     <div className="flex h-dvh bg-background overflow-hidden">
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={navTab}
-        open={sidebarOpen}
-        setOpen={setSidebarOpen}
-        user={user}
-      />
+      {isMobile ? (
+        <MobileNav activeTab={activeTab} setActiveTab={navTab} isAdmin={user.role === "admin"} />
+      ) : (
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={navTab}
+          open={sidebarOpen}
+          setOpen={setSidebarOpen}
+          user={user}
+        />
+      )}
       <main className="flex-1 overflow-hidden flex flex-col min-w-0">
         {activeTab === "dashboard" && <DashboardTab setActiveTab={navTab} />}
         {activeTab === "dictionary" && <DictionaryTab />}
