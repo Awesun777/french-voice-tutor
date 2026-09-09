@@ -222,7 +222,9 @@ async function startServer() {
       // (unified interface requires multipart/form-data, NOT raw SDP body)
       const sessionConfig = JSON.stringify({
         type: "realtime",
-        model: "gpt-realtime-2.1",
+        // 2.1 speaks French with a strong American accent; 2's cedar sounds
+        // native, so Romain stays here until a newer model fixes the accent.
+        model: "gpt-realtime-2",
         instructions: buildVoiceSystemPrompt(userMemory),
         // Audio config is nested under `audio` in the GA realtime schema.
         // A top-level `voice` (the old beta shape) is now rejected outright with

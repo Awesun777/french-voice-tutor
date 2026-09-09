@@ -62,10 +62,10 @@ function Section({ icon, title, rows }: { icon: React.ReactNode; title: string; 
 const SPEAKING: Row[] = [
   {
     name: "Romain — voice tutor",
-    what: "The in-house pipeline: browser speech in, our prompt + LLM, Anna's voice out. The LLM follows each account's voice-model setting (Accounts column), OpenAI by default.",
+    what: "OpenAI Realtime over WebRTC: speech-to-speech on the “cedar” voice (rolled back from realtime-2.1, whose French carries an American accent), gpt-transcribe for the on-screen transcript, semantic turn detection, and your memory injected into the system prompt.",
     chips: [
-      { provider: "OpenAI", label: "gpt-4o-mini" },
-      { provider: "DeepSeek", label: "deepseek-v4-flash (per-user)" },
+      { provider: "OpenAI", label: "gpt-realtime-2 · cedar" },
+      { provider: "OpenAI", label: "gpt-transcribe" },
     ],
   },
   {
