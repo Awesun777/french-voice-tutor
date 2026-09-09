@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, PenLine, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette, BookmarkPlus, Check, Search, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette, BookmarkPlus, Check, Search, X } from "lucide-react";
 
 const ACCENTS = ["é", "è", "ê", "ë", "à", "â", "ç", "î", "ï", "ô", "œ", "ù", "û", "ü", "É", "À", "Ç", "«", "»", "’"];
 
@@ -460,48 +460,42 @@ export default function WritingTab() {
       {/* ── Entries rail — floating title cards on the right, no dividers.
              Entries arrive from the server newest-edited first. ───────────── */}
       <aside className="order-last w-72 flex-shrink-0 flex flex-col min-h-0">
-        <div className="flex-shrink-0 px-4 pt-4 pb-2 flex items-center justify-between gap-2">
-          <p className="font-display text-sm font-bold text-foreground flex items-center gap-2">
-            <PenLine className="w-4 h-4 text-primary" /> Journal
-          </p>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => { setSearchOpen((v) => { if (v) setSearch(""); return !v; }); }}
-              aria-label={searchOpen ? "Close search" : "Search journals"}
-              aria-expanded={searchOpen}
-              className={cn(
-                "p-1.5 rounded-lg transition-colors",
-                searchOpen ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+        <div className="flex-shrink-0 px-4 pt-4 pb-2 flex items-center justify-end gap-1.5">
+          {searchOpen && (
+            <div className="flex-1 min-w-0 flex items-center gap-1.5 rounded-xl bg-card pl-3 pr-2 py-1.5 shadow-[0_8px_22px_-10px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5">
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") { setSearch(""); setSearchOpen(false); } }}
+                placeholder="Search journals…"
+                className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/70 outline-none"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} aria-label="Clear search" className="flex-shrink-0 text-muted-foreground hover:text-foreground">
+                  <X className="w-3.5 h-3.5" />
+                </button>
               )}
-            >
-              <Search className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => void openEntry(null)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> New
-            </button>
-          </div>
-        </div>
-        {searchOpen && (
-          <div className="flex-shrink-0 mx-4 mb-2 flex items-center gap-2 rounded-xl bg-card px-3 py-2 shadow-[0_8px_22px_-10px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5">
-            <Search className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") { setSearch(""); setSearchOpen(false); } }}
-              placeholder="Search journals…"
-              className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/70 outline-none"
-            />
-            {search && (
-              <button onClick={() => setSearch("")} aria-label="Clear search" className="flex-shrink-0 text-muted-foreground hover:text-foreground">
-                <X className="w-3.5 h-3.5" />
-              </button>
+            </div>
+          )}
+          <button
+            onClick={() => { setSearchOpen((v) => { if (v) setSearch(""); return !v; }); }}
+            aria-label={searchOpen ? "Close search" : "Search journals"}
+            aria-expanded={searchOpen}
+            className={cn(
+              "flex-shrink-0 p-1.5 rounded-lg transition-colors",
+              searchOpen ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
             )}
-          </div>
-        )}
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => void openEntry(null)}
+            className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> New
+          </button>
+        </div>
         <div className="flex-1 overflow-y-auto px-4 pb-4 pt-1 space-y-2.5">
           {isLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
