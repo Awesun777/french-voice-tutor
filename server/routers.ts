@@ -2907,7 +2907,11 @@ ${input.text}
 
 Return JSON exactly like:
 {"corrected":"<the full corrected text>","fixes":[{"before":"<original fragment>","after":"<corrected fragment>","kind":"accent","note":"<one short English sentence explaining the fix>"}]}
-"kind" must be "accent" (accent/diacritic restoration only), "grammar" (conjugation, agreement, articles, word order), or "spelling". List EVERY change as its own fix, accent restorations included.
+"kind" must be "accent" (accent/diacritic restoration only), "grammar" (conjugation, agreement, articles, word order), "spelling", or "translation" (backtick requests only — see below). List EVERY change as its own fix, accent restorations included.
+
+TRANSLATION REQUESTS:
+- A segment wrapped in backticks, like \`dog\` or \`I am tired\`, is the author asking for its French translation. For each one, add a fix whose "before" is the full segment INCLUDING both backticks and whose "after" is the natural French translation that fits the surrounding sentence (match gender, number, conjugation and register), with "kind":"translation" and a short note like "dog → chien". Apply the same replacement in "corrected".
+- Translate ONLY backtick-wrapped segments; never translate anything else.
 
 STRICT RULES:
 - Flag ONLY genuine errors. A sentence that is already correct French must be left completely untouched — no fix, no mention.

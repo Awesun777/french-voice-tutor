@@ -26,9 +26,10 @@ const KIND_COLOR: Record<string, string> = {
   accent: "bg-sky-600",
   grammar: "bg-amber-600",
   spelling: "bg-rose-600",
+  translation: "bg-emerald-600",
 };
 
-interface Fix { before: string; after: string; kind: "accent" | "grammar" | "spelling"; note: string }
+interface Fix { before: string; after: string; kind: "accent" | "grammar" | "spelling" | "translation"; note: string }
 interface Mark { fix: Fix; left: number; top: number; width: number; height: number }
 
 function todayTitle(): string {
@@ -109,6 +110,10 @@ export default function WritingTab() {
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [fixes, setFixes] = useState<Fix[]>([]);
+  /** Suggestions the writer dismissed with Escape — never re-shown until the
+   *  entry is switched. Keyed before→after so an actual different fix for the
+   *  same fragment still comes through. */
+  const ignoredRef = useRef<Set<string>>(new Set());
   const [marks, setMarks] = useState<Mark[]>([]);
   const [checking, setChecking] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
@@ -249,7 +254,9 @@ export default function WritingTab() {
       const res = await checkMutationRef.current.mutateAsync({ text });
       const current = editorText();
       setFixes((prev) => {
-        const fresh = (res.fixes as Fix[]).filter((f: Fix) => current.includes(f.before));
+        const fresh = (res.fixes as Fix[]).filter(
+          (f: Fix) => current.includes(f.before) && !ignoredRef.current.has(`${f.before}\u2192${f.after}`)
+        );
         if (scope === "all") return fresh; // full pass replaces everything
         // Paragraph pass: keep fixes from other paragraphs, replace this one's.
         const kept = prev.filter((f) => current.includes(f.before) && !text.includes(f.before));
@@ -299,11 +306,20 @@ export default function WritingTab() {
     for (const f of [...fixesRef.current]) applyFixRef.current(f);
   }, []);
 
-  // Alt/Option TAP accepts the first fix — a tap, not a chord.
+  // Alt/Option TAP accepts the first fix — a tap, not a chord. Escape ignores
+  // the pending suggestions instead (they return on the next check unless the
+  // text changes).
   useEffect(() => {
     let altDown = false;
     let chorded = false;
     const onDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && fixesRef.current.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        for (const f of fixesRef.current) ignoredRef.current.add(`${f.before}\u2192${f.after}`);
+        setFixes([]);
+        return;
+      }
       if (e.key === "Alt") { altDown = true; chorded = e.repeat; return; }
       if (altDown) chorded = true;
     };
@@ -413,6 +429,7 @@ export default function WritingTab() {
     await flush();
     setConfirmDelete(false);
     setFixes([]);
+    ignoredRef.current.clear();
     lastCheckedRef.current = "";
     if (id === null) {
       setActiveId(null);
