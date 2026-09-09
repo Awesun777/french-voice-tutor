@@ -102,10 +102,11 @@ export default function WritingTab() {
   const [checking, setChecking] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
   // ── Handwriting font ────────────────────────────────────────────────────────
-  // Indie Flower (Google Fonts) as an alternate journal voice. Handwriting
-  // faces run small, so it gets a size bump when active. Persisted.
+  // Indie Flower (Google Fonts) is the journal's default voice; the toggle
+  // switches to the standard face. Handwriting faces run small, so it gets a
+  // size bump when active. Persisted.
   const [handwriting, setHandwriting] = useState<boolean>(() => {
-    try { return localStorage.getItem("rt-writing-font") === "indie"; } catch { return false; }
+    try { return localStorage.getItem("rt-writing-font") !== "default"; } catch { return true; }
   });
   const toggleHandwriting = () => {
     setHandwriting((h) => {
