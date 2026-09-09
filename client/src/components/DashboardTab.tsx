@@ -606,7 +606,7 @@ function ExtensionPromo() {
       initial={reduce ? false : { opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="mt-10 mb-4"
+      className="hidden sm:block mt-10 mb-4"
     >
       <div className="rounded-2xl bg-card p-6 shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]">
         <div className="flex items-center gap-4 flex-wrap">

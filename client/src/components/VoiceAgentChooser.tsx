@@ -252,7 +252,7 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 onClick={() => setSelected(agent.id)}
                 aria-pressed={isSelected}
                 className={cn(
-                  "group relative flex-1 flex flex-col items-center justify-center gap-5 p-8",
+                  "group relative flex-1 flex flex-col items-center justify-center gap-3 p-4 md:gap-5 md:p-8",
                   "bg-gradient-to-b to-transparent transition-all duration-300 outline-none",
                   i === 0 ? "md:border-r border-b md:border-b-0 border-border" : "",
                   isSelected ? agent.tint : "from-transparent",
@@ -264,8 +264,8 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 </div>
                 <div className="flex flex-col items-center gap-1.5 max-w-xs">
                   <span className="text-2xl md:text-3xl font-bold tracking-tight">{agent.name}</span>
-                  <span className="text-xs md:text-sm font-semibold text-muted-foreground">{agent.tag}</span>
-                  <div className="flex flex-nowrap items-center justify-center gap-1.5 mt-1.5">
+                  <span className="hidden md:block text-sm font-semibold text-muted-foreground">{agent.tag}</span>
+                  <div className="hidden md:flex flex-nowrap items-center justify-center gap-1.5 mt-1.5">
                     <span className={cn("px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap", agent.levelCls)}>
                       {agent.level}
                     </span>

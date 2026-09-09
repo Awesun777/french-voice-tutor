@@ -105,7 +105,10 @@ export default function Home() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, activeTab]);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Folded by default on phones — the rail overlays precious width there.
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(
+    () => typeof window === "undefined" || window.matchMedia("(min-width: 640px)").matches
+  );
   // Set by an import/voice "Review these words" CTA: pre-selects a date in the
   // review launch screen. Cleared on manual sidebar navigation so it doesn't
   // keep forcing an old date.
@@ -295,7 +298,7 @@ export default function Home() {
   if (!user) return <LandingPage />;
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-dvh bg-background overflow-hidden">
       <Sidebar
         activeTab={activeTab}
         setActiveTab={navTab}

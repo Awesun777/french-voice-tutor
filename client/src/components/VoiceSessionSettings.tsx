@@ -268,7 +268,7 @@ export function VoiceSessionSettings({ agent, onChange, compact }: Props) {
           value={settings.languageMix}
           onChange={(v) => update({ languageMix: v })}
         />
-        <p className="text-[10px] text-muted-foreground">{MIX_SUBLABELS[settings.languageMix]}</p>
+        <p className="hidden sm:block text-[10px] text-muted-foreground">{MIX_SUBLABELS[settings.languageMix]}</p>
       </div>
     </div>
   );

@@ -23,7 +23,7 @@ export function DictionaryFab({ open, onOpen }: { open: boolean; onOpen: () => v
     <button
       onClick={onOpen}
       title="Open dictionary"
-      className="fixed bottom-20 right-4 z-30 flex items-center gap-2 bg-primary text-primary-foreground rounded-full pl-3.5 pr-4 py-2.5 shadow-lg hover:bg-primary/90 transition-colors"
+      className="fixed bottom-20 right-4 z-30 hidden sm:flex items-center gap-2 bg-primary text-primary-foreground rounded-full pl-3.5 pr-4 py-2.5 shadow-lg hover:bg-primary/90 transition-colors"
     >
       <Search className="w-4 h-4" />
       <span className="text-sm font-semibold">Dictionary</span>
