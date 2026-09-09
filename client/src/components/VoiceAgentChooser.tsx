@@ -70,7 +70,7 @@ const AGENTS: AgentConfig[] = [
     id: "anna",
     name: "Anna",
     tag: "The lively conversation partner",
-    level: "Best for B1–B2",
+    level: "Best for B2+",
     levelCls: "bg-speaking-surface text-speaking",
     traits: ["Natural speech", "Fewer interruptions"],
     video: "/avatars/anna.mp4",
@@ -264,12 +264,12 @@ function VoiceAgentChooser({ onStartReview }: { onStartReview: (dateKey?: string
                 <div className="flex flex-col items-center gap-1.5 max-w-xs">
                   <span className="text-2xl md:text-3xl font-bold tracking-tight">{agent.name}</span>
                   <span className="text-xs md:text-sm font-semibold text-muted-foreground">{agent.tag}</span>
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1.5">
-                    <span className={cn("px-2.5 py-1 rounded-full text-[11px] font-bold", agent.levelCls)}>
+                  <div className="flex flex-nowrap items-center justify-center gap-1.5 mt-1.5">
+                    <span className={cn("px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap", agent.levelCls)}>
                       {agent.level}
                     </span>
                     {agent.traits.map((t) => (
-                      <span key={t} className="px-2.5 py-1 rounded-full bg-muted/70 text-muted-foreground text-[11px] font-semibold">
+                      <span key={t} className="px-2.5 py-1 rounded-full bg-muted/70 text-muted-foreground text-[11px] font-semibold whitespace-nowrap">
                         {t}
                       </span>
                     ))}
