@@ -26,6 +26,7 @@ import {
   Settings,
   UploadCloud,
   PenLine,
+  Cpu,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/SettingsTab";
@@ -107,6 +108,7 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
   // Admin-only entries appended at render time — NAV itself stays static.
   const nav: NavEntry[] = user.role === "admin"
     ? [...NAV,
+       { kind: "leaf", id: "ai", label: "AI Stack", icon: <Cpu className={ICON} /> },
        { kind: "leaf", id: "ingest", label: "Ingest", icon: <UploadCloud className={ICON} /> },
        { kind: "leaf", id: "ops", label: "Ops", icon: <Activity className={ICON} /> },
        { kind: "leaf", id: "testlogs", label: "Test Logs", icon: <Clapperboard className={ICON} /> },
