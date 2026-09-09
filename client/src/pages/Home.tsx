@@ -60,7 +60,7 @@ function surroundingSentence(term: string): string | undefined {
 }
 
 const TAB_IDS: SidebarTab[] = ["dashboard", "dictionary", "library", "quiz", "flashcards", "grammar", "listening", "reading", "tutor", "voice-chat", "progress", "settings", "writing", "ingest", "ops", "testlogs", "accounts", "workflow"];
-const ADMIN_TABS: SidebarTab[] = ["writing", "ingest", "ops", "testlogs", "accounts", "workflow"];
+const ADMIN_TABS: SidebarTab[] = ["ingest", "ops", "testlogs", "accounts", "workflow"];
 
 /**
  * Which tab to open on load: the URL hash wins (survives refresh AND makes
@@ -310,7 +310,7 @@ export default function Home() {
         {activeTab === "flashcards" && <FlashcardTab reviewTarget={reviewTarget} />}
         {activeTab === "grammar" && <GrammarTestTab />}
         {activeTab === "listening" && <ListeningTab />}
-        {activeTab === "writing" && user?.role === "admin" && <WritingTab />}
+        {activeTab === "writing" && <WritingTab />}
         {activeTab === "ingest" && user?.role === "admin" && <IngestTab />}
         {activeTab === "ops" && user?.role === "admin" && <OpsTab />}
         {activeTab === "testlogs" && user?.role === "admin" && <TestLogsTab />}

@@ -2849,7 +2849,7 @@ ${input.transcript}`,
   // ─── Writing practice (admin) ───────────────────────────────────────────────
   writing: router({
     /** Journal entries, newest-touched first. Bodies included — entries are small. */
-    list: adminProcedure.query(async ({ ctx }) => {
+    list: protectedProcedure.query(async ({ ctx }) => {
       const db = await getDb();
       if (!db) return [];
       const rows = await db.select().from(writingEntries).where(eq(writingEntries.userId, ctx.user.id));
@@ -2857,7 +2857,7 @@ ${input.transcript}`,
     }),
 
     /** Create (no id) or update (id) an entry. Autosave calls this. */
-    save: adminProcedure
+    save: protectedProcedure
       .input(z.object({
         id: z.number().optional(),
         title: z.string().max(256).default(""),
@@ -2879,7 +2879,7 @@ ${input.transcript}`,
         return { id: (res as any)[0]?.insertId ?? 0 };
       }),
 
-    remove: adminProcedure
+    remove: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -2893,7 +2893,7 @@ ${input.transcript}`,
      * an English keyboard, so accents are the most common omission), fix
      * grammar/spelling, and explain each change. Wording and style are kept.
      */
-    check: adminProcedure
+    check: protectedProcedure
       .input(z.object({ text: z.string().min(1).max(4000) }))
       .mutation(async ({ input }) => {
         const checkMessages = [

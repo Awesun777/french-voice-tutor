@@ -75,6 +75,7 @@ const NAV: NavEntry[] = [
   // names the skill.
   { kind: "leaf", id: "reading", label: "Reading", icon: <Newspaper className={ICON} /> },
   { kind: "leaf", id: "listening", label: "Listening", icon: <Headphones className={ICON} /> },
+  { kind: "leaf", id: "writing", label: "Writing", icon: <PenLine className={ICON} /> },
   {
     kind: "group",
     id: "vocab-review",
@@ -106,7 +107,6 @@ export default function Sidebar({ activeTab, setActiveTab, open, setOpen, user }
   // Admin-only entries appended at render time — NAV itself stays static.
   const nav: NavEntry[] = user.role === "admin"
     ? [...NAV,
-       { kind: "leaf", id: "writing", label: "Writing", icon: <PenLine className={ICON} /> },
        { kind: "leaf", id: "ingest", label: "Ingest", icon: <UploadCloud className={ICON} /> },
        { kind: "leaf", id: "ops", label: "Ops", icon: <Activity className={ICON} /> },
        { kind: "leaf", id: "testlogs", label: "Test Logs", icon: <Clapperboard className={ICON} /> },

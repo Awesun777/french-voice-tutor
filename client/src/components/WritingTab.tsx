@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, PenLine, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette, BookmarkPlus, Check } from "lucide-react";
+import { Loader2, PenLine, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette, BookmarkPlus, Check, Search, X } from "lucide-react";
 
 const ACCENTS = ["é", "è", "ê", "ë", "à", "â", "ç", "î", "ï", "ô", "œ", "ù", "û", "ü", "É", "À", "Ç", "«", "»", "’"];
 
@@ -92,6 +92,8 @@ export default function WritingTab() {
   const { data: entries = [], isLoading } = trpc.writing.list.useQuery();
 
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const [title, setTitle] = useState(todayTitle());
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -454,45 +456,85 @@ export default function WritingTab() {
 
   return (
     <div className="flex-1 min-h-0 flex">
-      {/* ── Entries rail (rendered on the right via order-last) ──────────── */}
-      <aside className="order-last w-72 flex-shrink-0 border-l border-border bg-muted/20 flex flex-col min-h-0">
-        <div className="flex-shrink-0 h-14 px-4 flex items-center justify-between border-b border-border">
+      {/* ── Entries rail — floating title cards on the right, no dividers.
+             Entries arrive from the server newest-edited first. ───────────── */}
+      <aside className="order-last w-72 flex-shrink-0 flex flex-col min-h-0">
+        <div className="flex-shrink-0 px-4 pt-4 pb-2 flex items-center justify-between gap-2">
           <p className="font-display text-sm font-bold text-foreground flex items-center gap-2">
             <PenLine className="w-4 h-4 text-primary" /> Journal
           </p>
-          <button
-            onClick={() => void openEntry(null)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> New
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => { setSearchOpen((v) => { if (v) setSearch(""); return !v; }); }}
+              aria-label={searchOpen ? "Close search" : "Search journals"}
+              aria-expanded={searchOpen}
+              className={cn(
+                "p-1.5 rounded-lg transition-colors",
+                searchOpen ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              <Search className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => void openEntry(null)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> New
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto py-2 px-2 space-y-1">
+        {searchOpen && (
+          <div className="flex-shrink-0 mx-4 mb-2 flex items-center gap-2 rounded-xl bg-card px-3 py-2 shadow-[0_8px_22px_-10px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5">
+            <Search className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+            <input
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { setSearch(""); setSearchOpen(false); } }}
+              placeholder="Search journals…"
+              className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground/70 outline-none"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} aria-label="Clear search" className="flex-shrink-0 text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto px-4 pb-4 pt-1 space-y-2.5">
           {isLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
           ) : entries.length === 0 && activeId === null && isEmpty ? (
-            <p className="px-3 py-6 text-xs text-muted-foreground leading-relaxed">
+            <p className="px-1 py-6 text-xs text-muted-foreground leading-relaxed">
               Your first page is open — start writing and it saves itself.
             </p>
           ) : (
-            entries.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => void openEntry(e.id)}
-                className={cn(
-                  "w-full text-left rounded-xl px-3 py-2.5 border-l-[3px] transition-colors",
-                  e.id === activeId ? "bg-card border-primary shadow-sm" : "border-transparent hover:bg-card/60"
-                )}
-              >
-                <div className="flex items-baseline justify-between gap-2">
+            (() => {
+              const q = search.trim().toLowerCase();
+              const shown = q
+                ? entries.filter((e) =>
+                    (e.title || "Untitled").toLowerCase().includes(q) ||
+                    stripHtml(e.body).toLowerCase().includes(q))
+                : entries;
+              if (shown.length === 0) {
+                return <p className="px-1 py-6 text-xs text-muted-foreground">No journals match “{search.trim()}”.</p>;
+              }
+              return shown.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => void openEntry(e.id)}
+                  title={fmtWhen(e.updatedAt)}
+                  className={cn(
+                    "w-full text-left rounded-2xl bg-card px-3.5 py-3 ring-1 transition-shadow",
+                    e.id === activeId
+                      ? "ring-primary/50 shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.5)]"
+                      : "ring-black/5 shadow-[0_10px_26px_-12px_rgb(23_63_107_/_0.35)] hover:shadow-[0_14px_32px_-12px_rgb(23_63_107_/_0.45)]"
+                  )}
+                >
                   <p className="text-sm font-bold text-foreground truncate">{e.title || "Untitled"}</p>
-                  <span className="flex-shrink-0 text-[10px] text-muted-foreground tabular-nums">{fmtWhen(e.updatedAt)}</span>
-                </div>
-                <p className="text-xs text-muted-foreground leading-snug line-clamp-2 mt-0.5">
-                  {stripHtml(e.body) || "Empty"}
-                </p>
-              </button>
-            ))
+                </button>
+              ));
+            })()
           )}
         </div>
       </aside>
