@@ -2950,9 +2950,18 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
                   .map((f: Record<string, unknown>) => ({
                     before: String(f.before),
                     after: String(f.after),
-                    kind: (["accent", "grammar", "spelling"].includes(String(f.kind)) ? String(f.kind) : "grammar") as "accent" | "grammar" | "spelling",
+                    kind: (["accent", "grammar", "spelling", "translation"].includes(String(f.kind)) ? String(f.kind) : "grammar") as "accent" | "grammar" | "spelling" | "translation",
                     note: String(f.note ?? ""),
                   }))
+                  // Backtick translation requests: the model is told to include
+                  // the backticks in "before" and label them "translation", but
+                  // it drifts — normalize so accepting never strands a "`" in
+                  // the text and the chip always carries the translation color.
+                  .map((f: { before: string; after: string; kind: string; note: string }) => {
+                    if (f.before.startsWith("`") && f.before.endsWith("`")) return { ...f, kind: "translation" as const };
+                    const ticked = "`" + f.before + "`";
+                    return input.text.includes(ticked) ? { ...f, before: ticked, kind: "translation" as const } : f;
+                  })
                   .filter((f: { before: string; after: string }) => foldTypography(f.before) !== foldTypography(f.after))
               : [],
           };
