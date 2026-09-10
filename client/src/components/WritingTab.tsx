@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette, BookmarkPlus, Check, Search, X } from "lucide-react";
+import { Loader2, Plus, Trash2, Bold, Italic, Underline, List, Sparkles, CornerDownLeft, SpellCheck, Palette, BookmarkPlus, Check, Search, X, RemoveFormatting } from "lucide-react";
 
 const ACCENTS = ["é", "è", "ê", "ë", "à", "â", "ç", "î", "ï", "ô", "œ", "ù", "û", "ü", "É", "À", "Ç", "«", "»", "’"];
 
@@ -318,6 +318,30 @@ export default function WritingTab() {
     setFixes((fs) => fs.filter((f) => current.includes(f.before)));
     requestAnimationFrame(reposition);
   }, [scheduleSave, scheduleCheck, reposition]);
+
+  // Flatten the whole entry to the journal's own format: keep the text and
+  // line breaks, drop every inherited style (fonts, colors, sizes, bold…).
+  const clearFormatting = useCallback(() => {
+    const root = editorRef.current;
+    if (!root) return;
+    const text = root.innerText.replace(/\u00A0/g, " ").replace(/\n+$/, "");
+    root.innerHTML = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    // Put the caret back at the end so typing continues naturally.
+    root.focus();
+    const sel = window.getSelection();
+    if (sel) {
+      const r = document.createRange();
+      r.selectNodeContents(root);
+      r.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    onEdited();
+  }, [onEdited]);
 
   // ── Applying fixes ──────────────────────────────────────────────────────────
   const applyFix = useCallback((fix: Fix) => {
@@ -674,6 +698,16 @@ export default function WritingTab() {
             style={{ fontFamily: "'Indie Flower', cursive" }}
           >
             Aa
+          </button>
+          {/* Clear formatting — flattens pasted styling (fonts, colors,
+              sizes) back to the journal's own look, keeping line breaks. */}
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={clearFormatting}
+            title="Clear formatting — back to the journal's own style"
+            className="px-2.5 py-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <RemoveFormatting className="w-4 h-4" />
           </button>
           {/* Full-passage check — live checks only cover the paragraph being
               edited, so this is the "proof the whole page" button. */}
