@@ -59,15 +59,37 @@ function toEditorHtml(body: string): string {
  * nodes so a match spanning formatting boundaries (…<b>…</b>…) still works.
  */
 function findRange(root: HTMLElement, needle: string): Range | null {
+  // A fragment with a line break can only match across blocks, and deleting
+  // such a range merges lines (and swallows empty ones) — never apply those.
+  if (!needle || needle.includes("\n")) return null;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   const starts: number[] = [];
   let full = "";
   let n: Node | null;
+  // The editor's lines are blocks (divs, list items). Join their text with a
+  // "\n" the way editorText() does — without it, "…parc." + "Il…" concatenate
+  // as "parc.Il" and a fragment can falsely match ACROSS the line boundary;
+  // deleting that range used to merge the two lines and eat any empty line
+  // between them.
+  const blockOf = (t: Text): Node => {
+    let el: Node | null = t.parentNode;
+    while (el && el !== root) {
+      const d = el instanceof HTMLElement ? getComputedStyle(el).display : "";
+      if (d === "block" || d === "list-item") return el;
+      el = el.parentNode;
+    }
+    return root;
+  };
+  let prevBlock: Node | null = null;
   while ((n = walker.nextNode())) {
+    const t = n as Text;
+    const blk = blockOf(t);
+    if (prevBlock !== null && blk !== prevBlock) full += "\n";
+    prevBlock = blk;
     starts.push(full.length);
-    nodes.push(n as Text);
-    full += (n as Text).data;
+    nodes.push(t);
+    full += t.data;
   }
   const at = full.indexOf(needle);
   if (at === -1) return null;
