@@ -318,7 +318,7 @@ export default function Home() {
       <main className="flex-1 overflow-hidden flex flex-col min-w-0">
         {activeTab === "dashboard" && <DashboardTab setActiveTab={navTab} />}
         {activeTab === "dictionary" && <DictionaryTab />}
-        {activeTab === "library" && <LibraryTab setActiveTab={setActiveTab} onStartReview={startReview} />}
+        {activeTab === "library" && <LibraryTab setActiveTab={setActiveTab} onStartReview={startReview} showVocabularySummary={user?.role === "admin"} />}
         {activeTab === "quiz" && <QuizTab reviewTarget={reviewTarget} />}
         {activeTab === "flashcards" && <FlashcardTab reviewTarget={reviewTarget} />}
         {activeTab === "grammar" && <GrammarTestTab />}

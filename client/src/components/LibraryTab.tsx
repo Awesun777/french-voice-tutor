@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import ImportModal from "./ImportModal";
 import { GoogleDrivePanel } from "./GoogleDrivePanel";
+import VocabularySummary from "./VocabularySummary";
+import { vocabularyStage, type VocabularyStage } from "@/lib/vocabularySummary";
 
 function todayKey() { return new Date().toISOString().split("T")[0]; }
 function yesterdayKey() { return new Date(Date.now() - 86400000).toISOString().split("T")[0]; }
@@ -203,7 +205,8 @@ function GroupHeader({
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveTab: (tab: SidebarTab) => void; onStartReview?: (dateKey?: string) => void }) {
+export default function LibraryTab({ setActiveTab, onStartReview, showVocabularySummary = false }: { setActiveTab: (tab: SidebarTab) => void; onStartReview?: (dateKey?: string) => void; showVocabularySummary?: boolean }) {
+  const [statusFilter, setStatusFilter] = useState<VocabularyStage | null>(null);
   const [search, setSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [showDrivePanel, setShowDrivePanel] = useState(false);
@@ -369,6 +372,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
 
   // Filter and group
   const filtered = words.filter((w) => {
+    if (showVocabularySummary && statusFilter && vocabularyStage(w) !== statusFilter) return false;
     if (filterStarred && !w.starred) return false;
     if (!search) return true;
     const q = search.toLowerCase();
@@ -488,7 +492,14 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
       )}
 
       {/* Body: pinned calendar over a scrolling word list */}
-      <div className="flex-1 flex flex-col min-h-0">
+      <div ref={showVocabularySummary ? scrollRef : undefined} className={cn("flex-1 flex flex-col min-h-0", showVocabularySummary && "overflow-y-auto")}>
+        {showVocabularySummary && !isLoading && (
+          <div className="flex-shrink-0 px-4 pt-4 pb-2">
+            <div className="max-w-3xl mx-auto">
+              <VocabularySummary words={words} selected={statusFilter} onSelect={setStatusFilter} />
+            </div>
+          </div>
+        )}
         {/* Same calendar as Quiz and Flashcards, and dressed the same way —
             bare on the page background, no card. Pinned above the scroll area
             so it stays reachable however far down the list you are. */}
@@ -545,7 +556,7 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-4 pt-1">
+      <div ref={showVocabularySummary ? undefined : scrollRef} className={cn("px-4 pb-4 pt-1", showVocabularySummary ? "flex-shrink-0" : "flex-1 overflow-y-auto")}>
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
