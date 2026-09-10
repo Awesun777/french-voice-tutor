@@ -722,6 +722,14 @@ export default function WritingTab() {
                 contentEditable
                 suppressContentEditableWarning
                 onInput={onEdited}
+                // Pasted text adopts the journal's own format: strip the
+                // source styling (fonts, colors, sizes) by inserting the
+                // clipboard's plain text — line breaks survive via insertText.
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const text = e.clipboardData.getData("text/plain");
+                  if (text) document.execCommand("insertText", false, text);
+                }}
                 className={cn(
                   "min-h-[60vh] outline-none text-foreground [&_b]:font-bold [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-6",
                   // Handwriting faces run small — Indie Flower gets a bump.
