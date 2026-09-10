@@ -649,7 +649,9 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                             <div className="flex-1 min-w-0">
                               <div className="flex items-baseline gap-3">
                                 <p className="text-sm font-semibold text-foreground truncate flex-1 min-w-0">{w.term}</p>
-                                <p className="text-xs text-muted-foreground truncate text-right flex-1 min-w-0">{w.translation}</p>
+                                {/* Fixed-width, left-aligned: meanings form a real
+                                    column instead of a ragged right-aligned edge. */}
+                                <p className="text-xs text-muted-foreground truncate w-32 sm:w-40 md:w-52 flex-shrink-0">{w.translation}</p>
                               </div>
                               {w.groupLabel && (
                                 <p className="text-xs text-blue-700/80 truncate mt-0.5">🏷 {w.groupLabel}</p>
@@ -659,23 +661,26 @@ export default function LibraryTab({ setActiveTab, onStartReview }: { setActiveT
                               )}
                             </div>
                           )}
-                          {/* SM-2 status badge */}
-                          {w.sm2Status && w.sm2Status !== "new" && (
-                            <span className={cn(
-                              "text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0",
-                              w.sm2Status === "mastered" && "bg-green-500/15 text-green-700",
-                              w.sm2Status === "review" && "bg-blue-500/15 text-blue-700",
-                              w.sm2Status === "learning" && "bg-yellow-500/15 text-amber-700",
-                            )}>
-                              {w.sm2Status === "mastered" ? "✓ mastered" : w.sm2Status === "review" ? "review" : "learning"}
-                            </span>
-                          )}
-                          {/* Due indicator: show if nextReviewAt is in the past */}
-                          {w.sm2NextReviewAt && w.sm2NextReviewAt <= Date.now() && w.sm2Status !== "mastered" && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent-strong font-semibold flex-shrink-0">
-                              due
-                            </span>
-                          )}
+                          {/* Badge slot: fixed width whether it holds two chips
+                              or none, so the meaning column left of it never
+                              shifts row to row. */}
+                          <span className="flex items-center justify-end gap-1 w-28 flex-shrink-0">
+                            {w.sm2Status && w.sm2Status !== "new" && (
+                              <span className={cn(
+                                "text-xs px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0",
+                                w.sm2Status === "mastered" && "bg-green-500/15 text-green-700",
+                                w.sm2Status === "review" && "bg-blue-500/15 text-blue-700",
+                                w.sm2Status === "learning" && "bg-yellow-500/15 text-amber-700",
+                              )}>
+                                {w.sm2Status === "mastered" ? "✓ mastered" : w.sm2Status === "review" ? "review" : "learning"}
+                              </span>
+                            )}
+                            {w.sm2NextReviewAt && w.sm2NextReviewAt <= Date.now() && w.sm2Status !== "mastered" && (
+                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent-strong font-semibold flex-shrink-0">
+                                due
+                              </span>
+                            )}
+                          </span>
                           {editId === w.id ? (
                             <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                               <button

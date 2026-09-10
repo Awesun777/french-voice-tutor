@@ -48,7 +48,20 @@ const stripHtml = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, "
 
 /** Stored bodies may be plain text from v2 — turn those into innerHTML safely. */
 function toEditorHtml(body: string): string {
-  if (body.includes("<")) return body; // already HTML (self-authored)
+  // A body with tags OR entities came from the editor itself. Checking only
+  // for "<" was the &nbsp; bug: a short entry with no line break yet has no
+  // tags, but contentEditable still writes &nbsp; for double/trailing spaces —
+  // the plain-text path then escaped its "&", and the entry came back showing
+  // a literal "&nbsp;" after every tab switch.
+  if (body.includes("<") || /&[a-z]+;|&#\d+;/i.test(body)) {
+    // Repair entries the old heuristic already double-escaped (possibly
+    // several layers deep from repeated round-trips).
+    let s = body;
+    for (let i = 0; i < 5 && /&amp;(nbsp|amp|lt|gt|#\d+);/.test(s); i++) {
+      s = s.replace(/&amp;(nbsp|amp|lt|gt|#\d+);/g, "&$1;");
+    }
+    return s;
+  }
   return body
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/\n/g, "<br>");
