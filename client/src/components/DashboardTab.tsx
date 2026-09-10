@@ -305,7 +305,6 @@ export default function DashboardTab({
                   sub: `${videos.length} video${videos.length === 1 ? "" : "s"}`,
                   tone: "bg-speaking-surface text-speaking",
                   img: "/brand/dashboard-watch.png",
-                  imgCls: "object-[center_38%]",
                 },
                 {
                   tab: "reading" as const,
@@ -314,7 +313,6 @@ export default function DashboardTab({
                   sub: `${articles.length} article${articles.length === 1 ? "" : "s"}`,
                   tone: "bg-secondary text-primary",
                   img: "/brand/dashboard-read.png",
-                  imgCls: "object-[center_45%]",
                 },
               ].map((o) => (
                 <motion.button
@@ -336,11 +334,13 @@ export default function DashboardTab({
                       <p className="text-xs text-muted-foreground mt-0.5 truncate">{o.sub}</p>
                     </div>
                   </div>
+                  {/* Natural width at the row's height — a fixed-width box
+                      with object-cover cropped the wider artwork's left edge. */}
                   <img
                     src={o.img}
                     alt=""
                     loading="lazy"
-                    className={cn("ml-auto w-24 sm:w-[102px] md:w-32 h-full object-cover flex-shrink-0", o.imgCls)}
+                    className="ml-auto h-full w-auto flex-shrink-0"
                   />
                 </motion.button>
               ))}
