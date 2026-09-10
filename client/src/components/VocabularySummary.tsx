@@ -1,8 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { VocabEntry } from "@/types";
 import { cn } from "@/lib/utils";
 import { summarizeVocabulary, type VocabularyStage } from "@/lib/vocabularySummary";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const stages = [
   { key: "new", label: "New", color: "bg-accent", description: "Words you haven't reviewed yet" },
@@ -10,10 +9,12 @@ const stages = [
   { key: "mastered", label: "Mastered", color: "bg-primary", description: "Words marked mastered by spaced repetition" },
 ] as const;
 
-export default function VocabularySummary({ words, selected, onSelect }: {
+export default function VocabularySummary({ words, selected, onSelect, actions, calendar }: {
   words: Pick<VocabEntry, "sm2Status">[];
   selected: VocabularyStage | null;
   onSelect: (stage: VocabularyStage | null) => void;
+  actions?: ReactNode;
+  calendar?: ReactNode;
 }) {
   const [mode, setMode] = useState("percent");
   const counts = summarizeVocabulary(words);
@@ -31,21 +32,18 @@ export default function VocabularySummary({ words, selected, onSelect }: {
         <button type="button" onClick={() => onSelect(null)} aria-pressed={selected === null} className="text-sm rounded-md focus-visible:outline-2 focus-visible:outline-primary">
           <strong className="text-base tabular-nums">{counts.total.toLocaleString()}</strong> total vocab items
         </button>
-        <ToggleGroup type="single" value={mode} onValueChange={(value) => { if (value) setMode(value); }} aria-label="Display vocabulary counts" className="rounded-full bg-background p-1">
-          <ToggleGroupItem value="number" aria-label="Show numbers" className="px-3 text-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground first:rounded-l-full">Numbers</ToggleGroupItem>
-          <ToggleGroupItem value="percent" aria-label="Show percentages" className="px-3 text-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground last:rounded-r-full">%</ToggleGroupItem>
-        </ToggleGroup>
       </div>
       <div className="flex items-center justify-between gap-3 py-2">
         <div className="min-w-0" aria-live="polite">
-          <p className="font-display font-black leading-none tracking-tighter text-6xl sm:text-8xl break-all">
+          <button type="button" onClick={() => setMode((value) => value === "percent" ? "number" : "percent")} aria-label={`Mastered: ${mode === "percent" ? `${displayPercent(counts.mastered)} percent` : counts.mastered.toLocaleString()}. Click to show ${mode === "percent" ? "numbers" : "percentages"}.`} className="block max-w-full text-left font-display font-black leading-none tracking-tighter text-6xl sm:text-8xl break-all rounded-lg hover:text-accent-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary transition-colors">
             {mode === "percent" ? displayPercent(counts.mastered) : counts.mastered.toLocaleString()}
             {mode === "percent" && <span className="text-3xl sm:text-5xl">%</span>}
-          </p>
+          </button>
           <p className="text-lg font-bold">Mastered</p>
           <p className="text-sm text-muted-foreground">
             {counts.total === 0 ? "Your first word starts the journey" : mode === "percent" ? `${counts.mastered.toLocaleString()} vocab items mastered` : `${displayPercent(counts.mastered)}% of your library`}
           </p>
+          <p className="text-xs text-primary/70 mt-1">Tap the number to switch % / #</p>
         </div>
         <div className="shrink-0 text-center" aria-hidden="true">
           <p className="rounded-xl bg-background px-2 py-1 text-sm -rotate-3 mb-2">{counts.total === 0 ? "On y va !" : "Ça avance !"}</p>
@@ -64,6 +62,8 @@ export default function VocabularySummary({ words, selected, onSelect }: {
         ))}
       </div>
       {selected && <button type="button" className="mt-1 text-sm underline underline-offset-4" onClick={() => onSelect(null)}>Clear status filter</button>}
+      {actions && <div className="mt-3">{actions}</div>}
+      {calendar && <div className="mt-4 border-t border-primary/10 pt-4">{calendar}</div>}
     </section>
   );
 }

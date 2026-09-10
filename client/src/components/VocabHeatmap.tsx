@@ -52,12 +52,14 @@ function RollingLabel({ text }: { text: string }) {
   );
 }
 
-export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick a day you saved words" }: {
+export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick a day you saved words", tone = "green" }: {
   dates: { dateKey: string; total: number }[];
   onPick: (dateKey: string) => void;
   /** Ringed rather than filled — marks position without restating the count. */
   selectedKey?: string | null;
   idleLabel?: string;
+  /** Blue keeps the admin library calendar in the same family as its summary. */
+  tone?: "green" | "blue";
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<{ k: string; c: number } | null>(null);
@@ -81,6 +83,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
   }
   const ymd = (d: Date) => d.toISOString().split("T")[0];
   const tk = todayKey();
+  const densityColor = tone === "blue" ? "23,63,107" : "47,158,68";
 
   const label = hovered
     ? `${fmtHeatmapDate(hovered.k)} · ${hovered.c === 0 ? "no words" : `${hovered.c} word${hovered.c === 1 ? "" : "s"}`}`
@@ -88,7 +91,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
 
   return (
     <div className="w-full">
-      <p className="flex items-center justify-center gap-1.5 text-xs font-semibold text-muted-foreground mb-2 h-4">
+      <p className={cn("flex items-center justify-center gap-1.5 font-semibold mb-2", tone === "blue" ? "text-sm text-primary min-h-5" : "text-xs text-muted-foreground h-4")}>
         <CalendarDays className="w-3.5 h-3.5 flex-none" /> <RollingLabel text={label} />
       </p>
       <div ref={scrollRef} className="overflow-x-auto pb-1" onMouseLeave={() => setHovered(null)}>
@@ -97,7 +100,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
             {weeks.map((week, i) => {
               const first = week.find((d) => d.getDate() === 1);
               return (
-                <span key={i} className="w-3 flex-none text-[9px] text-muted-foreground whitespace-nowrap overflow-visible">
+                <span key={i} className={cn("w-3 flex-none whitespace-nowrap overflow-visible", tone === "blue" ? "text-xs text-primary/75" : "text-[9px] text-muted-foreground")}>
                   {first ? first.toLocaleDateString("en-US", { month: "short" }) : ""}
                 </span>
               );
@@ -113,7 +116,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
                   const style = isToday
                     ? undefined
                     : c
-                      ? { background: `rgba(47,158,68,${(0.25 + 0.75 * (c / max)).toFixed(2)})` }
+                      ? { background: `rgba(${densityColor},${(0.25 + 0.75 * (c / max)).toFixed(2)})` }
                       : { background: "rgba(23,63,107,0.08)" };
                   return (
                     <button
@@ -122,6 +125,8 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
                       disabled={!c}
                       onClick={() => c && onPick(k)}
                       onMouseEnter={() => setHovered({ k, c })}
+                      onFocus={() => setHovered({ k, c })}
+                      onBlur={() => setHovered(null)}
                       aria-label={c ? `${c} words from ${fmtHeatmapDate(k)}` : undefined}
                       style={style}
                       className={cn(
@@ -138,10 +143,10 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-center gap-1 mt-2 text-[10px] text-muted-foreground">
+      <div className={cn("flex items-center justify-center gap-1 mt-2", tone === "blue" ? "text-xs text-primary/75" : "text-[10px] text-muted-foreground")}>
         <span>Less</span>
         {[0.25, 0.5, 0.75, 1].map((op) => (
-          <i key={op} className="w-3 h-3 rounded-[3px]" style={{ background: `rgba(47,158,68,${op})` }} />
+          <i key={op} className="w-3 h-3 rounded-[3px]" style={{ background: `rgba(${densityColor},${op})` }} />
         ))}
         <span>More</span>
       </div>

@@ -422,18 +422,10 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
     return () => observer.disconnect();
   }, [groupKeysSignature]);
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      {/* min-h-14 matches the sidebar header so the divider continues that line;
-          min- rather than fixed because these controls wrap on narrow screens. */}
-      <div className="flex-shrink-0 min-h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-2 flex items-center">
-        {/* Controls spread across the body column (max-w-3xl, same as the
-            word list), each with a solid identity colour so they read at a
-            glance: gold = starred, blue = due, green = export, violet =
-            import, and Drive carries Google's own multicolour logo. */}
-        <div className="w-full max-w-3xl mx-auto flex items-center justify-between gap-2 flex-wrap">
-          <button
+  const summaryActionClass = "inline-flex items-center justify-center gap-2 min-h-10 px-3 py-2 rounded-xl bg-primary/5 text-primary text-sm font-semibold hover:bg-primary/10 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
+  const libraryActions = (
+        <div className={cn("w-full flex items-center gap-2 flex-wrap", !showVocabularySummary && "max-w-3xl mx-auto justify-between")}>
+          {!showVocabularySummary && <button
             onClick={() => setFilterStarred(!filterStarred)}
             className={cn(
               "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white shadow-sm transition-all",
@@ -441,8 +433,8 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
             )}
           >
             <Star className={cn("w-3.5 h-3.5", filterStarred && "fill-current")} /> Starred
-          </button>
-          {dueCount > 0 && (
+          </button>}
+          {!showVocabularySummary && dueCount > 0 && (
             <span className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold shadow-sm">
               {dueCount} due
             </span>
@@ -450,19 +442,20 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
           <button
             onClick={() => exportCSV(words)}
             disabled={!words.length}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-40"
+            className={showVocabularySummary ? summaryActionClass : "flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-colors disabled:opacity-40"}
           >
             <Download className="w-3.5 h-3.5" /> Export
           </button>
           <button
             onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm transition-colors"
+            className={showVocabularySummary ? summaryActionClass : "flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm transition-colors"}
           >
             <Upload className="w-3.5 h-3.5" /> Import
           </button>
           <button
             onClick={() => setShowDrivePanel(!showDrivePanel)}
-            className={cn(
+            aria-expanded={showDrivePanel}
+            className={showVocabularySummary ? cn(summaryActionClass, showDrivePanel && "bg-primary/15") : cn(
               "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-card shadow-sm transition-all",
               showDrivePanel
                 ? "text-blue-700 border border-blue-500/60 ring-2 ring-blue-400/40"
@@ -482,37 +475,17 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
             Drive
           </button>
         </div>
-      </div>
-
-      {/* Google Drive Panel */}
-      {showDrivePanel && (
-        <div className="flex-shrink-0 border-b border-border px-4 py-4 bg-background/50">
-          <GoogleDrivePanel onStartReview={onStartReview} />
-        </div>
-      )}
-
-      {/* Body: pinned calendar over a scrolling word list */}
-      <div ref={showVocabularySummary ? scrollRef : undefined} className={cn("flex-1 flex flex-col min-h-0", showVocabularySummary && "overflow-y-auto")}>
-        {showVocabularySummary && !isLoading && (
-          <div className="flex-shrink-0 px-4 pt-4 pb-2">
-            <div className="max-w-3xl mx-auto">
-              <VocabularySummary words={words} selected={statusFilter} onSelect={setStatusFilter} />
-            </div>
-          </div>
-        )}
-        {/* Same calendar as Quiz and Flashcards, and dressed the same way —
-            bare on the page background, no card. Pinned above the scroll area
-            so it stays reachable however far down the list you are. */}
-        {!isLoading && words.length > 0 && sortedGroups.length > 1 && (
-          <div className="flex-shrink-0 border-b border-border px-4 py-3">
-            <div className="max-w-3xl mx-auto">
+  );
+  const libraryCalendar = (
+    <>
               <VocabHeatmap
+                tone={showVocabularySummary ? "blue" : "green"}
                 dates={sortedGroups
                   .filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k))
                   .map(([k, ws]) => ({ dateKey: k, total: ws.length }))}
                 onPick={(dk) => scrollToGroup(dk)}
                 selectedKey={activeGroup}
-                idleLabel="Jump to a day you saved words"
+                idleLabel={showVocabularySummary ? "Saved words · pick a day" : "Jump to a day you saved words"}
               />
               {/* Renamed groups have no date to sit on, so they keep their own
                   row rather than becoming unreachable. */}
@@ -536,15 +509,54 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
                     ))}
                 </div>
               )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col h-full">
+      {!showVocabularySummary && (
+        <div className="flex-shrink-0 min-h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 py-2 flex items-center">
+          {libraryActions}
+        </div>
+      )}
+
+      {/* Google Drive Panel */}
+      {!showVocabularySummary && showDrivePanel && (
+        <div className="flex-shrink-0 border-b border-border px-4 py-4 bg-background/50">
+          <GoogleDrivePanel onStartReview={onStartReview} />
+        </div>
+      )}
+
+      {/* Admins scroll the unified summary and list together; the standard
+          library keeps its pinned calendar and search. */}
+      <div ref={showVocabularySummary ? scrollRef : undefined} className={cn("flex-1 flex flex-col min-h-0", showVocabularySummary && "overflow-y-auto")}>
+        {showVocabularySummary && !isLoading && (
+          <div className="flex-shrink-0 px-4 pt-4 pb-2">
+            <div className="max-w-3xl mx-auto">
+              <VocabularySummary
+                words={words}
+                selected={statusFilter}
+                onSelect={setStatusFilter}
+                actions={<>
+                  {libraryActions}
+                  {showDrivePanel && <div className="mt-3"><GoogleDrivePanel onStartReview={onStartReview} /></div>}
+                </>}
+                calendar={libraryCalendar}
+              />
             </div>
           </div>
         )}
+        {!showVocabularySummary && !isLoading && words.length > 0 && sortedGroups.length > 1 && (
+          <div className="flex-shrink-0 border-b border-border px-4 py-3">
+            <div className="max-w-3xl mx-auto">{libraryCalendar}</div>
+          </div>
+        )}
 
-      {/* Search — pinned here (not inside the scroll area) so it stays in the
-          same spot however far down the date groups you scroll. */}
+      {/* Starred is a list filter, so it sits beside search in the admin view. */}
       {!isLoading && words.length > 0 && (
         <div className="flex-shrink-0 px-4 pt-3 pb-2">
-          <div className="max-w-3xl mx-auto relative">
+          <div className="max-w-3xl mx-auto flex items-center gap-2">
+            <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               value={search}
@@ -552,6 +564,12 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
               placeholder="Search your library…"
               className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
             />
+            </div>
+            {showVocabularySummary && (
+              <button type="button" aria-label="Filter starred words" aria-pressed={filterStarred} onClick={() => setFilterStarred(!filterStarred)} className={cn("shrink-0 flex items-center justify-center gap-1.5 min-h-10 px-3 rounded-xl text-sm border border-border focus-visible:outline-2 focus-visible:outline-primary", filterStarred ? "bg-star/15 text-star" : "bg-card text-muted-foreground hover:text-primary")}>
+                <Star className={cn("w-4 h-4", filterStarred && "fill-current")} /><span className="hidden sm:inline">Starred</span>
+              </button>
+            )}
           </div>
         </div>
       )}
