@@ -349,9 +349,14 @@ export default function DashboardTab({
           </Panel>
         </div>
 
-        <HowItWorks setActiveTab={setActiveTab} />
-        <Shortcuts />
-        <ExtensionPromo />
+        {/* Everything below the two hero panels is desktop-only: the mobile
+            dashboard stays just the greeting and the two cards. Keyboard
+            shortcuts and the Chrome extension don't apply on phones anyway. */}
+        <div className="hidden sm:block">
+          <HowItWorks setActiveTab={setActiveTab} />
+          <Shortcuts />
+          <ExtensionPromo />
+        </div>
       </div>
     </div>
   );
