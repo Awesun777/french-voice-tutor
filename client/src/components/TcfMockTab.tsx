@@ -479,7 +479,7 @@ export default function TcfMockTab() {
             <>
               {/* item strip: number · section · consigne */}
               <div className={cn("flex-shrink-0 space-y-1 border-b bg-background/50 px-4 py-2", LINE)}>
-                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                <div className="flex flex-wrap items-center justify-start gap-x-3 gap-y-1">
                 <span className="font-display text-sm font-bold tabular-nums">
                   Question {item.n}
                   <span className="text-muted-foreground">/{items.length}</span>
@@ -500,9 +500,9 @@ export default function TcfMockTab() {
                 {hasDoc && (
                   <section className={cn("flex max-h-[38%] flex-shrink-0 flex-col border-b md:max-h-none md:w-[52%] md:border-b-0 md:border-r", LINE)}>
                     {item.hasImage ? (
-                      <div className="flex min-h-0 flex-1 items-center justify-center p-3 md:p-4">
+                      <div className="flex min-h-0 flex-1 items-start justify-center p-3 md:p-4">
                         {media?.imageUrl ? (
-                          <img src={media.imageUrl} alt="Document" className="max-h-full max-w-full object-contain" />
+                          <img src={media.imageUrl} alt="Document" className="max-h-full max-w-full object-contain object-top" />
                         ) : (
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                         )}
