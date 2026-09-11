@@ -403,27 +403,44 @@ TRANSCRIBE_MODEL = "gpt-4o-transcribe"
 CUE_BREAK = re.compile(r"\s+(?=(?:[ABCD]\.\s|Regardez l'image|Écoutez |Question\b))")
 
 
-def transcribe(path: Path) -> str:
-    # Long pauses between the spoken A/B/C/D propositions make ASR drop
-    # some of them; squeeze silences to 0.7 s before sending.
+SPOKEN_PROMPT = "Entraînement au TCF, compréhension orale. Chaque proposition est annoncée par sa lettre : A. … B. … C. … D. …"
+DOC_PROMPT = "Entraînement au TCF, compréhension orale : un document sonore (reportage, interview, annonce) suivi de la question."
+
+
+def _transcribe_once(path: Path, prompt: str) -> str:
+    with open(path, "rb") as f:
+        r = requests.post(
+            f"{OPENAI}/audio/transcriptions",
+            headers=openai_headers(),
+            files={"file": (path.name, f, "audio/mpeg")},
+            data={"model": TRANSCRIBE_MODEL, "language": "fr", "response_format": "text", "prompt": prompt},
+            timeout=300,
+        )
+    r.raise_for_status()
+    text = " ".join(r.text.split())
+    return CUE_BREAK.sub("\n", text).strip()
+
+
+def transcribe(path: Path, spoken: bool = True) -> str:
+    """`spoken`: items 1–4 have their A–D propositions read aloud (long pauses
+    between them make ASR drop some, so silences are squeezed to 0.7 s and the
+    prompt announces the lettering). Items 5–15 are a document + question; the
+    same treatment makes the model return only the question, so they go raw
+    with a neutral prompt. Either way a short result triggers a fallback on the
+    other variant, keeping the longer."""
     trimmed = path.with_name(path.stem + ".trim.mp3")
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(path),
          "-af", "silenceremove=stop_periods=-1:stop_duration=0.7:stop_threshold=-38dB", "-ac", "1", "-b:a", "64k", str(trimmed)],
         check=True,
     )
-    with open(trimmed, "rb") as f:
-        r = requests.post(
-            f"{OPENAI}/audio/transcriptions",
-            headers=openai_headers(),
-            files={"file": (trimmed.name, f, "audio/mpeg")},
-            data={"model": TRANSCRIBE_MODEL, "language": "fr", "response_format": "text",
-                  "prompt": "Entraînement au TCF, compréhension orale. Chaque proposition est annoncée par sa lettre : A. … B. … C. … D. …"},
-            timeout=300,
-        )
-    r.raise_for_status()
-    text = " ".join(r.text.split())
-    return CUE_BREAK.sub("\n", text).strip()
+    first = _transcribe_once(trimmed, SPOKEN_PROMPT) if spoken else _transcribe_once(path, DOC_PROMPT)
+    expected = max(80.0, duration_of(path) * 4)  # ~4 chars per second of speech is already very sparse
+    if len(first) >= expected:
+        return first
+    second = _transcribe_once(path, DOC_PROMPT) if spoken else _transcribe_once(trimmed, DOC_PROMPT)
+    log(f"  transcript fallback: {len(first)} → {len(second)} chars")
+    return second if len(second) > len(first) else first
 
 
 def pregloss(series: int):
@@ -554,7 +571,7 @@ def main():
             rec["audio_mime"] = "audio/mpeg"
             rec["audio_seconds"] = round(e - s, 1)
             rec["audio_bounds"] = [round(s, 2), round(e, 2)]
-            rec["transcript"] = transcribe(clip)
+            rec["transcript"] = transcribe(clip, spoken=i <= 4)
             log(f"clip {i}: {e - s:.1f}s, transcript {len(rec['transcript'])} chars")
 
     ordered = [items[n] for n in range(1, 41)]
