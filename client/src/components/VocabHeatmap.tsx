@@ -59,7 +59,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
   selectedKey?: string | null;
   idleLabel?: string;
   /** Blue keeps the admin library calendar in the same family as its summary. */
-  tone?: "green" | "blue";
+  tone?: "green" | "blue" | "red";
   stretch?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -84,7 +84,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
   }
   const ymd = (d: Date) => d.toISOString().split("T")[0];
   const tk = todayKey();
-  const densityColor = tone === "blue" ? "23,63,107" : "47,158,68";
+  const densityColor = tone === "red" ? "166,61,74" : tone === "blue" ? "23,63,107" : "47,158,68";
 
   const label = hovered
     ? `${fmtHeatmapDate(hovered.k)} · ${hovered.c === 0 ? "no words" : `${hovered.c} word${hovered.c === 1 ? "" : "s"}`}`
@@ -92,7 +92,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
 
   return (
     <div className="w-full">
-      <p className={cn("flex items-center justify-center gap-1.5 font-semibold mb-2", tone === "blue" ? "text-sm text-primary min-h-5" : "text-xs text-muted-foreground h-4")}>
+      <p className={cn("flex items-center justify-center gap-1.5 font-semibold mb-2", tone === "red" ? "text-sm text-[#A63D4A] min-h-5" : tone === "blue" ? "text-sm text-primary min-h-5" : "text-xs text-muted-foreground h-4")}>
         <CalendarDays className="w-3.5 h-3.5 flex-none" /> <RollingLabel text={label} />
       </p>
       <div ref={scrollRef} className="overflow-x-auto pb-1" onMouseLeave={() => setHovered(null)}>
@@ -101,7 +101,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
             {weeks.map((week, i) => {
               const first = week.find((d) => d.getDate() === 1);
               return (
-                <span key={i} className={cn("whitespace-nowrap overflow-visible", stretch ? "flex-1 min-w-3" : "w-3 flex-none", tone === "blue" ? "text-xs text-primary/75" : "text-[9px] text-muted-foreground")}>
+                <span key={i} className={cn("whitespace-nowrap overflow-visible", stretch ? "flex-1 min-w-3" : "w-3 flex-none", tone === "red" ? "text-xs text-[#A63D4A]/75" : tone === "blue" ? "text-xs text-primary/75" : "text-[9px] text-muted-foreground")}>
                   {first ? first.toLocaleDateString("en-US", { month: "short" }) : ""}
                 </span>
               );
@@ -115,10 +115,10 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
                   const c = counts.get(k) ?? 0;
                   const isToday = k === tk;
                   const style = isToday
-                    ? undefined
+                    ? (tone === "red" ? { background: `rgb(${densityColor})` } : undefined)
                     : c
                       ? { background: `rgba(${densityColor},${(0.25 + 0.75 * (c / max)).toFixed(2)})` }
-                      : { background: "rgba(23,63,107,0.08)" };
+                      : { background: tone === "red" ? `rgba(${densityColor},0.08)` : "rgba(23,63,107,0.08)" };
                   return (
                     <button
                       key={k}
@@ -134,8 +134,8 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
                         "rounded-[3px] flex-none p-0 border-0",
                         stretch ? "w-full aspect-square" : "w-3 h-3",
                         isToday && "bg-primary",
-                        selectedKey === k && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-                        c ? "cursor-pointer hover:ring-2 hover:ring-primary/50" : "cursor-default"
+                        selectedKey === k && (tone === "red" ? "ring-2 ring-[#A63D4A] ring-offset-1 ring-offset-background" : "ring-2 ring-primary ring-offset-1 ring-offset-background"),
+                        c ? (tone === "red" ? "cursor-pointer hover:ring-2 hover:ring-[#A63D4A]/50" : "cursor-pointer hover:ring-2 hover:ring-primary/50") : "cursor-default"
                       )}
                     />
                   );
@@ -145,7 +145,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
           </div>
         </div>
       </div>
-      <div className={cn("flex items-center justify-center gap-1 mt-2", tone === "blue" ? "text-xs text-primary/75" : "text-[10px] text-muted-foreground")}>
+      <div className={cn("flex items-center justify-center gap-1 mt-2", tone === "red" ? "text-xs text-[#A63D4A]/75" : tone === "blue" ? "text-xs text-primary/75" : "text-[10px] text-muted-foreground")}>
         <span>Less</span>
         {[0.25, 0.5, 0.75, 1].map((op) => (
           <i key={op} className="w-3 h-3 rounded-[3px]" style={{ background: `rgba(${densityColor},${op})` }} />
