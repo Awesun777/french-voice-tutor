@@ -3,11 +3,8 @@ import { cn } from "@/lib/utils";
 import type { VocabularyStage } from "@/lib/vocabularySummary";
 
 export type Swatch = { background: string; color: string };
-export const libraryStatusPalette: Swatch[] = [
-  { background: "#9ED6DF", color: "#173F6B" },
-  { background: "#EAC119", color: "#1D1D1B" },
-  { background: "#173F6B", color: "#FFF8ED" },
-];
+export { libraryStatusColors as libraryStatusPalette } from "@/lib/libraryPalette";
+import { libraryStatusColors as libraryStatusPalette } from "@/lib/libraryPalette";
 const stages = ["new", "learning", "mastered"] as const;
 
 export default function VocabularyStatusBlocks({ counts, selected, onSelect, displayValue, layout = "columns", palette = libraryStatusPalette }: {

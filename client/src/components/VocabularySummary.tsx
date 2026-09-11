@@ -4,17 +4,18 @@ import VocabularyStatusBlocks from "./VocabularyStatusBlocks";
 import { summarizeVocabulary, type VocabularyStage } from "@/lib/vocabularySummary";
 
 const stages = [
-  { key: "new", color: "bg-[#9ED6DF]" },
-  { key: "learning", color: "bg-[#EAC119]" },
+  { key: "new", color: "bg-accent" },
+  { key: "learning", color: "bg-speaking" },
   { key: "mastered", color: "bg-primary" },
 ] as const;
 
-export default function VocabularySummary({ words, selected, onSelect, actions, calendar }: {
+export default function VocabularySummary({ words, selected, onSelect, actions, calendar, joined = false }: {
   words: Pick<VocabEntry, "sm2Status">[];
   selected: VocabularyStage | null;
   onSelect: (stage: VocabularyStage | null) => void;
   actions?: ReactNode;
   calendar?: ReactNode;
+  joined?: boolean;
 }) {
   const [mode, setMode] = useState("percent");
   const counts = summarizeVocabulary(words);
@@ -27,7 +28,7 @@ export default function VocabularySummary({ words, selected, onSelect, actions, 
   };
 
   return (
-    <section aria-label="Vocabulary progress" className="rounded-3xl bg-secondary/70 p-5 sm:px-7 sm:py-5 text-primary">
+    <section aria-label="Vocabulary progress" className={`bg-secondary p-5 sm:px-7 sm:py-5 text-primary ${joined ? "rounded-t-3xl" : "rounded-3xl"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={() => onSelect(null)} aria-pressed={selected === null} className="text-sm rounded-md focus-visible:outline-2 focus-visible:outline-primary">
           <strong className="text-base tabular-nums">{counts.total.toLocaleString()}</strong> total vocab items

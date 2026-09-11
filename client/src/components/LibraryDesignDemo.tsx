@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { ArrowLeft, Search, Star, X, Copy, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { libraryPalette } from "@/lib/libraryPalette";
+import { VocabHeatmap } from "./VocabHeatmap";
 import type { VocabEntry } from "@/types";
 import { summarizeVocabulary, vocabularyStage, type VocabularyStage } from "@/lib/vocabularySummary";
 import VocabularyStatusBlocks, { libraryStatusPalette, type Swatch } from "./VocabularyStatusBlocks";
@@ -45,13 +47,13 @@ function WordSwatch({ word, swatch }: { word: VocabEntry; swatch: Swatch }) {
       toast.error("Couldn't copy this word. You can select and copy the text instead.");
     }
   };
-  return <article style={swatch} className="relative rounded-xl px-5 py-6 sm:px-7 sm:py-7">
+  return <article style={swatch} className="relative min-h-[7.5rem] rounded-xl px-4 py-3 sm:px-5">
     <div className="flex items-start justify-between gap-4">
-      <h3 className="min-w-0 text-2xl sm:text-4xl leading-tight font-medium tracking-tight break-words">{word.term}</h3>
-      <button type="button" onClick={copy} aria-label={copied ? `Copy ${word.term} again` : `Copy ${word.term} and its meaning`} className="shrink-0 flex h-11 w-11 items-center justify-center rounded-lg hover:bg-current/10 focus-visible:outline-2 focus-visible:outline-current">{copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}</button>
+      <h3 className="min-w-0 text-2xl sm:text-3xl leading-tight font-medium tracking-tight break-words">{word.term}</h3>
+      <button type="button" onClick={copy} aria-label={copied ? `Copy ${word.term} again` : `Copy ${word.term} and its meaning`} className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg hover:bg-current/10 focus-visible:outline-2 focus-visible:outline-current">{copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}</button>
     </div>
-    <p className="mt-4 text-base sm:text-lg break-words">{word.translation}</p>
-    <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
+    <p className="mt-1 text-base break-words">{word.translation}</p>
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
       <span className="min-w-0 break-words">{word.lessonSource || word.groupLabel || (word.entryKind === "phrase" ? "Phrase" : "Word")}</span>
       <span className="inline-flex items-center gap-1 capitalize">{word.starred && <Star className="h-3 w-3 fill-current" aria-label="Starred" />}{vocabularyStage(word)}</span>
     </div>
@@ -66,7 +68,11 @@ export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVar
   const [stage, setStage] = useState<VocabularyStage | null>(null);
   const [percent, setPercent] = useState(true);
   const [openDates, setOpenDates] = useState<string[]>([]);
-  const design = designs.find((item) => item.id === variant)!;
+  const selectedDesign = designs.find((item) => item.id === variant)!;
+  const design = variant === "compact" ? { ...selectedDesign, status: libraryStatusPalette, dates: libraryPalette, words: libraryPalette } : selectedDesign;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
+  const dateRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const counts = summarizeVocabulary(words);
   const display = (value: number) => {
     if (!percent) return value.toLocaleString();
@@ -91,8 +97,8 @@ export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVar
     setOpenDates(value.trim() ? allDates : []);
   };
 
-  return <div className="h-full overflow-y-auto px-4 pt-5 pb-24 sm:px-8 sm:pb-8">
-    <div className="mx-auto max-w-3xl">
+  return <div ref={scrollRef} className="h-full overflow-y-auto px-4 pt-5 pb-24 sm:px-6 sm:pb-8">
+    <div className={cn("mx-auto", variant !== "compact" && "max-w-3xl")}>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm mb-4">
         <a href="#library" className="inline-flex items-center gap-2 text-primary hover:underline"><ArrowLeft className="h-4 w-4" />My Library</a>
         <span className="text-muted-foreground">Admin preview · saved words unchanged</span>
@@ -114,7 +120,12 @@ export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVar
           </div>
           <VocabularyStatusBlocks counts={counts} selected={stage} onSelect={setStage} displayValue={display} layout={design.layout} palette={[...design.status]} />
         </section>
-        <div className="flex items-center gap-2 mt-7 border-b border-primary/20 py-2">
+        <div ref={toolsRef} className="sticky top-0 z-20 bg-secondary rounded-b-2xl px-4 pt-3 mt-5">
+          <VocabHeatmap tone="blue" dates={groups.filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key)).map(([dateKey, entries]) => ({ dateKey, total: entries.length }))} idleLabel="Saved words · pick a day" onPick={(date) => {
+            setOpenDates((old) => Array.from(new Set([...old, date])));
+            requestAnimationFrame(() => { const root = scrollRef.current, item = dateRefs.current[date]; if (root && item) root.scrollTop += item.getBoundingClientRect().top - root.getBoundingClientRect().top - (toolsRef.current?.offsetHeight ?? 0) - 8; });
+          }} />
+        <div className="flex items-center gap-2 border-b border-primary/20 py-2">
           <Search className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
           <input aria-label="Search vocabulary" value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="Search your vocabulary…" className="min-w-0 flex-1 bg-transparent text-base min-h-11 px-1 text-primary placeholder:text-primary/60 focus-visible:outline-2 focus-visible:outline-primary" />
           {search && <button type="button" aria-label="Clear search" onClick={() => changeSearch("")} className="flex h-11 w-9 shrink-0 items-center justify-center text-primary"><X className="h-4 w-4" /></button>}
@@ -124,12 +135,13 @@ export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVar
           <span aria-live="polite">{filtered.length} of {words.length} items</span>
           <div className="flex gap-4"><button type="button" onClick={() => setOpenDates([])} className="py-2 hover:underline">Fold all</button><button type="button" onClick={() => setOpenDates(groups.map(([date]) => date))} className="py-2 hover:underline">Unfold all</button></div>
         </div>
-        {!groups.length ? <p className="text-center text-muted-foreground py-12">{words.length ? "No matching vocabulary" : "Your library is empty"}</p> : <Accordion type="multiple" value={openDates} onValueChange={setOpenDates} aria-label="Vocabulary by date" className="isolate">
+        </div>
+        {!groups.length ? <p className="text-center text-muted-foreground py-12">{words.length ? "No matching vocabulary" : "Your library is empty"}</p> : <Accordion type="multiple" value={openDates} onValueChange={setOpenDates} aria-label="Vocabulary by date" className="isolate mt-4">
           {groups.map(([date, entries], index) => {
             const paletteIndex = allDates.indexOf(date);
             const swatch = design.dates[paletteIndex % design.dates.length];
             const label = dateLabel(date);
-            return <AccordionItem value={date} key={date} style={{ ...swatch, zIndex: index }} className={cn("relative border-0 rounded-t-2xl last:rounded-b-2xl", index > 0 && "-mt-3")}>
+            return <AccordionItem ref={(element) => { dateRefs.current[date] = element; }} value={date} key={date} style={{ ...swatch, zIndex: index }} className={cn("relative border-0 rounded-t-2xl last:rounded-b-2xl", index > 0 && "-mt-3")}>
               <AccordionTrigger className="items-center px-5 sm:px-7 pt-5 pb-8 gap-3 rounded-t-2xl hover:no-underline [&>svg]:text-current [&>svg]:h-5 [&>svg]:w-5 focus-visible:ring-inset">
                 <span className="min-w-0 flex-1 text-left text-2xl sm:text-4xl font-black uppercase leading-[0.95] tracking-tighter break-words">{label.title}</span>
                 <span className="hidden sm:block w-28 text-left text-xs leading-relaxed">{label.detail}</span>
@@ -137,7 +149,7 @@ export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVar
               </AccordionTrigger>
               <AccordionContent className="px-3 sm:px-5 pb-7">
                 <div className="space-y-3">
-                  {entries.map((word, wordIndex) => <WordSwatch key={word.id} word={word} swatch={design.words[wordIndex % design.words.length]} />)}
+                  {entries.map((word, wordIndex) => <WordSwatch key={word.id} word={word} swatch={design.words[(paletteIndex + (wordIndex % (design.words.length - 1)) + 1) % design.words.length]} />)}
                 </div>
               </AccordionContent>
             </AccordionItem>;

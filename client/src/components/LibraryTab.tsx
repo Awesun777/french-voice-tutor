@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import ImportModal from "./ImportModal";
 import { GoogleDrivePanel } from "./GoogleDrivePanel";
 import VocabularySummary from "./VocabularySummary";
+import LibraryPaletteWord from "./LibraryPaletteWord";
+import { libraryPalette } from "@/lib/libraryPalette";
 import { vocabularyStage, type VocabularyStage } from "@/lib/vocabularySummary";
 
 function todayKey() { return new Date().toISOString().split("T")[0]; }
@@ -88,7 +90,9 @@ function GroupHeader({
   onToggle,
   onRename,
   onDeleteGroup,
+  paletteMode = false,
 }: {
+  paletteMode?: boolean;
   dateKey: string;
   wordCount: number;
   dueCount: number;
@@ -121,13 +125,15 @@ function GroupHeader({
 
   return (
     <div
-      className="px-4 py-3 border-b border-primary/20 bg-primary/10 flex items-center gap-2 group/header"
+      className={cn("flex items-center gap-2 group/header", paletteMode ? "px-5 sm:px-7 pt-5 pb-7 flex-wrap" : "px-4 py-3 border-b border-primary/20 bg-primary/10")}
       onClick={(e) => { if (!editing) { e.stopPropagation(); onToggle(); } }}
     >
       {/* Collapse toggle */}
       <button
         onClick={(e) => { e.stopPropagation(); onToggle(); }}
-        className="text-primary/60 hover:text-primary transition-colors flex-shrink-0"
+        aria-label={isOpen ? "Fold date" : "Unfold date"}
+        aria-expanded={isOpen}
+        className={cn("transition-colors flex-shrink-0", !paletteMode && "text-primary/60 hover:text-primary")}
       >
         {isOpen
           ? <ChevronDown className="w-3.5 h-3.5" />
@@ -142,7 +148,7 @@ function GroupHeader({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel(); }}
-            className="flex-1 font-display text-xs font-bold uppercase tracking-wider bg-card border border-primary/50 rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            className="flex-1 min-w-0 font-display text-xs font-bold uppercase tracking-wider bg-card border border-primary/50 rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Group name or YYYY-MM-DD"
           />
           <button onClick={commit} className="p-1 rounded-md text-emerald-700 hover:bg-emerald-500/10 transition-colors flex-shrink-0">
@@ -154,12 +160,12 @@ function GroupHeader({
         </div>
       ) : (
         <>
-          <p className="flex-1 font-display text-xs font-bold text-primary uppercase tracking-wider cursor-pointer select-none">
+          <p className={cn("flex-1 min-w-0 font-display font-bold uppercase cursor-pointer select-none", paletteMode ? "text-2xl sm:text-4xl leading-none tracking-tighter break-words" : "text-xs text-primary tracking-wider")}>
             {fmtDateLabel(dateKey)}
           </p>
           <button
             onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-            className="p-1 rounded-md text-primary/60 hover:text-primary hover:bg-primary/15 transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
+            className={cn("p-1 rounded-md transition-colors flex-shrink-0", paletteMode ? "hover:bg-current/10" : "text-primary/60 hover:text-primary hover:bg-primary/15 sm:opacity-0 sm:group-hover/header:opacity-100")}
             title="Rename group"
           >
             <Pencil className="w-3 h-3" />
@@ -168,10 +174,10 @@ function GroupHeader({
       )}
 
       <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-        {dueCount > 0 && (
+        {!paletteMode && dueCount > 0 && (
           <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent/20 text-accent-strong font-semibold">{dueCount} due</span>
         )}
-        <p className="text-xs text-primary/70 tabular-nums">{wordCount} items</p>
+        <p className={cn("text-xs tabular-nums", !paletteMode && "text-primary/70")}>{wordCount} items</p>
 
         {/* Delete group — shows confirm inline */}
         {confirmingDelete ? (
@@ -193,7 +199,7 @@ function GroupHeader({
         ) : (
           <button
             onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }}
-            className="p-1 rounded-md text-primary/50 hover:text-destructive hover:bg-destructive/10 transition-colors sm:opacity-0 sm:group-hover/header:opacity-100 flex-shrink-0"
+            className={cn("p-1 rounded-md transition-colors flex-shrink-0", paletteMode ? "hover:bg-current/10" : "text-primary/50 hover:text-destructive hover:bg-destructive/10 sm:opacity-0 sm:group-hover/header:opacity-100")}
             title="Delete all words in this group"
           >
             <Trash2 className="w-3 h-3" />
@@ -206,6 +212,8 @@ function GroupHeader({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function LibraryTab({ setActiveTab, onStartReview, showVocabularySummary = false }: { setActiveTab: (tab: SidebarTab) => void; onStartReview?: (dateKey?: string) => void; showVocabularySummary?: boolean }) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const stickyToolsRef = useRef<HTMLDivElement>(null);
   const [statusFilter, setStatusFilter] = useState<VocabularyStage | null>(null);
   const [search, setSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
@@ -232,11 +240,15 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
   // instant — smooth behaviour is silently dropped in some environments, which
   // would leave the rail looking dead rather than merely un-animated.
   const scrollToGroup = (key: string) => {
-    const el = groupRefs.current[key];
-    const scroller = scrollRef.current;
-    if (!el || !scroller) return;
-    scroller.scrollTop += el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8;
-    setActiveGroup(key);
+    if (showVocabularySummary) setExpandedGroups((old) => new Set([...Array.from(old), key]));
+    requestAnimationFrame(() => {
+      const el = groupRefs.current[key];
+      const scroller = scrollRef.current;
+      if (!el || !scroller) return;
+      const inset = showVocabularySummary ? stickyToolsRef.current?.offsetHeight ?? 0 : 0;
+      scroller.scrollTop += el.getBoundingClientRect().top - scroller.getBoundingClientRect().top - inset - 8;
+      setActiveGroup(key);
+    });
   };
 
   const { data: words = [], isLoading } = trpc.vocab.list.useQuery();
@@ -337,6 +349,10 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
   };
 
   const toggleCollapse = (key: string) => {
+    if (showVocabularySummary) {
+      setExpandedGroups((old) => { const next = new Set(old); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+      return;
+    }
     setCollapsed((c) => {
       const next = new Set(c);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -531,8 +547,8 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
           library keeps its pinned calendar and search. */}
       <div ref={showVocabularySummary ? scrollRef : undefined} className={cn("flex-1 flex flex-col min-h-0", showVocabularySummary && "overflow-y-auto")}>
         {showVocabularySummary && !isLoading && (
-          <div className="flex-shrink-0 px-4 pt-4 pb-2">
-            <div className="max-w-3xl mx-auto">
+          <div className="flex-shrink-0 px-4 sm:px-6 pt-4">
+            <div className={cn("mx-auto", !showVocabularySummary && "max-w-3xl")}>
               <VocabularySummary
                 words={words}
                 selected={statusFilter}
@@ -541,29 +557,30 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
                   {libraryActions}
                   {showDrivePanel && <div className="mt-3"><GoogleDrivePanel onStartReview={onStartReview} /></div>}
                 </>}
-                calendar={libraryCalendar}
+                joined
               />
-              <div className="mt-3 text-right">
-                <a href="#library-demo-compact" className="text-sm text-primary/70 underline underline-offset-4 hover:text-primary">Compare library designs</a>
-              </div>
+
             </div>
           </div>
         )}
         {!showVocabularySummary && !isLoading && words.length > 0 && sortedGroups.length > 1 && (
           <div className="flex-shrink-0 border-b border-border px-4 py-3">
-            <div className="max-w-3xl mx-auto">{libraryCalendar}</div>
+            <div className={cn("mx-auto", !showVocabularySummary && "max-w-3xl")}>{libraryCalendar}</div>
           </div>
         )}
 
+      <div ref={stickyToolsRef} className={cn("flex-shrink-0", showVocabularySummary && "sticky top-0 z-20 px-4 sm:px-6")}>
+        <div className={showVocabularySummary ? "bg-secondary rounded-b-3xl px-5 sm:px-7 pt-2 pb-3" : undefined}>
+          {showVocabularySummary && !isLoading && libraryCalendar}
       {/* Starred is a list filter, so it sits beside search in the admin view. */}
       {!isLoading && words.length > 0 && (
-        <div className="flex-shrink-0 px-4 pt-3 pb-2">
-          <div className="max-w-3xl mx-auto flex items-center gap-2">
+        <div className={cn("flex-shrink-0 pt-3 pb-2", !showVocabularySummary && "px-4")}>
+          <div className={cn("mx-auto flex items-center gap-2", !showVocabularySummary && "max-w-3xl")}>
             <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => { setSearch(e.target.value); if (showVocabularySummary) setExpandedGroups(e.target.value.trim() ? new Set(words.map((word) => word.dateKey)) : new Set()); }}
               placeholder="Search your library…"
               className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
             />
@@ -577,7 +594,10 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
         </div>
       )}
 
-      <div ref={showVocabularySummary ? undefined : scrollRef} className={cn("px-4 pb-4 pt-1", showVocabularySummary ? "flex-shrink-0" : "flex-1 overflow-y-auto")}>
+        </div>
+      </div>
+
+      <div ref={showVocabularySummary ? undefined : scrollRef} className={cn("px-4 pb-4 pt-1", showVocabularySummary ? "flex-shrink-0 sm:px-6" : "flex-1 overflow-y-auto")}>
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -595,7 +615,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
             </button>
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto space-y-3">
+          <div className={cn("mx-auto", showVocabularySummary ? "isolate space-y-0" : "max-w-3xl space-y-3")}>
             {filtered.length === 0 ? (
             <div className="text-center py-16">
               <p className="text-4xl mb-3">🔍</p>
@@ -603,18 +623,18 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
             </div>
             ) : (
             <>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between py-4">
               <p className="text-xs text-muted-foreground">{filtered.length} of {words.length} words</p>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setCollapsed(new Set(sortedGroups.map(([k]) => k)))}
+                  onClick={() => showVocabularySummary ? setExpandedGroups(new Set()) : setCollapsed(new Set(sortedGroups.map(([k]) => k)))}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Collapse all
                 </button>
                 <span className="text-muted-foreground/40">·</span>
                 <button
-                  onClick={() => setCollapsed(new Set())}
+                  onClick={() => showVocabularySummary ? setExpandedGroups(new Set(sortedGroups.map(([k]) => k))) : setCollapsed(new Set())}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Expand all
@@ -622,17 +642,19 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
               </div>
             </div>
 
-            {sortedGroups.map(([dateKey, dayWords]) => {
-              const isOpen = !collapsed.has(dateKey);
+            {sortedGroups.map(([dateKey, dayWords], groupIndex) => {
+              const isOpen = showVocabularySummary ? expandedGroups.has(dateKey) : !collapsed.has(dateKey);
               const groupDue = dayWords.filter(isDue).length;
               return (
                 <div
                   key={dateKey}
                   ref={(el) => { groupRefs.current[dateKey] = el; }}
                   data-group-key={dateKey}
-                  className="bg-card card-float rounded-2xl overflow-hidden scroll-mt-4"
+                  style={showVocabularySummary ? { ...libraryPalette[groupIndex % libraryPalette.length], zIndex: groupIndex } : undefined}
+                  className={cn("overflow-hidden scroll-mt-4", showVocabularySummary ? "relative rounded-t-2xl last:rounded-b-2xl [&+div]:-mt-3" : "bg-card card-float rounded-2xl")}
                 >
                   <GroupHeader
+                    paletteMode={showVocabularySummary}
                     dateKey={dateKey}
                     wordCount={dayWords.length}
                     dueCount={groupDue}
@@ -643,8 +665,17 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
                   />
 
                   {isOpen && (
-                    <div className="divide-y divide-border/50">
-                      {dayWords.map((w) => (
+                    <div className={showVocabularySummary ? "space-y-2 px-3 sm:px-5 pb-6" : "divide-y divide-border/50"}>
+                      {dayWords.map((w, wordIndex) => showVocabularySummary ? (
+                        <LibraryPaletteWord
+                          key={w.id}
+                          word={w}
+                          swatch={libraryPalette[(groupIndex + (wordIndex % (libraryPalette.length - 1)) + 1) % libraryPalette.length]}
+                          onSave={(term, translation) => updateMutation.mutateAsync({ id: w.id, term, translation })}
+                          onStar={() => starMutation.mutate({ id: w.id })}
+                          onDelete={() => handleDelete(w.id)}
+                        />
+                      ) : (
                         <div
                           key={w.id}
                           className="flex items-center gap-2 px-4 py-3 hover:bg-muted/20 transition-colors group"
