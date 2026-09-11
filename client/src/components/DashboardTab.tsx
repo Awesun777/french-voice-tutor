@@ -601,7 +601,7 @@ function ExtensionPromo() {
   const reduce = useReducedMotion();
 
   const steps = [
-    <>Download the zip and double-click it — you'll get a <span className="font-semibold text-foreground">romaintalk-extension-v0.19.1</span> folder.</>,
+    <>Download the zip and double-click it — you'll get a <span className="font-semibold text-foreground">romaintalk-extension-v0.20.2</span> folder.</>,
     <>In Chrome, open <span className="font-mono text-xs bg-muted/70 px-1.5 py-0.5 rounded">chrome://extensions</span> and switch on <span className="font-semibold text-foreground">Developer mode</span> (top right).</>,
     <>Click <span className="font-semibold text-foreground">Load unpacked</span> and pick the unzipped folder. Romain now travels with you across the web.</>,
   ];
@@ -640,7 +640,7 @@ function ExtensionPromo() {
             </p>
           </div>
           <a
-            href="/extension/romaintalk-extension-v0.19.1.zip"
+            href="/extension/romaintalk-extension-v0.20.2.zip"
             download
             className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold shadow-sm hover:bg-primary/90 transition-colors"
           >
