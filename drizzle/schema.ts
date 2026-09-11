@@ -2,7 +2,9 @@ import {
   bigint,
   boolean,
   double,
+  float,
   int,
+  mediumtext,
   mysqlEnum,
   mysqlTable,
   text,
@@ -526,3 +528,38 @@ export const articleBlocks = mysqlTable("article_blocks", {
   translationEn: text("translationEn"),
 });
 export type ArticleBlock = typeof articleBlocks.$inferSelect;
+
+/**
+ * TV5MONDE / France Éducation international TCF training booklets, ingested
+ * by scripts/tcf_tv5_ingest.py for the admin-only "TCF Blanc" tab. Media
+ * bytes (a reading document photo, a listening clip) are base64 in MEDIUMTEXT
+ * like tts_cache, because the storage proxy's download URLs expire.
+ * NOTE: DDL in drizzle/manual/2026-09-11-tcf-tv5.sql (drizzle migrate is broken).
+ */
+export const tcfTv5Series = mysqlTable("tcf_tv5_series", {
+  series: int("series").primaryKey(),
+  title: varchar("title", { length: 120 }).notNull(),
+  itemCount: int("item_count").notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+
+export const tcfTv5Items = mysqlTable("tcf_tv5_items", {
+  id: int("id").autoincrement().primaryKey(),
+  series: int("series").notNull(),
+  n: int("n").notNull(),
+  section: varchar("section", { length: 16 }).notNull(),
+  consigne: text("consigne"),
+  question: text("question"),
+  choicesJson: text("choices_json").notNull(),
+  spokenChoices: int("spoken_choices").notNull().default(0),
+  answer: varchar("answer", { length: 1 }).notNull(),
+  docText: text("doc_text"),
+  imageB64: mediumtext("image_b64"),
+  imageMime: varchar("image_mime", { length: 32 }),
+  audioB64: mediumtext("audio_b64"),
+  audioMime: varchar("audio_mime", { length: 32 }),
+  audioSeconds: float("audio_seconds"),
+  transcript: text("transcript"),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+});
+export type TcfTv5Item = typeof tcfTv5Items.$inferSelect;

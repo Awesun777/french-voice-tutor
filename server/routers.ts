@@ -6,8 +6,7 @@ import { invokeLLM } from "./_core/llm";
 import { enforceVerbPreposition } from "./verbPrepositions";
 import { enforcePronunciation } from "./ipaLexicon";
 import { synthesizeFrench } from "./tts";
-import { tcfItemAudio, explainTcfItem, explanationCacheKey } from "./tcfMock";
-import { getTcfMockItem } from "@shared/tcfMockExams";
+import { listTcfExams, loadTcfExam, tcfItemMedia, explainTcfItem, explanationCacheKey, parseExamId } from "./tcfMock";
 import { fetchCommonsRecording, commonsInCooldown } from "./commonsAudio";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
@@ -3513,27 +3512,33 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
         };
       }),
   }),
-  // ── TCF mock exam (admin-only, Romaintalk's own items) ──
+  // ── TCF mock exams (admin-only): Romaintalk items + ingested TV5MONDE booklets ──
   tcf: router({
-    /** Multi-voice audio for one listening item, one clip per speaker turn. */
-    audio: adminProcedure
+    exams: adminProcedure.query(async () => ({ exams: await listTcfExams() })),
+    exam: adminProcedure.input(z.object({ examId: z.string() })).query(async ({ input }) => {
+      const exam = await loadTcfExam(input.examId);
+      if (!exam) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
+      return exam;
+    }),
+    /** Audio (voice turns or one clip) and the document image for one item. */
+    media: adminProcedure
       .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40) }))
       .mutation(async ({ input }) => {
-        const item = getTcfMockItem(input.examId, input.n);
-        if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF item" });
+        if (!parseExamId(input.examId)) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
         try {
-          return { turns: await tcfItemAudio(item) };
+          const media = await tcfItemMedia(input.examId, input.n);
+          if (!media) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF item" });
+          return media;
         } catch (e) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `TTS error: ${String(e).slice(0, 300)}` });
+          if (e instanceof TRPCError) throw e;
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Media error: ${String(e).slice(0, 300)}` });
         }
       }),
     /** AI explanation of one item, cached forever (content is static). */
     explain: adminProcedure
       .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40), force: z.boolean().optional() }))
       .mutation(async ({ input }) => {
-        if (!getTcfMockItem(input.examId, input.n)) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF item" });
-        }
+        if (!parseExamId(input.examId)) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
         const key = explanationCacheKey(input.examId, input.n);
         if (!input.force) {
           const hit = await getCached(key);
