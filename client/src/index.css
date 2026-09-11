@@ -253,20 +253,3 @@ html {
 .scroll-quiet::-webkit-scrollbar-thumb,
 .scroll-quiet:not(.scrolling)::-webkit-scrollbar-thumb:hover { background: transparent; }
 .scroll-quiet.scrolling::-webkit-scrollbar-thumb { background: #D3CBBD; }
-
-/* Source choices fold into a dot, then unfold as session sizes. */
-.flashcard-choice-panel { width: 100%; min-height: 6rem; margin-inline: auto; overflow: hidden; }
-.flashcard-choice-collapse { animation: review-fold 360ms cubic-bezier(.65,0,.35,1) forwards; pointer-events: none; }
-.flashcard-choice-expand { animation: review-fold 420ms cubic-bezier(.65,0,.35,1) reverse both; pointer-events: none; }
-.flashcard-choice-collapse .flashcard-choice-content { animation: review-labels 360ms forwards; }
-.flashcard-choice-expand .flashcard-choice-content { animation: review-labels 420ms reverse both; }
-@keyframes review-fold {
-  0% { width: 100%; min-height: 6rem; height: 6rem; border-radius: 0; background: transparent; transform: translateY(0); }
-  35% { background: #151515; border-radius: 3rem; }
-  85%, 100% { width: 16px; min-height: 16px; height: 16px; border-radius: 50%; background: #151515; transform: translateY(40px); }
-}
-@keyframes review-labels { 0% { opacity: 1; } 20%, 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .flashcard-choice-collapse, .flashcard-choice-expand,
-  .flashcard-choice-collapse .flashcard-choice-content, .flashcard-choice-expand .flashcard-choice-content { animation-duration: 1ms; }
-}
