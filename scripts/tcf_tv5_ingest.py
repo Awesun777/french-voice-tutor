@@ -98,6 +98,10 @@ Extrais TOUS les items présents sur la page, dans l'ordre. Réponds en JSON str
  ]}
 Règles : recopie les textes exactement (accents, ponctuation), sans la lettre A/B/C/D devant chaque choix. Si les choix A B C D sont imprimés sans texte (item audio), mets quatre chaînes vides. Ne mets jamais la mention « Validé par CIE » dans image_text. Ne commente pas, n'invente rien. Une page peut contenir 0 item (feuille de réponses, page de garde) : items = []."""
 
+STRUCTURE_PROMPT = """Cette page d'un livret d'entraînement au TCF contient des items de « Structure de la langue ». Pour chaque numéro d'item, une phrase à compléter est imprimée en deux morceaux : un DÉBUT au-dessus des choix A B C D (souvent terminé par « … ») et, souvent, une FIN en dessous des choix (souvent commencée par « … »). Certains items n'ont qu'un début, d'autres qu'une fin.
+Réponds en JSON strict : {"items": [{"n": <numéro>, "before": "<texte imprimé au-dessus des choix, sinon null>", "after": "<texte imprimé sous les choix, sinon null>", "choices": ["<A>", "<B>", "<C>", "<D>"]}]}
+Règles : recopie exactement (accents, ponctuation, points de suspension), sans la lettre A/B/C/D devant chaque choix ; ignore la mention « Validé par CIE » ; ne commente pas, n'invente rien ; tous les items de la page, dans l'ordre."""
+
 GRID_PROMPT = """Cette page est le corrigé d'un QCM de 40 questions : pour chaque numéro (1 à 40), une croix X marque la bonne réponse dans l'une des colonnes A, B, C, D. Les numéros sont disposés en trois colonnes (1–15, 16–25, 26–40).
 Lis très attentivement la position de chaque X et réponds en JSON strict : {"answers": {"1": "B", "2": "A", ... , "40": "C"}}. Il doit y avoir exactement 40 entrées, chacune une lettre A, B, C ou D."""
 
@@ -184,6 +188,7 @@ def extract_items(doc: pymupdf.Document, cache_dir: Path | None):
                 ch.append("")
             rec = {
                 "n": n,
+                "page": pno + 1,
                 "section": SECTION_BY_N(n),
                 "consigne": current_consigne,
                 "question": (it.get("question") or "").strip() or None,
@@ -203,6 +208,50 @@ def extract_items(doc: pymupdf.Document, cache_dir: Path | None):
                 items[n] = rec
         log(f"page {pno + 1}/{len(doc)}: {[int(i['n']) for i in page_items]}")
     return items, consignes
+
+
+def join_stem(before: str | None, after: str | None) -> str | None:
+    b, a = (before or "").strip(), (after or "").strip()
+    if not b and not a:
+        return None
+    return f"{b} {a}".strip()
+
+
+def refine_structure(doc: pymupdf.Document, items: dict[int, dict], cache_dir: Path | None):
+    """Second vision pass over the pages holding items 16–25: the first pass
+    reads only the sentence half printed above the choices, but structure items
+    print the rest of the sentence below them ("Tu veux que je… [A–D] … demain ?")."""
+    pages = sorted({items[n]["page"] for n in range(16, 26) if n in items and items[n].get("page")})
+    for pno in pages:
+        page = doc[pno - 1]
+        cache = cache_dir / f"page{pno}.sl.json" if cache_dir else None
+        if cache and cache.exists():
+            data = json.loads(cache.read_text())
+        else:
+            data = chat_json([
+                {"role": "user", "content": [
+                    {"type": "text", "text": STRUCTURE_PROMPT},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{page_png_b64(page)}", "detail": "high"}},
+                ]}
+            ])
+            if cache:
+                cache.write_text(json.dumps(data, ensure_ascii=False))
+        found = data.get("items") or []
+        on_page = [items[n] for n in sorted(items) if items[n].get("page") == pno]
+        # Trust page order over the model's numerals, as in the first pass.
+        pairs = list(zip(on_page, found)) if len(found) == len(on_page) else [
+            (items[int(f["n"])], f) for f in found if int(f.get("n") or 0) in items and items[int(f["n"])].get("page") == pno
+        ]
+        for rec, f in pairs:
+            if rec["section"] != "structure":
+                continue
+            stem = join_stem(f.get("before"), f.get("after"))
+            if stem:
+                rec["question"] = stem
+            ch = [clean_choice(c) for c in (f.get("choices") or [])][:4]
+            if len(ch) == 4 and all(ch) and not all(rec["choices"]):
+                rec["choices"] = ch
+        log(f"structure pass page {pno}: {len(pairs)} items refined")
 
 
 # The "Corrigé" page is the same print template in every booklet: three
@@ -424,13 +473,32 @@ def main():
     ap.add_argument("--reuse", help="reuse an earlier --out JSON (skip vision/audio) and just upload")
     ap.add_argument("--cache-dir", help="directory for per-page vision results (re-runs skip the API)")
     ap.add_argument("--reuse-audio", help="take clips + transcripts from an earlier --out JSON instead of re-splitting/transcribing")
+    ap.add_argument("--refine", action="store_true", help="with --reuse: re-read the structure items (16–25) from the booklet, rewrite --out and upload")
     a = ap.parse_args()
 
     title = f"TV5MONDE — Entraînement n°{a.series}"
-    if a.reuse:
+    if a.reuse and not a.refine:
         data = json.load(open(a.reuse))
         if a.upload:
             upload(a.series, title, data["items"])
+        return
+    if a.reuse and a.refine:
+        data = json.load(open(a.reuse))
+        doc = pymupdf.open(os.path.expanduser(a.pdf))
+        cache_dir = Path(os.path.expanduser(a.cache_dir)) / f"series{a.series}" if a.cache_dir else None
+        if cache_dir:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        fresh, _ = extract_items(doc, cache_dir)  # page map only; served from cache when present
+        items = {it["n"]: it for it in data["items"]}
+        for n, rec in items.items():
+            rec["page"] = fresh.get(n, {}).get("page")
+        refine_structure(doc, items, cache_dir)
+        ordered = [items[n] for n in range(1, 41)]
+        Path(a.out).write_text(json.dumps({"series": a.series, "title": title, "items": ordered}, ensure_ascii=False))
+        summary = [{k: v for k, v in it.items() if k not in ("image_b64", "audio_b64")} for it in ordered]
+        Path(a.out).with_suffix(".summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
+        if a.upload:
+            upload(a.series, title, ordered)
         return
 
     pdf = Path(os.path.expanduser(a.pdf))
@@ -445,6 +513,7 @@ def main():
     missing = [n for n in range(1, 41) if n not in items]
     if missing:
         sys.exit(f"items missing after extraction: {missing}")
+    refine_structure(doc, items, cache_dir)
     answers = read_grid(doc)
     for n, rec in items.items():
         rec["answer"] = answers[n]
