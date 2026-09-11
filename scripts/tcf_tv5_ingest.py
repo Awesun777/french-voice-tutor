@@ -172,6 +172,9 @@ def extract_items(doc: pymupdf.Document, cache_dir: Path | None):
             it["_image"] = info
         for it in page_items:
             n = int(it["n"])
+            # A consigne never carries across a section boundary (CO → SL → CE).
+            if n > 1 and SECTION_BY_N(n) != SECTION_BY_N(n - 1):
+                current_consigne = None
             cb = (it.get("consigne_before") or "").strip().lstrip(">").strip()
             # "Validé par CIE" is the item's caption, not an instruction.
             if cb and "CIE" not in cb and len(cb) > 20:
@@ -234,8 +237,36 @@ def read_grid_geometric(doc: pymupdf.Document) -> dict[int, str] | None:
     return answers
 
 
+def read_grid_fills(doc: pymupdf.Document) -> dict[int, str] | None:
+    """Booklets 2–17 draw the answer as a filled dark cell instead of an X glyph;
+    same template, so the cell rectangles map onto the same grid."""
+    page = doc[len(doc) - 1]
+    answers: dict[int, str] = {}
+    for dr in page.get_drawings():
+        r, fill = dr["rect"], dr.get("fill")
+        if fill is None or max(fill) > 0.35 or not (10 <= r.width <= 17 and 12 <= r.height <= 19):
+            continue
+        cx = r.x0 + 1
+        block = min(GRID_BLOCKS, key=lambda b: abs(b[0] - cx))
+        col = (cx - block[0]) / GRID_COL_STEP
+        row = (r.y0 - GRID_TOP) / GRID_ROW_STEP
+        if abs(col - round(col)) > 0.3 or abs(row - round(row)) > 0.3 or not (0 <= round(col) <= 3):
+            log(f"grid: filled cell at ({r.x0:.1f},{r.y0:.1f}) does not sit on the grid")
+            return None
+        n = block[1] + round(row)
+        if n > block[2] or n in answers:
+            log(f"grid: filled-cell conflict at item {n}")
+            return None
+        answers[n] = "ABCD"[round(col)]
+    if sorted(answers) != list(range(1, 41)):
+        log(f"grid: {len(answers)} filled cells, expected 40")
+        return None
+    log("grid: read 40 answers from filled cells")
+    return answers
+
+
 def read_grid(doc: pymupdf.Document) -> dict[int, str]:
-    geo = read_grid_geometric(doc)
+    geo = read_grid_geometric(doc) or read_grid_fills(doc)
     if geo:
         return geo
     page = doc[len(doc) - 1]
@@ -386,7 +417,7 @@ def upload(series: int, title: str, items: list[dict]):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdf", required=True)
-    ap.add_argument("--mp3", required=True)
+    ap.add_argument("--mp3", help="podcast MP3; omit to ingest the booklet only (no clips / transcripts yet)")
     ap.add_argument("--series", type=int, required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--upload", action="store_true")
@@ -402,7 +433,8 @@ def main():
             upload(a.series, title, data["items"])
         return
 
-    pdf, mp3 = Path(os.path.expanduser(a.pdf)), Path(os.path.expanduser(a.mp3))
+    pdf = Path(os.path.expanduser(a.pdf))
+    mp3 = Path(os.path.expanduser(a.mp3)) if a.mp3 else None
     doc = pymupdf.open(pdf)
     log(f"booklet: {len(doc)} pages")
     cache_dir = None
@@ -426,6 +458,9 @@ def main():
             for k in ("audio_b64", "audio_mime", "audio_seconds", "audio_bounds", "transcript"):
                 items[n][k] = prev[n].get(k)
         log("audio: reused clips and transcripts from " + a.reuse_audio)
+        segs = []
+    elif mp3 is None:
+        log("audio: no --mp3 given, listening items get no clips yet")
         segs = []
     else:
         segs = split_audio(mp3, 15)

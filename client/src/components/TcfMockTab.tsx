@@ -548,6 +548,9 @@ export default function TcfMockTab() {
                     </div>
                   )}
 
+                  {item.section === "oral" && !item.hasAudio && (
+                    <p className="text-xs text-muted-foreground">Document sonore pas encore importé pour cette série (podcast manquant).</p>
+                  )}
                   {item.question && <p className="text-base font-semibold leading-snug md:text-lg">{item.question}</p>}
 
                   {isChecked && (
