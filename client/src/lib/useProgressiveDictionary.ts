@@ -22,7 +22,10 @@ export function useProgressiveDictionary() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const reqRef = useRef(0);
 
-  const search = useCallback(async (term: string) => {
+  const search = useCallback(async (
+    term: string,
+    hints?: { wordTypeHint?: "noun" | "adjective" | "adverb" | "verb"; langHint?: "fr" | "en" }
+  ) => {
     const t = term.trim();
     if (!t) return;
     const reqId = ++reqRef.current;
@@ -30,7 +33,7 @@ export function useProgressiveDictionary() {
     setDetailsLoading(false);
     setQuickLoading(true);
     try {
-      const quick = (await searchMutation.mutateAsync({ term: t, parts: "quick" })) as DictResult & { found?: boolean; word?: string };
+      const quick = (await searchMutation.mutateAsync({ term: t, parts: "quick", ...(hints ?? {}) })) as DictResult & { found?: boolean; word?: string };
       if (reqRef.current !== reqId) return;
       // Ensure the heavy fields exist so the card renders before details arrive.
       const withDefaults: DictResult = quick?.type === "word"

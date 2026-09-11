@@ -8,7 +8,7 @@ import { useState, useEffect, useRef } from "react";
 import { Streamdown } from "streamdown";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Search, X, Loader2, Volume2, Plus, BookmarkCheck } from "lucide-react";
+import { Search, X, Loader2, Volume2, Plus, BookmarkCheck, BookOpen, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { DictWordResult, DictPhraseResult, DictQuestionResult } from "@/types";
 import { usePronounce } from "@/lib/pronounce";
@@ -43,6 +43,20 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
   const [term, setTerm] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // "dictionary" looks the query up; "tutor" sends it to the tutor as a free
+  // question. Tab flips modes, as does clicking the header labels.
+  const [mode, setMode] = useState<"dictionary" | "tutor">("dictionary");
+  const [tutorThread, setTutorThread] = useState<{ q: string; a: string | null }[]>([]);
+  const tutorAsk = trpc.tutor.contextChat.useMutation();
+  const threadEndRef = useRef<HTMLDivElement>(null);
+
+  // Disambiguation hints (same controls as the Dictionary tab): word type +
+  // input language, behind the book button inside the search bar.
+  const [typeHint, setTypeHint] = useState<"" | "noun" | "adjective" | "adverb" | "verb">("");
+  const [langHint, setLangHint] = useState<"" | "fr" | "en">("");
+  const [hintsOpen, setHintsOpen] = useState(false);
+  const hintsActive = !!(typeHint || langHint);
+
   /**
    * "In this context" — what the highlighted word means in the very sentence
    * it was selected from, mirroring the browser extension. Only for the seeded
@@ -72,6 +86,14 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
+      // Tab flips between looking a word up and asking the tutor. The drawer
+      // has a single text field, so focus cycling loses nothing.
+      if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        setMode((m) => (m === "dictionary" ? "tutor" : "dictionary"));
+        setTimeout(() => inputRef.current?.focus(), 0);
+        return;
+      }
       if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey) && !e.altKey) {
         e.preventDefault();
         inputRef.current?.focus();
@@ -87,9 +109,17 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const { data: vocabList = [] } = trpc.vocab.list.useQuery();
 
+  // A fresh tutor exchange scrolls into view as the reply streams in.
+  useEffect(() => {
+    if (mode === "tutor") threadEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [tutorThread, mode]);
+
   // When the drawer opens: focus the input and, if a term was provided, run it.
   useEffect(() => {
     if (!open) return;
+    setMode("dictionary");
+    setTutorThread([]);
+    setHintsOpen(false);
     setTerm(initialTerm ?? "");
     setSearchedTerm(initialTerm?.trim() || null);
     setCtxNote(null);
@@ -142,8 +172,21 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
 
   const runSearch = () => {
     if (!term.trim()) return;
+    if (mode === "tutor") {
+      const q = term.trim().slice(0, 2000);
+      setTerm("");
+      setTutorThread((t) => [...t, { q, a: null }]);
+      tutorAsk.mutate({ message: q }, {
+        onSuccess: (r) => setTutorThread((t) => t.map((m, i) => (i === t.length - 1 ? { ...m, a: r.reply } : m))),
+        onError: () => setTutorThread((t) => t.map((m, i) => (i === t.length - 1 ? { ...m, a: "Couldn't reach the tutor — try again." } : m))),
+      });
+      return;
+    }
     setSearchedTerm(term.trim());
-    void search(term.trim());
+    void search(term.trim(), {
+      ...(typeHint ? { wordTypeHint: typeHint } : {}),
+      ...(langHint ? { langHint } : {}),
+    });
   };
 
   const norm = (s: string) => s.trim().toLowerCase();
@@ -194,9 +237,28 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
           command-palette shape rather than a docked side panel. */}
       <aside className="fixed z-50 inset-x-0 bottom-0 sm:bottom-6 flex justify-center px-0 sm:px-4 pointer-events-none">
       <div className="pointer-events-auto w-full sm:max-w-2xl max-h-[76vh] flex flex-col bg-popover rounded-t-3xl sm:rounded-3xl ring-1 ring-black/5 shadow-[0_24px_60px_-12px_rgb(23_63_107_/_0.45)] animate-in fade-in slide-in-from-bottom-8 duration-200 ease-out overflow-hidden">
-        <div className="flex items-center gap-2 px-4 pt-3.5 pb-1 shrink-0">
-          <Search className="w-4 h-4 text-primary" />
-          <span className="text-sm font-bold text-foreground flex-1">Dictionary</span>
+        <div className="flex items-center gap-1.5 px-4 pt-3.5 pb-1 shrink-0">
+          {/* Mode toggle — click either label, or press Tab, to switch. */}
+          <button
+            onClick={() => setMode("dictionary")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-bold transition-colors",
+              mode === "dictionary" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Search className="w-4 h-4" /> Dictionary
+          </button>
+          <button
+            onClick={() => setMode("tutor")}
+            className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm font-bold transition-colors",
+              mode === "tutor" ? "bg-speaking/10 text-speaking" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <MessageCircle className="w-4 h-4" /> Ask tutor
+          </button>
+          <span className="flex-1" />
+          <kbd className="hidden sm:inline text-[10px] font-mono px-1.5 py-0.5 rounded border border-border text-muted-foreground" title="Switch mode">tab</kbd>
           <kbd className="hidden sm:inline text-[10px] font-mono px-1.5 py-0.5 rounded border border-border text-muted-foreground">esc</kbd>
           <button onClick={onClose} className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors" title="Close">
             <X className="w-4 h-4" />
@@ -204,30 +266,129 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
         </div>
 
         <div className="px-4 py-3 shrink-0 flex gap-2">
-          <input
-            ref={inputRef}
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runSearch()}
-            placeholder="Search a French or English word…"
-            className="flex-1 px-3.5 py-2.5 rounded-xl bg-muted/50 text-foreground placeholder-muted-foreground text-base focus:outline-none focus:ring-2 focus:ring-primary/40 transition-shadow"
-          />
+          <div className="relative flex-1">
+            <input
+              ref={inputRef}
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && runSearch()}
+              placeholder={mode === "tutor" ? "Ask the tutor anything about French…" : "Search a French or English word…"}
+              className={cn(
+                "w-full px-3.5 py-2.5 rounded-xl bg-muted/50 text-foreground placeholder-muted-foreground text-base focus:outline-none focus:ring-2 transition-shadow",
+                mode === "tutor" ? "focus:ring-speaking/40" : "focus:ring-primary/40 pr-11"
+              )}
+            />
+            {/* Word-type / language hints live inside the bar, dictionary
+                mode only — same controls as the Dictionary tab's picker. */}
+            {mode === "dictionary" && (
+              <button
+                onClick={() => setHintsOpen((o) => !o)}
+                aria-expanded={hintsOpen}
+                title="Specify word type / language"
+                className={cn(
+                  "absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors",
+                  hintsActive ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                <BookOpen className="w-4 h-4" />
+                {hintsActive && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-primary" />}
+              </button>
+            )}
+            {hintsOpen && mode === "dictionary" && (
+              <>
+                {/* click-away catcher */}
+                <div className="fixed inset-0 z-20" onClick={() => setHintsOpen(false)} />
+                <div className="absolute right-0 bottom-[calc(100%+8px)] z-30 w-64 rounded-2xl bg-popover p-3.5 shadow-[0_12px_32px_-8px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5 space-y-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Word type</p>
+                    <div className="flex flex-wrap gap-1">
+                      {([["", "Any"], ["noun", "Noun"], ["adjective", "Adj"], ["adverb", "Adv"], ["verb", "Verb"]] as const).map(([v, label]) => (
+                        <button
+                          key={v}
+                          onClick={() => setTypeHint(v)}
+                          className={cn(
+                            "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                            typeHint === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Input language</p>
+                    <div className="flex gap-1">
+                      {([["", "Auto"], ["fr", "French"], ["en", "English"]] as const).map(([v, label]) => (
+                        <button
+                          key={v}
+                          onClick={() => setLangHint(v)}
+                          className={cn(
+                            "flex-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+                            langHint === v ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    Helps with same-spelling words — «ferme» as noun vs verb, or "pain" in English vs French.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={runSearch}
-            disabled={quickLoading || !term.trim()}
-            className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-semibold text-sm transition-colors flex items-center"
+            disabled={(mode === "dictionary" ? quickLoading : tutorAsk.isPending) || !term.trim()}
+            className={cn(
+              "px-4 py-2.5 rounded-xl disabled:opacity-50 text-primary-foreground font-semibold text-sm transition-colors flex items-center",
+              mode === "tutor" ? "bg-speaking hover:bg-speaking/90" : "bg-primary hover:bg-primary/90"
+            )}
           >
-            {quickLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Go"}
+            {mode === "tutor"
+              ? (tutorAsk.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ask")
+              : (quickLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Go")}
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          {quickLoading && !result && (
+          {mode === "tutor" && (
+            <div className="space-y-3">
+              {tutorThread.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  Ask anything about French — grammar, nuance, when to use a word, how to say something…
+                </p>
+              )}
+              {tutorThread.map((m, i) => (
+                <div key={i} className="space-y-2">
+                  <p className="text-sm font-semibold text-speaking bg-speaking/10 rounded-xl px-3.5 py-2 w-fit max-w-[85%] ml-auto">{m.q}</p>
+                  <div className="bg-card card-float rounded-2xl p-4">
+                    {m.a === null ? (
+                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin" /> Thinking…
+                      </span>
+                    ) : (
+                      <div className="prose prose-sm max-w-none text-sm text-foreground leading-relaxed">
+                        <Streamdown>{m.a}</Streamdown>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div ref={threadEndRef} />
+            </div>
+          )}
+
+          {mode === "dictionary" && quickLoading && !result && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground justify-center py-8">
               <Loader2 className="w-4 h-4 animate-spin" /> Looking up…
             </div>
           )}
 
+          {mode === "dictionary" && <>
           {!quickLoading && !result && (
             <p className="text-sm text-muted-foreground text-center py-8">
               Search any word to see its meaning, examples, and grammar.
@@ -280,6 +441,7 @@ export function DictionarySearchDrawer({ open, onClose, initialTerm, contextSent
           {result && ((result.type === "word" && !(result as DictWordResult).found) || (result.type === "phrase" && !(result as DictPhraseResult).found)) && (
             <p className="text-sm text-muted-foreground text-center py-8">No entry found for that.</p>
           )}
+          </>}
         </div>
       </div>
       </aside>
