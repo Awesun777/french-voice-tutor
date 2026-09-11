@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ArrowRight, ChevronLeft, ChevronRight, History, Star, Shuffle, Loader2, Settings2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { VocabHeatmap } from "./VocabHeatmap";
 
 export interface ReviewLaunchChoice {
@@ -30,8 +30,8 @@ function LanguageSwipe({ value, onChange }: { value: "fr" | "en"; onChange: (v: 
     onPointerCancel={() => { drag.current = null; setOffset(null); }}
     onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } onChange(english ? "fr" : "en"); }}
     onKeyDown={e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); onChange(e.key === "ArrowRight" ? "en" : "fr"); } }}
-    className={cn("relative h-12 w-[210px] shrink-0 touch-pan-y select-none rounded-full text-white text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary", english ? "bg-[#A63D4A] pl-3 pr-12" : "bg-[#244FA0] pl-12 pr-3")}>
-    <span aria-hidden="true" style={{ transform: `translateX(${offset ?? (english ? 162 : 0)}px)` }} className={cn("absolute top-[3px] left-[3px] grid h-[42px] w-[42px] place-items-center rounded-full bg-white", offset === null && "transition-transform motion-reduce:transition-none", english ? "text-[#A63D4A]" : "text-[#244FA0]")}>
+    className={cn("relative h-12 w-[210px] shrink-0 touch-pan-y select-none rounded-full text-white text-sm font-bold transition-colors duration-500 motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary", english ? "bg-[#A63D4A] pl-3 pr-12" : "bg-[#244FA0] pl-12 pr-3")}>
+    <span aria-hidden="true" style={{ transform: `translateX(${offset ?? (english ? 162 : 0)}px)` }} className={cn("absolute top-[3px] left-[3px] grid h-[42px] w-[42px] place-items-center rounded-full bg-white", offset === null && "transition-transform duration-500 ease-in-out motion-reduce:transition-none", english ? "text-[#A63D4A]" : "text-[#244FA0]")}>
       <ChevronRight className={cn("h-4 w-4", english && "rotate-180")} />
       <span className="absolute bottom-1 left-2.5 h-2 w-[22px]" style={{ background: english ? "linear-gradient(90deg, transparent 42%, #BD3342 42% 58%, transparent 58%), linear-gradient(transparent 35%, #BD3342 35% 65%, transparent 65%), white" : "linear-gradient(90deg, #244FA0 33%, white 33% 66%, #CF3544 66%)" }} />
     </span>
@@ -53,18 +53,18 @@ function DailyReviewSettings() {
   });
   const newValue = newWords ?? String(settings.data?.dailyNewWords ?? 10);
   const reviewValue = reviews ?? String(settings.data?.dailyReviewCap ?? 20);
-  return <Dialog open={open} onOpenChange={value => { setOpen(value); if (value) { setNewWords(null); setReviews(null); save.reset(); } }}>
-    <DialogTrigger asChild><button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><Settings2 className="h-4 w-4" /> Settings</button></DialogTrigger>
-    <DialogContent className="sm:max-w-sm">
-      <DialogHeader><DialogTitle>Daily review settings</DialogTitle><DialogDescription>Set your daily queue for Flashcards and Quiz. Custom word selections use the session size you choose.</DialogDescription></DialogHeader>
-      {settings.isLoading ? <p role="status">Loading settings…</p> : settings.isError ? <button onClick={() => settings.refetch()} className="underline">Retry loading settings</button> : <form className="space-y-5" onSubmit={e => { e.preventDefault(); save.mutate({ dailyNewWords: Number(newValue), dailyReviewCap: Number(reviewValue) }); }}>
+  return <Popover open={open} onOpenChange={value => { setOpen(value); if (value) { setNewWords(null); setReviews(null); save.reset(); } }}>
+    <PopoverTrigger asChild><button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><Settings2 className="h-4 w-4" /> Settings</button></PopoverTrigger>
+    <PopoverContent align="end" side="bottom" sideOffset={10} aria-label="Daily review settings" className="w-72 max-w-[calc(100vw-2rem)] rounded-2xl bg-white p-4">
+      <h2 className="text-sm font-bold">Daily review settings</h2><p className="mt-1 mb-4 text-xs text-muted-foreground">Daily limits for Flashcards and Quiz.</p>
+      {settings.isLoading ? <p role="status">Loading settings…</p> : settings.isError ? <button onClick={() => settings.refetch()} className="underline">Retry loading settings</button> : <form className="space-y-3" onSubmit={e => { e.preventDefault(); save.mutate({ dailyNewWords: Number(newValue), dailyReviewCap: Number(reviewValue) }); }}>
         <label className="block text-sm font-medium">New words per day<input type="number" required min={1} max={50} step={1} value={newValue} onChange={e => setNewWords(e.target.value)} className="mt-2 w-full border-b border-foreground/25 bg-transparent py-2 text-xl outline-primary" /></label>
         <label className="block text-sm font-medium">Review words per day<input type="number" required min={1} max={100} step={1} value={reviewValue} onChange={e => setReviews(e.target.value)} className="mt-2 w-full border-b border-foreground/25 bg-transparent py-2 text-xl outline-primary" /></label>
         {save.isError && <p role="alert" className="text-sm text-destructive">Couldn’t save settings. Please try again.</p>}
         <button disabled={save.isPending} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground disabled:opacity-50">{save.isPending ? "Saving…" : "Save changes"}</button>
       </form>}
-    </DialogContent>
-  </Dialog>;
+    </PopoverContent>
+  </Popover>;
 }
 
 export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLaunchProps) {
@@ -92,13 +92,13 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
   return <div className="flex-1 min-h-0 overflow-y-auto bg-background px-4 py-5 sm:px-6">
     <div className="mx-auto w-full max-w-5xl">
       <h1 className="text-2xl font-bold tracking-tight mb-5">{kind === "quiz" ? "Quiz" : "Flashcards"}</h1>
-      {statsQ.isLoading ? <div className="p-12 flex justify-center"><Loader2 aria-label="Loading review counts" className="animate-spin" /></div> : statsQ.isError ? <div role="alert" className="p-6">Couldn’t load your review counts. <button onClick={() => statsQ.refetch()} className="underline">Try again</button></div> : <section aria-label="Daily review summary" style={flashcards ? { background: "linear-gradient(120deg, color-mix(in srgb, var(--accent) 9%, var(--card)), var(--card) 60%)" } : undefined} className="bg-card border border-foreground/10 rounded-3xl px-5 sm:px-7 py-5">
+      {statsQ.isLoading ? <div className="p-12 flex justify-center"><Loader2 aria-label="Loading review counts" className="animate-spin" /></div> : statsQ.isError ? <div role="alert" className="p-6">Couldn’t load your review counts. <button onClick={() => statsQ.refetch()} className="underline">Try again</button></div> : <section aria-label="Daily review summary" style={flashcards ? { background: "#fff" } : undefined} className="bg-card border border-foreground/10 rounded-3xl px-5 sm:px-7 py-5">
         <div className="flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">YOUR DAILY REVIEW</p>{flashcards && <DailyReviewSettings />}</div>
         <div className="flex flex-wrap items-center justify-between gap-5 mt-2 mb-5">
           <div><div className="text-7xl sm:text-8xl font-black leading-none tracking-tighter tabular-nums">{remaining.toLocaleString()}</div><p className="text-lg font-bold mt-2">words left to review</p></div>
           <div className="flex flex-col gap-2.5">{!flashcards && <button disabled={!remaining} onClick={() => setSource("due")} className={primary}>{remaining ? "Start review" : "All caught up"}</button>}<LanguageSwipe value={front} onChange={setFront} /></div>
         </div>
-        <div role="progressbar" aria-label="Daily review progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className={cn("rounded-full overflow-hidden", flashcards ? "h-2.5 bg-accent/20" : "h-2 bg-primary/10")}><div className="h-full bg-primary" style={{ width: `${percent}%`, ...(flashcards ? { background: "linear-gradient(90deg, var(--accent), var(--speaking), var(--primary))" } : {}) }} /></div>
+        <div role="progressbar" aria-label="Daily review progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className={cn("rounded-full overflow-hidden", flashcards ? (total ? "h-2.5 bg-speaking" : "h-2.5 bg-primary/10") : "h-2 bg-primary/10")}><div className="h-full bg-primary" style={{ width: `${percent}%` }} /></div>
         <div className="flex justify-between text-xs text-muted-foreground mt-2"><span>{reviewed} of {total} reviewed today (UTC)</span><span>{percent}%</span></div>
         {!flashcards && <div className="grid grid-cols-3 mt-4">{[{ label: "LEFT TO REVIEW", n: remaining }, { label: "REVIEWED TODAY", n: reviewed }, { label: "DAILY QUEUE", n: total }].map(s => <div key={s.label} className="text-center py-2 px-1 border-r border-foreground/10 last:border-0"><p className="text-[11px] text-muted-foreground">{s.label}</p><strong className="text-2xl sm:text-3xl tracking-tight tabular-nums">{s.n.toLocaleString()}</strong></div>)}</div>}
         {flashcards && <div className="mt-6 border-t border-foreground/20 pt-4">
@@ -113,7 +113,7 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
                   {[10, 20, 30, 50].filter(n => n < max).map(n => <button key={n} onClick={() => start(n)} className="py-4 border-r border-foreground/15 hover:bg-foreground/5 focus-visible:bg-foreground/5"><strong className="block text-2xl sm:text-3xl font-black tracking-tighter tabular-nums leading-none">{n}</strong><span className="text-xs text-muted-foreground">words</span></button>)}
                   <button disabled={!max} onClick={() => start(max)} className="py-4 hover:bg-foreground/5 disabled:opacity-40"><strong className="block text-2xl sm:text-3xl font-black tracking-tighter leading-none">{available > 500 ? "500" : "All"}</strong><span className="text-xs text-muted-foreground">{max} words <ArrowRight className="inline w-3 h-3" /></span></button>
                 </div> : <div className="grid w-full grid-cols-3">
-                  {[{ id: "shuffle", title: "Shuffle", icon: Shuffle, accent: "bg-speaking/15 text-speaking" }, { id: "latest", title: "From the latest", icon: History, accent: "bg-primary/10 text-primary" }, { id: "starred", title: "Starred Words", icon: Star, accent: "bg-accent/30 text-accent-foreground" }].map(item => <button key={item.id} disabled={datesQ.isLoading} onClick={() => chooseSource(item.id)} className="flex flex-col sm:flex-row items-center justify-center gap-3 px-2 py-5 border-r border-foreground/15 last:border-0 hover:bg-foreground/5 focus-visible:bg-foreground/5 text-sm font-black capitalize sm:uppercase tracking-tight"><span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full", item.accent)}><item.icon className="w-4 h-4" /></span>{item.title}</button>)}
+                  {[{ id: "shuffle", title: "Shuffle", icon: Shuffle, accent: "bg-speaking/15 text-speaking" }, { id: "latest", title: "Latest", icon: History, accent: "bg-primary/10 text-primary" }, { id: "starred", title: "Starred", icon: Star, accent: "bg-accent/30 text-accent-foreground" }].map(item => <button key={item.id} disabled={datesQ.isLoading} onClick={() => chooseSource(item.id)} className="flex flex-col items-center justify-center gap-2 px-2 py-4 border-r border-foreground/15 last:border-0 hover:bg-foreground/5 focus-visible:bg-foreground/5 text-sm font-black capitalize sm:uppercase tracking-tight"><span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full", item.accent)}><item.icon className="w-4 h-4" /></span>{item.title}</button>)}
                 </div>}
               </div>
             </div>
@@ -121,7 +121,7 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
           {source && !max && <p className="text-sm text-muted-foreground mt-2">No words in this collection yet.</p>}
         </div>}
       </section>}
-      {flashcards ? <div className="mt-7">{datesQ.isError ? <button onClick={() => datesQ.refetch()} className="text-sm underline">Retry loading saved days</button> : dates.length ? <VocabHeatmap dates={dates} tone="blue" stretch onPick={chooseSource} idleLabel="Saved words · pick a day" /> : <p className="text-sm text-muted-foreground">{datesQ.isLoading ? "Loading saved days…" : "Save words in your library to start reviewing."}</p>}</div> : source ? <section className="py-7">
+      {flashcards ? <div className="mt-7">{datesQ.isError ? <button onClick={() => datesQ.refetch()} className="text-sm underline">Retry loading saved days</button> : dates.length ? <VocabHeatmap dates={dates} tone="blue" stretch onPick={chooseSource} idleLabel="Or pick a specific date below" /> : <p className="text-sm text-muted-foreground">{datesQ.isLoading ? "Loading saved days…" : "Save words in your library to start reviewing."}</p>}</div> : source ? <section className="py-7">
         <button onClick={() => setSource(null)} className="text-sm text-muted-foreground flex items-center gap-1 mb-6"><ChevronLeft className="w-4 h-4" /> Choose words</button>
         <h2 className="text-2xl font-bold">{label}</h2><p className="text-sm text-muted-foreground mt-1">{available} words available{source === "latest" ? " · newest first" : ""}</p>
         <p className="font-semibold mt-6 mb-3">How many words?</p>
