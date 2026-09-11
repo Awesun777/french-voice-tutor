@@ -15,7 +15,6 @@
  * Checking runs on Gemini Flash (thinking off) for ~1-2s turnaround.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -877,42 +876,38 @@ export default function WritingTab() {
                     {m.fix.after}
                     {i === 0 && <kbd className="font-mono text-[9px] border border-white/50 rounded px-0.5 leading-tight">⌥</kbd>}
                   </button>
-                  {/* Static wrapper owns the position + upward shift so the
-                      motion child only ever animates opacity/scale — mixing
-                      a percent translate into the spring left exits stuck. */}
+                  {/* The "why" box stays mounted and animates with plain CSS
+                      transitions — smooth in both directions, and nothing to
+                      unmount (AnimatePresence exits proved unreliable here).
+                      The wrapper owns position + upward shift; the inner
+                      button scales from the chip's corner. */}
                   <div
                     className={cn("absolute z-30 -translate-y-full", !expanded && "pointer-events-none")}
                     style={{ left: m.left, top: m.top - 4 }}
+                    aria-hidden={!expanded}
                   >
-                  <AnimatePresence>
-                    {expanded && (
-                      <motion.button
-                        key="why"
-                        data-fix-chip
-                        initial={{ opacity: 0, scale: 0.55 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.75 }}
-                        transition={{ type: "spring", stiffness: 380, damping: 28 }}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => applyFix(m.fix)}
-                        className={cn(
-                          "block text-left rounded-xl px-3.5 py-2.5 text-white shadow-[0_16px_38px_-10px_rgb(0_0_0_/_0.45)] w-max max-w-[280px] cursor-pointer",
-                          KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar
-                        )}
-                        style={{ transformOrigin: "bottom left" }}
-                      >
-                        <span className="block text-sm font-bold">
-                          {m.fix.kind === "translation" ? m.fix.before.replace(/`/g, "") + " → " : ""}{m.fix.after}
-                        </span>
-                        <span className="mt-1 block text-[11px] font-medium leading-snug text-white/90">
-                          {m.fix.note || KIND_NOTE[m.fix.kind]}
-                        </span>
-                        <span className="mt-1.5 block text-[10px] font-semibold uppercase tracking-wide text-white/60">
-                          Click to accept
-                        </span>
-                      </motion.button>
-                    )}
-                  </AnimatePresence>
+                    <button
+                      data-fix-chip
+                      tabIndex={expanded ? 0 : -1}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => applyFix(m.fix)}
+                      className={cn(
+                        "block text-left rounded-xl px-3.5 py-2.5 text-white shadow-[0_16px_38px_-10px_rgb(0_0_0_/_0.45)] w-max max-w-[280px] cursor-pointer",
+                        "origin-bottom-left transition-all duration-200 ease-out",
+                        expanded ? "opacity-100 scale-100" : "opacity-0 scale-[0.6]",
+                        KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar
+                      )}
+                    >
+                      <span className="block text-sm font-bold">
+                        {m.fix.kind === "translation" ? m.fix.before.replace(/`/g, "") + " → " : ""}{m.fix.after}
+                      </span>
+                      <span className="mt-1 block text-[11px] font-medium leading-snug text-white/90">
+                        {m.fix.note || KIND_NOTE[m.fix.kind]}
+                      </span>
+                      <span className="mt-1.5 block text-[10px] font-semibold uppercase tracking-wide text-white/60">
+                        Click to accept
+                      </span>
+                    </button>
                   </div>
                 </div>
               );
