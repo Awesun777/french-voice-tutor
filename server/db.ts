@@ -619,7 +619,7 @@ export function orderForReview(words: VocabEntry[]): VocabEntry[] {
  */
 export async function getReviewQueue(
   userId: number,
-  opts: { mode: "due" | "all" | "latest" | "starred"; dateKey?: string; limit?: number }
+  opts: { mode: "due" | "all" | "latest" | "starred" | "shuffle"; dateKey?: string; limit?: number }
 ): Promise<VocabEntry[]> {
   const db = await getDb();
   if (!db) return [];
@@ -654,6 +654,12 @@ export async function getReviewQueue(
     : eq(vocabEntries.userId, userId);
   const rows = await db.select().from(vocabEntries).where(where);
   const ordered = orderForReview(rows);
+  if (opts.mode === "shuffle") {
+    for (let i = ordered.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+    }
+  }
   return opts.limit && opts.limit > 0 ? ordered.slice(0, opts.limit) : ordered;
 }
 

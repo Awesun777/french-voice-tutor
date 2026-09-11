@@ -2227,7 +2227,7 @@ The user is asking about this specific word/phrase. Answer in the context of thi
     /** Unified launch-screen queue: due-today or all-words, optional date, optional size */
     getQueue: protectedProcedure
       .input(z.object({
-        mode: z.enum(["due", "all", "latest", "starred"]),
+        mode: z.enum(["due", "all", "latest", "starred", "shuffle"]),
         dateKey: z.string().max(100).optional(),
         limit: z.number().min(1).max(500).optional(),
       }))

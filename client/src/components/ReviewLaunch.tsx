@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
-import { ArrowRight, ChevronLeft, ChevronRight, History, Star, Loader2 } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, History, Star, Shuffle, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { VocabHeatmap } from "./VocabHeatmap";
 
 export interface ReviewLaunchChoice {
-  mode: "due" | "all" | "latest" | "starred";
+  mode: "due" | "all" | "latest" | "starred" | "shuffle";
   dateKey?: string;
   limit?: number;
   front?: "fr" | "en";
@@ -45,17 +45,30 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
   const dates = datesQ.data ?? [];
   const [source, setSource] = useState<string | null>(initialDateKey ?? null);
   const [front, setFront] = useState<"fr" | "en">("fr");
+  const flashcards = kind === "flashcards";
+  const [phase, setPhase] = useState<"idle" | "collapse" | "expand">("idle");
+  const pendingSource = useRef<string | null>(null);
+  const choicePanel = useRef<HTMLDivElement>(null);
+  function chooseSource(next: string | null) {
+    if (!flashcards || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setSource(next);
+      return;
+    }
+    if (phase !== "idle") return;
+    pendingSource.current = next;
+    setPhase("collapse");
+  }
   const remaining = stats?.dueToday ?? 0;
   const reviewed = stats?.reviewedToday ?? 0;
   const total = remaining + reviewed;
   const percent = total ? Math.round(reviewed / total * 100) : 0;
   const allWords = dates.reduce((n, d) => n + d.total, 0);
-  const available = source === "due" ? remaining : source === "latest" ? allWords : source === "starred" ? stats?.starred ?? 0 : dates.find(d => d.dateKey === source)?.total ?? 0;
+  const available = source === "due" ? remaining : source === "latest" || source === "shuffle" ? allWords : source === "starred" ? stats?.starred ?? 0 : dates.find(d => d.dateKey === source)?.total ?? 0;
   const max = Math.min(available, 500);
-  const label = source === "due" ? "Due today" : source === "latest" ? "Latest saved words" : source === "starred" ? "Starred words" : source ? new Date(source + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  const label = source === "shuffle" ? "Shuffle" : source === "due" ? "Due today" : source === "latest" ? "Latest saved words" : source === "starred" ? "Starred words" : source ? new Date(source + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
   function start(limit: number) {
     if (!source) return;
-    onStart({ mode: source === "due" || source === "latest" || source === "starred" ? source : "all", dateKey: ["due", "latest", "starred"].includes(source) ? undefined : source, limit, front });
+    onStart({ mode: source === "due" || source === "latest" || source === "starred" || source === "shuffle" ? source : "all", dateKey: ["due", "latest", "starred", "shuffle"].includes(source) ? undefined : source, limit, front });
   }
   const primary = "rounded-xl bg-primary text-primary-foreground px-5 py-3 text-sm font-bold disabled:opacity-40 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
   return <div className="flex-1 min-h-0 overflow-y-auto bg-background px-4 py-5 sm:px-6">
@@ -65,13 +78,37 @@ export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLa
         <p className="text-xs text-muted-foreground">YOUR DAILY REVIEW</p>
         <div className="flex flex-wrap items-center justify-between gap-5 mt-2 mb-5">
           <div><div className="text-7xl sm:text-8xl font-black leading-none tracking-tighter tabular-nums">{remaining.toLocaleString()}</div><p className="text-lg font-bold mt-2">words left to review</p></div>
-          <div className="flex flex-col gap-2.5"><button disabled={!remaining} onClick={() => setSource("due")} className={primary}>{remaining ? "Start review" : "All caught up"}</button><LanguageSwipe value={front} onChange={setFront} /></div>
+          <div className="flex flex-col gap-2.5">{!flashcards && <button disabled={!remaining} onClick={() => setSource("due")} className={primary}>{remaining ? "Start review" : "All caught up"}</button>}<LanguageSwipe value={front} onChange={setFront} /></div>
         </div>
         <div role="progressbar" aria-label="Daily review progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 rounded-full overflow-hidden bg-primary/10"><div className="h-full bg-primary" style={{ width: `${percent}%` }} /></div>
         <div className="flex justify-between text-xs text-muted-foreground mt-2"><span>{reviewed} of {total} reviewed today (UTC)</span><span>{percent}%</span></div>
-        <div className="grid grid-cols-3 mt-4">{[{ label: "LEFT TO REVIEW", n: remaining }, { label: "REVIEWED TODAY", n: reviewed }, { label: "DAILY QUEUE", n: total }].map(s => <div key={s.label} className="text-center py-2 px-1 border-r border-foreground/10 last:border-0"><p className="text-[11px] text-muted-foreground">{s.label}</p><strong className="text-2xl sm:text-3xl tracking-tight tabular-nums">{s.n.toLocaleString()}</strong></div>)}</div>
+        {!flashcards && <div className="grid grid-cols-3 mt-4">{[{ label: "LEFT TO REVIEW", n: remaining }, { label: "REVIEWED TODAY", n: reviewed }, { label: "DAILY QUEUE", n: total }].map(s => <div key={s.label} className="text-center py-2 px-1 border-r border-foreground/10 last:border-0"><p className="text-[11px] text-muted-foreground">{s.label}</p><strong className="text-2xl sm:text-3xl tracking-tight tabular-nums">{s.n.toLocaleString()}</strong></div>)}</div>}
+        {flashcards && <div className="mt-6 border-t border-foreground/20 pt-4">
+          <div className="flex items-center justify-between gap-3 min-h-8 mb-3">
+            <p className="text-xs uppercase tracking-widest text-muted-foreground">{source ? `${label} · How many words?` : "Choose your words"}</p>
+            {source && <button disabled={phase !== "idle"} onClick={() => chooseSource(null)} className="flex items-center text-xs gap-1 hover:underline"><ChevronLeft className="w-3 h-3" /> Change</button>}
+          </div>
+          <div className="relative min-h-24" aria-busy={phase !== "idle"}>
+            <div ref={choicePanel} className={cn("flashcard-choice-panel", phase !== "idle" && `flashcard-choice-${phase}`)}
+              onAnimationEnd={e => {
+                if (e.target !== e.currentTarget) return;
+                if (phase === "collapse") { setSource(pendingSource.current); setPhase("expand"); }
+                else if (phase === "expand") { setPhase("idle"); choicePanel.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true }); }
+              }}>
+              <div className="flashcard-choice-content flex min-h-24">
+                {source ? <div className="grid w-full grid-cols-3 sm:grid-cols-5">
+                  {[10, 20, 30, 50].filter(n => n < max).map(n => <button disabled={phase !== "idle"} key={n} onClick={() => start(n)} className="py-4 border-r border-foreground/15 hover:bg-foreground/5 focus-visible:bg-foreground/5"><strong className="block text-3xl font-medium tabular-nums">{n}</strong><span className="text-xs text-muted-foreground">words</span></button>)}
+                  <button disabled={!max || phase !== "idle"} onClick={() => start(max)} className="py-4 hover:bg-foreground/5 disabled:opacity-40"><strong className="block text-3xl font-medium">{available > 500 ? "500" : "All"}</strong><span className="text-xs text-muted-foreground">{max} words <ArrowRight className="inline w-3 h-3" /></span></button>
+                </div> : <div className="grid w-full grid-cols-3">
+                  {[{ id: "shuffle", title: "Shuffle", icon: Shuffle }, { id: "latest", title: "From the latest", icon: History }, { id: "starred", title: "Starred Words", icon: Star }].map(item => <button key={item.id} disabled={phase !== "idle" || datesQ.isLoading} onClick={() => chooseSource(item.id)} className="flex flex-col sm:flex-row items-center justify-center gap-3 px-2 py-5 border-r border-foreground/15 last:border-0 hover:bg-foreground/5 focus-visible:bg-foreground/5 text-sm font-medium"><item.icon className="w-5 h-5 shrink-0" />{item.title}</button>)}
+                </div>}
+              </div>
+            </div>
+          </div>
+          {source && !max && <p className="text-sm text-muted-foreground mt-2">No words in this collection yet.</p>}
+        </div>}
       </section>}
-      {source ? <section className="py-7">
+      {flashcards ? <div className="mt-7">{datesQ.isError ? <button onClick={() => datesQ.refetch()} className="text-sm underline">Retry loading saved days</button> : dates.length ? <VocabHeatmap dates={dates} tone="blue" stretch onPick={chooseSource} idleLabel="Saved words · pick a day" /> : <p className="text-sm text-muted-foreground">{datesQ.isLoading ? "Loading saved days…" : "Save words in your library to start reviewing."}</p>}</div> : source ? <section className="py-7">
         <button onClick={() => setSource(null)} className="text-sm text-muted-foreground flex items-center gap-1 mb-6"><ChevronLeft className="w-4 h-4" /> Choose words</button>
         <h2 className="text-2xl font-bold">{label}</h2><p className="text-sm text-muted-foreground mt-1">{available} words available{source === "latest" ? " · newest first" : ""}</p>
         <p className="font-semibold mt-6 mb-3">How many words?</p>
