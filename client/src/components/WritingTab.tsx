@@ -373,9 +373,12 @@ export default function WritingTab() {
     if (!root) return;
     const range = findRange(root, fix.before);
     if (!range) { setFixes((fs) => fs.filter((f) => f !== fix)); return; }
-    range.deleteContents();
-    range.insertNode(document.createTextNode(fix.after));
-    root.normalize();
+    // Replace through execCommand rather than direct DOM surgery so the
+    // browser's native undo stack records it — ⌘Z reverts the correction.
+    root.focus();
+    const sel = window.getSelection();
+    if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+    document.execCommand("insertText", false, fix.after);
     setFixes((fs) => fs.filter((f) => f !== fix));
     setExpandedKey(null);
     lastCheckedRef.current = editorText().trim(); // applied text counts as checked
