@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import {
+  AlignLeft,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -106,6 +107,7 @@ export default function TcfMockTab() {
   const [n, setN] = useState(1);
   const [{ answers, checked }, setProgress] = useState<Persisted>(() => loadPersisted(examId));
   const [transcriptOpen, setTranscriptOpen] = useState<Record<number, boolean>>({});
+  const [docOpen, setDocOpen] = useState<Record<number, boolean>>({});
   const [explanations, setExplanations] = useState<Record<number, string>>({});
   const [showResults, setShowResults] = useState(false);
 
@@ -122,6 +124,7 @@ export default function TcfMockTab() {
     setProgress(loadPersisted(id));
     setExplanations({});
     setTranscriptOpen({});
+    setDocOpen({});
     setShowResults(false);
     setN(1);
     mediaRef.current.clear();
@@ -280,6 +283,7 @@ export default function TcfMockTab() {
     setProgress({ answers: {}, checked: [] });
     setExplanations({});
     setTranscriptOpen({});
+    setDocOpen({});
     setShowResults(false);
     setN(1);
   };
@@ -312,8 +316,16 @@ export default function TcfMockTab() {
   const transcriptShown = !!item && !!transcriptOpen[item.n];
   const hasTranscript = !!item && (!!item.audio?.length || !!item.transcript?.trim());
   const glossQ = trpc.tcf.gloss.useQuery(
-    { examId, n: item?.n ?? 1 },
+    { examId, n: item?.n ?? 1, kind: "transcript" },
     { enabled: !!item && transcriptShown && hasTranscript, staleTime: Infinity, trpc: { context: { skipBatch: true } } }
+  );
+  // Reading documents: the text the ingest read off the booklet image (or the Romaintalk passage), glossed the same way.
+  const docShown = !!item && !!docOpen[item.n];
+  const docText = item ? (item.passage ?? item.docText ?? "") : "";
+  const hasDocText = docText.trim().length > 0;
+  const docGlossQ = trpc.tcf.gloss.useQuery(
+    { examId, n: item?.n ?? 1, kind: "document" },
+    { enabled: !!item && docShown && hasDocText, staleTime: Infinity, trpc: { context: { skipBatch: true } } }
   );
   const { speak, state: pronounceState, activeText } = usePronounce();
   const [hover, setHover] = useState<{ token: GlossToken; top: number; left: number } | null>(null);
@@ -396,6 +408,11 @@ export default function TcfMockTab() {
 
   const hasDoc = item.hasImage || !!item.passage;
   const glossLines: GlossLine[] | null = glossQ.data?.lines?.length ? (glossQ.data.lines as GlossLine[]) : null;
+  const docLines = docText
+    .split(/\n+/)
+    .map(t => t.trim())
+    .filter(Boolean);
+  const docGlossLines: GlossLine[] | null = docGlossQ.data?.lines?.length ? (docGlossQ.data.lines as GlossLine[]) : null;
   const isSavedHover = hover ? savedTerms.has(hover.token.surface.toLowerCase()) : false;
 
   const navState = (it: (typeof items)[number]) => {
@@ -587,6 +604,32 @@ export default function TcfMockTab() {
                     </div>
                   )}
 
+                  {docShown && docLines.length > 0 && (
+                    <div className={cn("rounded-lg border p-3 text-sm leading-[1.85]", LINE)}>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Texte du document</span>
+                        {docGlossQ.isFetching && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" /> glossaire…
+                          </span>
+                        )}
+                        {docGlossQ.isError && <span className="text-[11px] text-red-700">glossaire indisponible</span>}
+                      </div>
+                      <div className="space-y-1.5">
+                        {docLines.map((text, i) => (
+                          <p key={i}>
+                            {docGlossLines?.[i] && docGlossLines[i].text === text ? (
+                              <GlossedLine line={docGlossLines[i]} onHover={openHover} onLeave={scheduleHoverClose} />
+                            ) : (
+                              text
+                            )}
+                          </p>
+                        ))}
+                      </div>
+                      {source === "tv5" && <p className="pt-2 text-xs text-muted-foreground">Texte lu sur l'image du livret — peut contenir de petites erreurs.</p>}
+                    </div>
+                  )}
+
                   {explanation && (
                     <div className="rounded-lg border border-speaking/50 p-3">
                       <div className="mb-2 flex items-center justify-between">
@@ -657,6 +700,11 @@ export default function TcfMockTab() {
                   {transcriptLines.length > 0 && (
                     <button onClick={() => setTranscriptOpen(t => ({ ...t, [item.n]: !t[item.n] }))} className={toolBtn(transcriptShown)}>
                       <FileText className="h-4 w-4" /> Transcription
+                    </button>
+                  )}
+                  {hasDocText && (
+                    <button onClick={() => setDocOpen(t => ({ ...t, [item.n]: !t[item.n] }))} className={toolBtn(docShown)}>
+                      <AlignLeft className="h-4 w-4" /> Texte
                     </button>
                   )}
                   <button onClick={() => explain(false)} disabled={explainMut.isPending} className={toolBtn(!!explanation)}>

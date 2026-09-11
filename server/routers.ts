@@ -6,7 +6,7 @@ import { invokeLLM } from "./_core/llm";
 import { enforceVerbPreposition } from "./verbPrepositions";
 import { enforcePronunciation } from "./ipaLexicon";
 import { synthesizeFrench } from "./tts";
-import { listTcfExams, loadTcfExam, tcfItemMedia, explainTcfItem, explanationCacheKey, parseExamId, glossTcfTranscript, glossCacheKey } from "./tcfMock";
+import { listTcfExams, loadTcfExam, tcfItemMedia, explainTcfItem, explanationCacheKey, parseExamId, glossTcfCached } from "./tcfMock";
 import { fetchCommonsRecording, commonsInCooldown } from "./commonsAudio";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
@@ -3552,18 +3552,13 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Explanation failed: ${String(e).slice(0, 300)}` });
         }
       }),
-    /** Word-by-word glossed transcript of a listening item (Listening-Lab style), cached forever. */
+    /** Word-by-word glossed transcript (listening) or document text (reading), Listening-Lab style, cached forever. */
     gloss: adminProcedure
-      .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40) }))
+      .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40), kind: z.enum(["transcript", "document"]).default("transcript") }))
       .query(async ({ input }) => {
         if (!parseExamId(input.examId)) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
-        const key = glossCacheKey(input.examId, input.n);
-        const hit = await getCached(key);
-        if (Array.isArray(hit)) return { lines: hit as Awaited<ReturnType<typeof glossTcfTranscript>> };
         try {
-          const lines = await glossTcfTranscript(input.examId, input.n);
-          if (lines.length > 0) await setCache(key, lines);
-          return { lines };
+          return await glossTcfCached(input.examId, input.n, input.kind);
         } catch (e) {
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Gloss failed: ${String(e).slice(0, 300)}` });
         }

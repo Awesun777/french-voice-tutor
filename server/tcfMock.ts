@@ -11,7 +11,7 @@
  *    oral item, the reading document as a photo). Admin-only, unmonetised.
  */
 import { and, asc, eq } from "drizzle-orm";
-import { tcfTv5Items, tcfTv5Series } from "../drizzle/schema";
+import { dictCache, tcfTv5Items, tcfTv5Series } from "../drizzle/schema";
 import { invokeLLM } from "./_core/llm";
 import { getDb } from "./db";
 import { FRENCH_VOICES, synthesizeFrench } from "./tts";
@@ -55,6 +55,8 @@ export interface TcfItemView {
   audio: TcfAudioSegment[] | null;
   /** Plain transcript (TV5 listening items, from Whisper). */
   transcript: string | null;
+  /** Text read off the document image (TV5 reading items); null for photos. */
+  docText: string | null;
   hasAudio: boolean;
   hasImage: boolean;
 }
@@ -104,6 +106,7 @@ function viewOfMock(item: TcfMockItem): TcfItemView {
     consigne: consigneFor(item),
     question: item.question ?? null,
     passage: item.passage ?? null,
+    docText: null,
     choices: [...item.choices],
     spokenChoices: !!item.spokenChoices,
     answer: item.answer,
@@ -182,6 +185,7 @@ function viewOfTv5(row: Tv5Light): TcfItemView {
     note: null,
     audio: null,
     transcript: row.transcript,
+    docText: row.docText && !/^\s*Photo\s*:/i.test(row.docText) ? row.docText.trim() : null,
     hasAudio: row.hasAudio,
     hasImage: row.hasImage,
   };
@@ -449,8 +453,18 @@ const GLOSS_SCHEMA = {
   additionalProperties: false,
 };
 
-export function glossCacheKey(examId: string, n: number): string {
-  return `tcf::gloss::v1::${examId}::${n}`;
+export type TcfGlossKind = "transcript" | "document";
+
+export function glossCacheKey(examId: string, n: number, kind: TcfGlossKind = "transcript"): string {
+  return kind === "document" ? `tcf::gloss::doc::v1::${examId}::${n}` : `tcf::gloss::v1::${examId}::${n}`;
+}
+
+/** The reading document as plain lines: Romaintalk passage, or the text the ingest read off the TV5 image. */
+export function tcfDocumentLines(item: TcfItemView): string[] {
+  return (item.passage ?? item.docText ?? "")
+    .split(/\n+/)
+    .map(s => s.trim())
+    .filter(Boolean);
 }
 
 /** The transcript as plain lines (speaker labels stripped for the model). */
@@ -498,20 +512,52 @@ function layTokens(
 }
 
 export async function glossTcfTranscript(examId: string, n: number): Promise<TcfGlossLine[]> {
+  return glossTcfLines(examId, n, "transcript");
+}
+
+/** Cached variant used by the router and by scripts/tcf-pregloss.ts (dict_cache, generated once). */
+export async function glossTcfCached(examId: string, n: number, kind: TcfGlossKind): Promise<{ lines: TcfGlossLine[]; cached: boolean }> {
+  const key = glossCacheKey(examId, n, kind);
+  const db = await getDb();
+  if (db) {
+    const rows = await db.select({ entryJson: dictCache.entryJson }).from(dictCache).where(eq(dictCache.termKey, key));
+    if (rows.length > 0) {
+      try {
+        const parsed = JSON.parse(rows[0].entryJson);
+        if (Array.isArray(parsed)) return { lines: parsed as TcfGlossLine[], cached: true };
+      } catch {
+        /* regenerate */
+      }
+    }
+  }
+  const lines = await glossTcfLines(examId, n, kind);
+  if (db && lines.length > 0) {
+    const entryJson = JSON.stringify(lines);
+    await db
+      .insert(dictCache)
+      .values({ termKey: key, entryJson, createdAt: Date.now() })
+      .onDuplicateKeyUpdate({ set: { entryJson, createdAt: Date.now() } });
+  }
+  return { lines, cached: false };
+}
+
+export async function glossTcfLines(examId: string, n: number, kind: TcfGlossKind): Promise<TcfGlossLine[]> {
   const exam = await loadTcfExam(examId);
   const item = exam?.items.find(it => it.n === n);
   if (!item) throw new Error("Unknown TCF item");
-  const lines = tcfTranscriptLines(item);
+  const lines = kind === "document" ? tcfDocumentLines(item) : tcfTranscriptLines(item);
   if (lines.length === 0) return [];
 
   const numbered = lines.map((t, i) => `[${i + 1}] ${t.replace(/\s+/g, " ")}`).join("\n");
   const response = await invokeLLM({
     messages: [
-      { role: "system", content: "You help English speakers understand spoken French. Return only valid JSON matching the schema exactly." },
+      { role: "system", content: "You help English speakers understand French. Return only valid JSON matching the schema exactly." },
       {
         role: "user",
         content:
-          `French listening-test transcript, one numbered line per turn:\n"""\n${numbered}\n"""\n\n` +
+          (kind === "document"
+            ? `French reading-test document (press article, notice, advert…), one numbered line per paragraph:\n"""\n${numbered}\n"""\n\n`
+            : `French listening-test transcript, one numbered line per turn:\n"""\n${numbered}\n"""\n\n`) +
           `1) "glosses": for every distinct French word above, give its dictionary form ("lemma") and a concise English meaning as used here ("gloss", 1-5 words). Copy "surface" exactly as it appears, accents preserved.\n` +
           `2) "contextual": when a surface form's lemma or meaning differs between lines (e.g. "suis" = être vs suivre), add one entry per occurrence with "line" = the bracketed line number (1-${lines.length}). Empty if nothing is ambiguous.\n` +
           `3) "expressions": multi-word expressions of 2-5 words appearing VERBATIM above that a learner should memorise as ONE unit — greetings and set questions, fixed phrases ("s'il vous plaît", "bien sûr"), discourse markers ("en fait", "du coup"), grammatical chunks ("il y a", "est-ce que", "il faut"), verbs with their fixed preposition ("avoir besoin de"). Exclude ordinary clauses. Copy each phrase exactly, accents and elisions preserved.`,

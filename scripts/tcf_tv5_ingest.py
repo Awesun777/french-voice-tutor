@@ -426,6 +426,16 @@ def transcribe(path: Path) -> str:
     return CUE_BREAK.sub("\n", text).strip()
 
 
+def pregloss(series: int):
+    """Warm the word-by-word glosses (transcripts + reading documents) right
+    after upload, so nobody waits on the LLM when opening an item."""
+    cmd = ["corepack", "pnpm", "exec", "tsx", "scripts/tcf-pregloss.ts", str(series)]
+    log("pregloss: " + " ".join(cmd))
+    r = subprocess.run(cmd, cwd=Path(__file__).resolve().parent.parent)
+    if r.returncode != 0:
+        log(f"pregloss exited {r.returncode} — re-run `tsx scripts/tcf-pregloss.ts {series}` later")
+
+
 def upload(series: int, title: str, items: list[dict]):
     import pymysql
     from urllib.parse import urlparse, unquote
@@ -481,6 +491,7 @@ def main():
         data = json.load(open(a.reuse))
         if a.upload:
             upload(a.series, title, data["items"])
+            pregloss(a.series)
         return
     if a.reuse and a.refine:
         data = json.load(open(a.reuse))
@@ -499,6 +510,7 @@ def main():
         Path(a.out).with_suffix(".summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
         if a.upload:
             upload(a.series, title, ordered)
+            pregloss(a.series)
         return
 
     pdf = Path(os.path.expanduser(a.pdf))
@@ -554,6 +566,7 @@ def main():
     Path(a.out).with_suffix(".summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1))
     if a.upload:
         upload(a.series, title, ordered)
+        pregloss(a.series)
 
 
 if __name__ == "__main__":
