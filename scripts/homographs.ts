@@ -67,7 +67,7 @@ export const HOMOGRAPHS: Record<string, string[]> = {
 /** Homograph surfaces present in this text, for the prompt's "disambiguate these" list. */
 export function homographsIn(text: string): string[] {
   const present = new Set<string>();
-  for (const m of text.matchAll(WORD_RE)) {
+  for (const m of Array.from(text.matchAll(WORD_RE))) {
     const w = m[0].toLowerCase();
     if (HOMOGRAPHS[w]) present.add(w);
     // WORD_RE keeps hyphenated and elided forms whole, so "suis-moi" and
@@ -79,7 +79,7 @@ export function homographsIn(text: string): string[] {
       }
     }
   }
-  return [...present];
+  return Array.from(present);
 }
 
 /**

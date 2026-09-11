@@ -81,7 +81,7 @@ export const BREAKDOWN_SCHEMA = {
 
 /** The words of one line, in order, as the model will be shown them. */
 export function wordsOf(text: string): string[] {
-  return [...text.matchAll(WORD_RE)].map((m) => m[0]);
+  return Array.from(text.matchAll(WORD_RE)).map((m) => m[0]);
 }
 
 /**

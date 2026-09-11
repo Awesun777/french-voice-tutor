@@ -14,6 +14,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { dictCache, tcfTv5Items, tcfTv5Series } from "../drizzle/schema";
 import { invokeLLM } from "./_core/llm";
 import { getDb } from "./db";
+import { glossBlocks, type Block as ArticleBlock, type Token as ArticleGlossToken } from "../scripts/ingest-article";
 import { FRENCH_VOICES, synthesizeFrench } from "./tts";
 import {
   TCF_MOCK_EXAMS,
@@ -384,90 +385,28 @@ export async function explainTcfItem(examId: string, n: number): Promise<string>
   return text;
 }
 
-// ─── Transcript glossing ──────────────────────────────────────────────────────
-// Same idea as the Listening Lab: every word of the transcript is a hoverable
-// span with a lemma and a short English gloss, and multi-word expressions are
-// one span. Generated once per item (the router caches it in dict_cache).
+// ─── Glossing (transcripts and reading documents) ─────────────────────────────
+// Reuses the Reading tab's pipeline (scripts/ingest-article.ts: batched gloss +
+// sentence breakdown, contextual homographs, vetted expressions, leftover
+// sweep), so every tab glosses the same way. Generated once per item; the
+// result is cached in dict_cache by glossTcfCached / scripts/tcf-pregloss.ts.
 
-export interface TcfGlossToken {
-  s: number;
-  e: number;
-  surface: string;
-  lemma?: string;
-  gloss: string;
-  kind: "word" | "expression";
-}
+export type TcfGlossToken = ArticleGlossToken;
 export interface TcfGlossLine {
   text: string;
   tokens: TcfGlossToken[];
+  /** English rendering of the line from the breakdown pass, when the model gave one. */
+  en?: string;
 }
-
-const WORD_RE = /[A-Za-zÀ-ÿŒœÆæ]+(?:['’-][A-Za-zÀ-ÿŒœÆæ]+)*/g;
-const LETTER_RE = /[A-Za-zÀ-ÿŒœÆæ]/;
-/** Closed-class words the model tends to leave out of its list. */
-const CLOSED: Record<string, { lemma: string; gloss: string }> = {
-  a: { lemma: "avoir", gloss: "has" }, à: { lemma: "à", gloss: "to / at" }, de: { lemma: "de", gloss: "of / from" }, du: { lemma: "de", gloss: "of the" },
-  des: { lemma: "de", gloss: "some / of the" }, le: { lemma: "le", gloss: "the" }, la: { lemma: "le", gloss: "the" }, les: { lemma: "le", gloss: "the" },
-  un: { lemma: "un", gloss: "a" }, une: { lemma: "un", gloss: "a" }, et: { lemma: "et", gloss: "and" }, ou: { lemma: "ou", gloss: "or" },
-  en: { lemma: "en", gloss: "in / of it" }, y: { lemma: "y", gloss: "there" }, ne: { lemma: "ne", gloss: "not (with pas)" }, pas: { lemma: "pas", gloss: "not" },
-  que: { lemma: "que", gloss: "that / what" }, qui: { lemma: "qui", gloss: "who / which" }, se: { lemma: "se", gloss: "oneself" }, ce: { lemma: "ce", gloss: "this" },
-  est: { lemma: "être", gloss: "is" }, sont: { lemma: "être", gloss: "are" }, ont: { lemma: "avoir", gloss: "have" }, il: { lemma: "il", gloss: "he / it" },
-  elle: { lemma: "elle", gloss: "she" }, on: { lemma: "on", gloss: "we / one" }, je: { lemma: "je", gloss: "I" }, tu: { lemma: "tu", gloss: "you" },
-  vous: { lemma: "vous", gloss: "you" }, nous: { lemma: "nous", gloss: "we" }, dans: { lemma: "dans", gloss: "in" }, sur: { lemma: "sur", gloss: "on / about" },
-  pour: { lemma: "pour", gloss: "for" }, avec: { lemma: "avec", gloss: "with" }, mais: { lemma: "mais", gloss: "but" }, au: { lemma: "à", gloss: "to the" },
-  aux: { lemma: "à", gloss: "to the" }, plus: { lemma: "plus", gloss: "more" }, très: { lemma: "très", gloss: "very" }, si: { lemma: "si", gloss: "if / so" },
-};
-
-const GLOSS_SCHEMA = {
-  type: "object",
-  properties: {
-    glosses: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { surface: { type: "string" }, lemma: { type: "string" }, gloss: { type: "string" } },
-        required: ["surface", "lemma", "gloss"],
-        additionalProperties: false,
-      },
-    },
-    contextual: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { line: { type: "integer" }, surface: { type: "string" }, lemma: { type: "string" }, gloss: { type: "string" } },
-        required: ["line", "surface", "lemma", "gloss"],
-        additionalProperties: false,
-      },
-    },
-    expressions: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { phrase: { type: "string" }, gloss: { type: "string" } },
-        required: ["phrase", "gloss"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["glosses", "contextual", "expressions"],
-  additionalProperties: false,
-};
 
 export type TcfGlossKind = "transcript" | "document";
 
 export function glossCacheKey(examId: string, n: number, kind: TcfGlossKind = "transcript"): string {
-  return kind === "document" ? `tcf::gloss::doc::v1::${examId}::${n}` : `tcf::gloss::v1::${examId}::${n}`;
+  // v2: Reading-tab pipeline (v1 was a one-shot prompt of its own).
+  return `tcf::gloss::v2::${kind}::${examId}::${n}`;
 }
 
-/** The reading document as plain lines: Romaintalk passage, or the text the ingest read off the TV5 image. */
-export function tcfDocumentLines(item: TcfItemView): string[] {
-  return (item.passage ?? item.docText ?? "")
-    .split(/\n+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-/** The transcript as plain lines (speaker labels stripped for the model). */
+/** The transcript as plain lines (speaker labels stripped). */
 export function tcfTranscriptLines(item: TcfItemView): string[] {
   if (item.audio) return item.audio.map(seg => seg.text.trim()).filter(Boolean);
   return (item.transcript ?? "")
@@ -476,39 +415,12 @@ export function tcfTranscriptLines(item: TcfItemView): string[] {
     .filter(Boolean);
 }
 
-function layTokens(
-  text: string,
-  glossBy: Map<string, { lemma: string; gloss: string }>,
-  contextualBy: Map<string, { lemma: string; gloss: string }>,
-  expressions: { phrase: string; gloss: string }[]
-): TcfGlossToken[] {
-  const claimed: TcfGlossToken[] = [];
-  const overlaps = (s: number, e: number) => claimed.some(t => s < t.e && e > t.s);
-  const lower = text.toLowerCase();
-  for (const { phrase, gloss } of [...expressions].sort((a, b) => b.phrase.length - a.phrase.length)) {
-    const needle = phrase.toLowerCase().trim();
-    if (needle.length < 3) continue;
-    let from = 0;
-    for (;;) {
-      const at = lower.indexOf(needle, from);
-      if (at === -1) break;
-      const end = at + needle.length;
-      const before = at === 0 || !LETTER_RE.test(text[at - 1]);
-      const after = end === text.length || !LETTER_RE.test(text[end]);
-      if (before && after && !overlaps(at, end)) claimed.push({ s: at, e: end, surface: text.slice(at, end), gloss, kind: "expression" });
-      from = at + needle.length;
-    }
-  }
-  for (const m of Array.from(text.matchAll(WORD_RE))) {
-    const s = m.index ?? 0;
-    const e = s + m[0].length;
-    if (overlaps(s, e)) continue;
-    const key = m[0].toLowerCase();
-    const known = glossBy.get(key);
-    const g = contextualBy.get(key) ?? (known?.gloss ? known : undefined) ?? CLOSED[key] ?? known;
-    claimed.push({ s, e, surface: m[0], lemma: g?.lemma, gloss: g?.gloss ?? "", kind: "word" });
-  }
-  return claimed.sort((a, b) => a.s - b.s);
+/** The reading document as plain lines: Romaintalk passage, or the text the ingest read off the TV5 image. */
+export function tcfDocumentLines(item: TcfItemView): string[] {
+  return (item.passage ?? item.docText ?? "")
+    .split(/\n+/)
+    .map(s => s.trim())
+    .filter(Boolean);
 }
 
 export async function glossTcfTranscript(examId: string, n: number): Promise<TcfGlossLine[]> {
@@ -547,39 +459,7 @@ export async function glossTcfLines(examId: string, n: number, kind: TcfGlossKin
   if (!item) throw new Error("Unknown TCF item");
   const lines = kind === "document" ? tcfDocumentLines(item) : tcfTranscriptLines(item);
   if (lines.length === 0) return [];
-
-  const numbered = lines.map((t, i) => `[${i + 1}] ${t.replace(/\s+/g, " ")}`).join("\n");
-  const response = await invokeLLM({
-    messages: [
-      { role: "system", content: "You help English speakers understand French. Return only valid JSON matching the schema exactly." },
-      {
-        role: "user",
-        content:
-          (kind === "document"
-            ? `French reading-test document (press article, notice, advert…), one numbered line per paragraph:\n"""\n${numbered}\n"""\n\n`
-            : `French listening-test transcript, one numbered line per turn:\n"""\n${numbered}\n"""\n\n`) +
-          `1) "glosses": for every distinct French word above, give its dictionary form ("lemma") and a concise English meaning as used here ("gloss", 1-5 words). Copy "surface" exactly as it appears, accents preserved.\n` +
-          `2) "contextual": when a surface form's lemma or meaning differs between lines (e.g. "suis" = être vs suivre), add one entry per occurrence with "line" = the bracketed line number (1-${lines.length}). Empty if nothing is ambiguous.\n` +
-          `3) "expressions": multi-word expressions of 2-5 words appearing VERBATIM above that a learner should memorise as ONE unit — greetings and set questions, fixed phrases ("s'il vous plaît", "bien sûr"), discourse markers ("en fait", "du coup"), grammatical chunks ("il y a", "est-ce que", "il faut"), verbs with their fixed preposition ("avoir besoin de"). Exclude ordinary clauses. Copy each phrase exactly, accents and elisions preserved.`,
-      },
-    ],
-    response_format: { type: "json_schema", json_schema: { name: "tcf_transcript_glosses", strict: true, schema: GLOSS_SCHEMA } } as never,
-  });
-  const raw = response.choices[0].message.content ?? "{}";
-  let parsed: { glosses?: { surface: string; lemma: string; gloss: string }[]; contextual?: { line: number; surface: string; lemma: string; gloss: string }[]; expressions?: { phrase: string; gloss: string }[] } = {};
-  try {
-    parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
-  } catch {
-    parsed = {};
-  }
-  const glossBy = new Map<string, { lemma: string; gloss: string }>();
-  for (const g of parsed.glosses ?? []) if (g.surface) glossBy.set(g.surface.toLowerCase(), { lemma: g.lemma, gloss: g.gloss });
-  const contextualByLine = new Map<number, Map<string, { lemma: string; gloss: string }>>();
-  for (const c of parsed.contextual ?? []) {
-    if (!c.surface || !Number.isInteger(c.line)) continue;
-    const m = contextualByLine.get(c.line) ?? new Map();
-    m.set(c.surface.toLowerCase(), { lemma: c.lemma, gloss: c.gloss });
-    contextualByLine.set(c.line, m);
-  }
-  return lines.map((text, i) => ({ text, tokens: layTokens(text, glossBy, contextualByLine.get(i + 1) ?? new Map(), parsed.expressions ?? []) }));
+  const blocks: ArticleBlock[] = lines.map((text, idx) => ({ idx, kind: "paragraph", text, tokens: [] }));
+  await glossBlocks(blocks, `tcf-${kind}-${examId}-${n}`);
+  return blocks.map(b => ({ text: b.text, tokens: b.tokens, en: b.translationEn ?? undefined }));
 }

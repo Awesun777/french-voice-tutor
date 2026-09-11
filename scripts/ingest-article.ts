@@ -58,7 +58,7 @@ const MAX_EXTRACT_CHARS = 24000;
  */
 const WORD_RE = /[A-Za-zÀ-ÿŒœÆæ]+(?:['’-][A-Za-zÀ-ÿŒœÆæ]+)*/g;
 
-interface Token {
+export interface Token {
   s: number;
   e: number;
   surface: string;
@@ -66,7 +66,7 @@ interface Token {
   gloss: string;
   kind: "word" | "expression";
 }
-interface Block {
+export interface Block {
   idx: number;
   kind: "heading" | "paragraph";
   text: string;
@@ -238,10 +238,10 @@ async function extractArticle(pageText: string): Promise<Extracted> {
     if (
       b.kind === "paragraph" &&
       !/[.!?…»":;]$/.test(text) &&
-      (text.match(/[\p{L}\p{N}'’-]+/gu)?.length ?? 0) <= 10 &&
+      (text.match(/[A-Za-zÀ-ÿŒœÆæ0-9'’-]+/g)?.length ?? 0) <= 10 &&
       // Not everything short is an intertitre: agency credits and player
       // leftovers are junk the prompt discards, not headings to promote.
-      !/^(avec (l')?(afp|reuters)|écouter\b)/iu.test(text)
+      !/^(avec (l')?(afp|reuters)|écouter\b)/i.test(text)
     ) {
       b.kind = "heading";
     }
@@ -462,7 +462,7 @@ function isUsefulExpression(phrase: string): boolean {
   if (words.slice(1).some((w) => /^[A-ZÀ-Þ]/.test(w))) return false;
   // Opening on a determiner means it's a noun phrase ("des images
   // exceptionnelles"), not a fixed expression.
-  const first = words[0].toLowerCase().replace(/[’]/g, "'");
+  const first = (words[0] ?? "").toLowerCase().replace(/[’]/g, "'");
   if (LEADING_DETERMINERS.has(first)) return false;
   return true;
 }
@@ -660,7 +660,7 @@ function buildTokens(
     }
   }
 
-  const matches = [...text.matchAll(WORD_RE)];
+  const matches = Array.from(text.matchAll(WORD_RE));
   // Word number (1-based) -> the breakdown piece covering it, so a grouped
   // piece like "suis allé" is emitted once as a single span.
   const partAt = new Map<number, BreakdownPart>();
@@ -797,6 +797,127 @@ function flag(rest: string[], name: string): string | null {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Gloss a list of text blocks in place — the Reading pipeline, reusable:
+ * batched gloss + sentence breakdown requests, contextual homograph readings,
+ * vetted expressions, then a sweep for anything the batches skipped. Other
+ * ingests (the TCF Blanc transcripts and reading documents) call this so
+ * every tab glosses the same way. `cacheSlug` namespaces the LLM cache.
+ */
+export async function glossBlocks(blocks: Block[], cacheSlug: string): Promise<void> {
+  const slug = cacheSlug;
+  // ── Gloss ────────────────────────────────────────────────────────────────
+  // Batched by character count: paragraphs vary far more in length than
+  // transcript cues do, so a fixed count per batch would swing wildly.
+  const batches: Block[][] = [];
+  let current: Block[] = [];
+  let currentChars = 0;
+  for (const b of blocks) {
+    if (currentChars + b.text.length > CHARS_PER_GLOSS_BATCH && current.length) {
+      batches.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(b);
+    currentChars += b.text.length;
+  }
+  if (current.length) batches.push(current);
+
+  console.log(`• glossing ${blocks.length} blocks in ${batches.length} batches`);
+  const payloads = new Array<GlossPayload>(batches.length);
+  const breakdowns = new Array<BreakdownPayload>(batches.length);
+  for (let i = 0; i < batches.length; i += GLOSS_CONCURRENCY) {
+    await Promise.all(
+      batches.slice(i, i + GLOSS_CONCURRENCY).map(async (batch, k) => {
+        const at = i + k;
+        // Bump these when the prompts change, so a re-run gets fresh output
+        // instead of replaying the answers to the old question.
+        // v5: blocks are broken down sentence-first; the per-word pass stays as
+        // the fallback for anything the breakdown does not cover.
+        const gKey = `agloss::v5::${slug}::${at}`;
+        const bKey = `abreak::v3::${slug}::${at}`;
+        const texts = batch.map((b) => b.text);
+        const [gHit, bHit] = await Promise.all([cachedGloss(gKey), cachedBreakdown(bKey)]);
+        const [got, broke] = await Promise.all([
+          gHit ? Promise.resolve(gHit) : glossBatch(texts).then(async (r) => { await putGloss(gKey, r); return r; }),
+          bHit ? Promise.resolve(bHit) : breakdownInChunks(texts, breakdownBatch).then(async (r) => { await putBreakdown(bKey, r); return r; }),
+        ]);
+        payloads[at] = got;
+        breakdowns[at] = broke;
+      })
+    );
+    console.log(`  ${Math.min(i + GLOSS_CONCURRENCY, batches.length)}/${batches.length} batches`);
+  }
+
+  let rejected = 0;
+  batches.forEach((batch, bi) => {
+    const p = payloads[bi] ?? { glosses: [], contextual: [], expressions: [] };
+    const glossBy = new Map(
+      p.glosses.map((g) => [g.surface.toLowerCase(), { lemma: g.lemma, gloss: g.gloss }])
+    );
+    const contextualByBlock = bucketContextual(p.contextual, batch.length);
+    // The curated lexicon is vetted and bypasses the filter; only the model's
+    // suggestions have to earn their place.
+    const kept = p.expressions.filter((e) => isUsefulExpression(e.phrase) && isShortEnoughToGroup(e.phrase));
+    rejected += p.expressions.length - kept.length;
+    const byLine = new Map((breakdowns[bi]?.lines ?? []).map((l) => [l.line, l]));
+    batch.forEach((b, ci) => {
+      const line = byLine.get(ci + 1);
+      // Only parts that actually describe the words they point at survive;
+      // anything else falls through to the older per-word glosses.
+      const parts = line ? validateParts(line.parts ?? [], wordsOf(b.text)) : [];
+      b.translationEn = line?.en?.trim() || undefined;
+      b.tokens = buildTokens(
+        b.text,
+        glossBy,
+        // Kept even when a breakdown exists: the model under-groups at batch
+        // scale (a 353-word article came back with zero groups), and this list
+        // is vetted, so it stays the floor for idioms.
+        [...kept, ...COMMON_EXPRESSIONS],
+        contextualByBlock.get(ci + 1),
+        parts
+      );
+    });
+  });
+  if (rejected) console.log(`  filtered out ${rejected} one-off "expressions"`);
+
+  // Sweep: anything the batches skipped gets one targeted request, capped so a
+  // pathological article can't turn into a huge prompt.
+  // Asked for by their bare form: the model reliably drops elided items
+  // ("l'écart", "J'espère") from a list it is given, but answers happily for
+  // "écart" and "espère". lookupCandidates matches the answer back onto the
+  // original surface.
+  const leftovers = Array.from(
+    new Set(
+      blocks.flatMap((b) =>
+        b.tokens
+          .filter((t) => t.kind === "word" && !t.gloss)
+          .map((t) => {
+            const forms = lookupCandidates(t.surface);
+            return forms[forms.length - 1];
+          })
+      )
+    )
+  ).slice(0, 150);
+  if (leftovers.length) {
+    console.log(`• glossing ${leftovers.length} words the first pass missed`);
+    const extra = await glossLeftovers(leftovers);
+    let filled = 0;
+    for (const b of blocks) {
+      for (const t of b.tokens) {
+        if (t.kind !== "word" || t.gloss) continue;
+        const hit = lookupCandidates(t.surface).map((c) => extra.get(c)).find(Boolean);
+        if (!hit) continue;
+        t.gloss = hit.gloss;
+        if (hit.lemma && hit.lemma.toLowerCase() !== t.surface.toLowerCase()) t.lemma = hit.lemma;
+        filled++;
+      }
+    }
+    console.log(`  filled ${filled} of ${leftovers.length}`);
+  }
+
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const filePath = flag(argv, "--file");
@@ -892,115 +1013,7 @@ async function main() {
     tokens: [],
   }));
 
-  // ── Gloss ────────────────────────────────────────────────────────────────
-  // Batched by character count: paragraphs vary far more in length than
-  // transcript cues do, so a fixed count per batch would swing wildly.
-  const batches: Block[][] = [];
-  let current: Block[] = [];
-  let currentChars = 0;
-  for (const b of blocks) {
-    if (currentChars + b.text.length > CHARS_PER_GLOSS_BATCH && current.length) {
-      batches.push(current);
-      current = [];
-      currentChars = 0;
-    }
-    current.push(b);
-    currentChars += b.text.length;
-  }
-  if (current.length) batches.push(current);
-
-  console.log(`• glossing ${blocks.length} blocks in ${batches.length} batches`);
-  const payloads = new Array<GlossPayload>(batches.length);
-  const breakdowns = new Array<BreakdownPayload>(batches.length);
-  for (let i = 0; i < batches.length; i += GLOSS_CONCURRENCY) {
-    await Promise.all(
-      batches.slice(i, i + GLOSS_CONCURRENCY).map(async (batch, k) => {
-        const at = i + k;
-        // Bump these when the prompts change, so a re-run gets fresh output
-        // instead of replaying the answers to the old question.
-        // v5: blocks are broken down sentence-first; the per-word pass stays as
-        // the fallback for anything the breakdown does not cover.
-        const gKey = `agloss::v5::${slug}::${at}`;
-        const bKey = `abreak::v3::${slug}::${at}`;
-        const texts = batch.map((b) => b.text);
-        const [gHit, bHit] = await Promise.all([cachedGloss(gKey), cachedBreakdown(bKey)]);
-        const [got, broke] = await Promise.all([
-          gHit ? Promise.resolve(gHit) : glossBatch(texts).then(async (r) => { await putGloss(gKey, r); return r; }),
-          bHit ? Promise.resolve(bHit) : breakdownInChunks(texts, breakdownBatch).then(async (r) => { await putBreakdown(bKey, r); return r; }),
-        ]);
-        payloads[at] = got;
-        breakdowns[at] = broke;
-      })
-    );
-    console.log(`  ${Math.min(i + GLOSS_CONCURRENCY, batches.length)}/${batches.length} batches`);
-  }
-
-  let rejected = 0;
-  batches.forEach((batch, bi) => {
-    const p = payloads[bi] ?? { glosses: [], contextual: [], expressions: [] };
-    const glossBy = new Map(
-      p.glosses.map((g) => [g.surface.toLowerCase(), { lemma: g.lemma, gloss: g.gloss }])
-    );
-    const contextualByBlock = bucketContextual(p.contextual, batch.length);
-    // The curated lexicon is vetted and bypasses the filter; only the model's
-    // suggestions have to earn their place.
-    const kept = p.expressions.filter((e) => isUsefulExpression(e.phrase) && isShortEnoughToGroup(e.phrase));
-    rejected += p.expressions.length - kept.length;
-    const byLine = new Map((breakdowns[bi]?.lines ?? []).map((l) => [l.line, l]));
-    batch.forEach((b, ci) => {
-      const line = byLine.get(ci + 1);
-      // Only parts that actually describe the words they point at survive;
-      // anything else falls through to the older per-word glosses.
-      const parts = line ? validateParts(line.parts ?? [], wordsOf(b.text)) : [];
-      b.translationEn = line?.en?.trim() || undefined;
-      b.tokens = buildTokens(
-        b.text,
-        glossBy,
-        // Kept even when a breakdown exists: the model under-groups at batch
-        // scale (a 353-word article came back with zero groups), and this list
-        // is vetted, so it stays the floor for idioms.
-        [...kept, ...COMMON_EXPRESSIONS],
-        contextualByBlock.get(ci + 1),
-        parts
-      );
-    });
-  });
-  if (rejected) console.log(`  filtered out ${rejected} one-off "expressions"`);
-
-  // Sweep: anything the batches skipped gets one targeted request, capped so a
-  // pathological article can't turn into a huge prompt.
-  // Asked for by their bare form: the model reliably drops elided items
-  // ("l'écart", "J'espère") from a list it is given, but answers happily for
-  // "écart" and "espère". lookupCandidates matches the answer back onto the
-  // original surface.
-  const leftovers = [
-    ...new Set(
-      blocks.flatMap((b) =>
-        b.tokens
-          .filter((t) => t.kind === "word" && !t.gloss)
-          .map((t) => {
-            const forms = lookupCandidates(t.surface);
-            return forms[forms.length - 1];
-          })
-      )
-    ),
-  ].slice(0, 150);
-  if (leftovers.length) {
-    console.log(`• glossing ${leftovers.length} words the first pass missed`);
-    const extra = await glossLeftovers(leftovers);
-    let filled = 0;
-    for (const b of blocks) {
-      for (const t of b.tokens) {
-        if (t.kind !== "word" || t.gloss) continue;
-        const hit = lookupCandidates(t.surface).map((c) => extra.get(c)).find(Boolean);
-        if (!hit) continue;
-        t.gloss = hit.gloss;
-        if (hit.lemma && hit.lemma.toLowerCase() !== t.surface.toLowerCase()) t.lemma = hit.lemma;
-        filled++;
-      }
-    }
-    console.log(`  filled ${filled} of ${leftovers.length}`);
-  }
+  await glossBlocks(blocks, slug);
 
   // ── Write ────────────────────────────────────────────────────────────────
   console.log("• writing to database");
