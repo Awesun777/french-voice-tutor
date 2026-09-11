@@ -112,23 +112,25 @@ function SectionTabs({
 }
 
 /**
- * Grade rail under the section rail, shown only for the RFI shelf. RFI's
- * "français facile" pieces are the one source graded across CEFR levels, so
- * they get a second-tier filter where every other section is one flat list.
+ * CEFR level rail under the section rail — multi-select pills. Selecting
+ * nothing means every level; "C1+" gathers everything C1 and above. Applies
+ * to all sections (ungraded articles disappear once any level is picked).
  */
 function LevelTabs({
-  levels, active, onSelect,
-}: { levels: string[]; active: string; onSelect: (l: string) => void }) {
+  levels, selected, onToggle,
+}: { levels: string[]; selected: Set<string>; onToggle: (l: string) => void }) {
   return (
     <nav className="border-b border-border">
       <div className="flex items-center justify-center gap-1.5 py-2 overflow-x-auto">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70 mr-1">Level</span>
         {levels.map((l) => (
           <button
             key={l}
-            onClick={() => onSelect(l)}
+            onClick={() => onToggle(l)}
+            aria-pressed={selected.has(l)}
             className={cn(
               "px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-[0.14em] whitespace-nowrap transition-colors",
-              active === l
+              selected.has(l)
                 ? "bg-speaking-surface text-speaking"
                 : "text-muted-foreground hover:text-foreground"
             )}
@@ -238,14 +240,19 @@ function ColumnStory({ item, onOpen }: { item: FeedItem; onOpen: (s: string) => 
 
 const ALL_SECTIONS = "All";
 
-/** The one graded shelf; must match the --section used by ingest-rfi-facile.ts. */
-const RFI_SECTION = "RFI";
-const RFI_LEVELS = ["A1", "A2", "B1", "B2"];
+const CEFR_LEVELS = ["A1", "A2", "B1", "B2", "C1+"];
 
 function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
   const { data: items = [], isLoading } = trpc.articles.list.useQuery();
   const [active, setActive] = useState<string>(ALL_SECTIONS);
-  const [activeLevel, setActiveLevel] = useState<string>(RFI_LEVELS[0]);
+  // Multi-select CEFR filter; empty = every level.
+  const [selectedLevels, setSelectedLevels] = useState<Set<string>>(new Set());
+  const toggleLevel = (l: string) =>
+    setSelectedLevels((prev) => {
+      const next = new Set(prev);
+      if (next.has(l)) next.delete(l); else next.add(l);
+      return next;
+    });
 
   // Sections come from the data, so adding a source is an ingest argument
   // rather than a code change here. Ordered by how many articles each holds so
@@ -271,11 +278,14 @@ function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
   const shown = useMemo(() => {
     const inSection =
       current === ALL_SECTIONS ? items : items.filter((a) => a.section?.trim() === current);
-    // Second-tier filter: the RFI shelf is browsed one grade at a time.
-    return current === RFI_SECTION
-      ? inSection.filter((a) => a.level?.trim().toUpperCase() === activeLevel)
-      : inSection;
-  }, [items, current, activeLevel]);
+    if (!selectedLevels.size) return inSection;
+    // "C1+" gathers C1, C2 and anything else marked C-something.
+    return inSection.filter((a) => {
+      const lv = a.level?.trim().toUpperCase() ?? "";
+      if (!lv) return false;
+      return lv.startsWith("C") ? selectedLevels.has("C1+") : selectedLevels.has(lv);
+    });
+  }, [items, current, selectedLevels]);
 
   if (isLoading) {
     return (
@@ -298,14 +308,12 @@ function ArticleFeed({ onOpen }: { onOpen: (slug: string) => void }) {
         {tabs.length > 1 && (
           <SectionTabs sections={tabs} active={current} onSelect={setActive} />
         )}
-        {current === RFI_SECTION && (
-          <LevelTabs levels={RFI_LEVELS} active={activeLevel} onSelect={setActiveLevel} />
-        )}
+        <LevelTabs levels={CEFR_LEVELS} selected={selectedLevels} onToggle={toggleLevel} />
 
         {!shown.length ? (
           <p className="text-sm text-muted-foreground text-center py-16">
-            {current === RFI_SECTION
-              ? `No ${activeLevel} articles yet.`
+            {selectedLevels.size
+              ? `No ${Array.from(selectedLevels).join("/")} articles here yet.`
               : "Nothing in this section yet."}
           </p>
         ) : (

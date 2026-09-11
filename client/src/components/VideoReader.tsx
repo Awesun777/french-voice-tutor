@@ -179,9 +179,15 @@ export function VideoFeed({ onOpen }: { onOpen: (youtubeId: string) => void }) {
     // YouTube-style feed: a two-row general grid up top, then themed shelves
     // that scroll horizontally — grouped server-side from the ingest's tags.
     <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-x-4 gap-y-7">
-        {(general.length ? general : all).slice(0, 8).map((v) => (
-          <VideoCard key={v.youtubeId} v={v} onOpen={onOpen} />
+      {/* Exactly two rows on any desktop width: 3 columns (2×3) on narrow
+          screens, 4 (2×4) from xl up — items 7-8 hide in the 3-column range
+          so the grid never spills into a third row. Phones (below md) keep
+          the plain stacked list. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-4 gap-y-7">
+        {(general.length ? general : all).slice(0, 8).map((v, i) => (
+          <div key={v.youtubeId} className={cn(i >= 4 && "sm:max-md:hidden", i >= 6 && "md:max-xl:hidden")}>
+            <VideoCard v={v} onOpen={onOpen} />
+          </div>
         ))}
       </div>
       <Shelf title="Video Podcasts" videos={podcasts} onOpen={onOpen} />
