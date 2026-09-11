@@ -24,6 +24,7 @@ import {
   Loader2,
   Play,
   RotateCcw,
+  Plus,
   Sparkles,
   Square,
   Trophy,
@@ -31,12 +32,20 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { usePronounce } from "@/lib/pronounce";
+import { PronounceButton } from "@/components/PronounceButton";
 import { SPEAKER_LABEL, TCF_SECTION_META, type TcfLetter, type TcfSection } from "@shared/tcfMockExams";
 
 const LETTERS: TcfLetter[] = ["A", "B", "C", "D"];
 const SECTIONS: TcfSection[] = ["oral", "structure", "ecrit"];
 const SECTION_SHORT: Record<TcfSection, string> = { oral: "CO", structure: "SL", ecrit: "CE" };
 const DEFAULT_EXAM = "romaintalk-1";
+const HOVER_CARD_H = 170;
+/** Structural lines: charcoal, not the pale-blue border token — burgundy stays for actions. */
+const LINE = "border-foreground/25";
+
+type GlossToken = { s: number; e: number; surface: string; lemma?: string; gloss: string; kind: "word" | "expression" };
+type GlossLine = { text: string; tokens: GlossToken[] };
 
 type Speaker = keyof typeof SPEAKER_LABEL;
 type Turn = { speaker: Speaker; text: string; url: string };
@@ -294,6 +303,63 @@ export default function TcfMockTab() {
     return { per, right, answered, total: items.length };
   }, [items, answers]);
 
+  // ── glossed transcript (Listening-Lab style hover card) ──
+  const transcriptShown = !!item && !!transcriptOpen[item.n];
+  const hasTranscript = !!item && (!!item.audio?.length || !!item.transcript?.trim());
+  const glossQ = trpc.tcf.gloss.useQuery(
+    { examId, n: item?.n ?? 1 },
+    { enabled: !!item && transcriptShown && hasTranscript, staleTime: Infinity, trpc: { context: { skipBatch: true } } }
+  );
+  const { speak, state: pronounceState, activeText } = usePronounce();
+  const [hover, setHover] = useState<{ token: GlossToken; top: number; left: number } | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+  const cancelHoverClose = useCallback(() => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  }, []);
+  const scheduleHoverClose = useCallback(() => {
+    cancelHoverClose();
+    hoverTimer.current = window.setTimeout(() => setHover(null), 160);
+  }, [cancelHoverClose]);
+  useEffect(() => cancelHoverClose, [cancelHoverClose]);
+  const openHover = useCallback(
+    (token: GlossToken, el: HTMLElement) => {
+      cancelHoverClose();
+      const r = el.getBoundingClientRect();
+      const below = r.bottom + 8;
+      const flip = below + HOVER_CARD_H > window.innerHeight;
+      setHover({ token, top: flip ? Math.max(8, r.top - HOVER_CARD_H - 8) : below, left: Math.max(8, Math.min(r.left, window.innerWidth - 280)) });
+    },
+    [cancelHoverClose]
+  );
+  const utils = trpc.useUtils();
+  const addVocab = trpc.vocab.add.useMutation();
+  const { data: allVocab = [] } = trpc.vocab.list.useQuery();
+  const savedTerms = useMemo(() => new Set(allVocab.map(w => w.term.toLowerCase())), [allVocab]);
+  const saveToken = async (token: GlossToken) => {
+    if (savedTerms.has(token.surface.toLowerCase())) return;
+    try {
+      await addVocab.mutateAsync({
+        term: token.surface,
+        translation: token.gloss || token.surface,
+        entryKind: token.surface.trim().split(/\s+/).length >= 3 ? "phrase" : "word",
+        lessonSource: title || "TCF Blanc",
+      });
+      utils.vocab.list.invalidate();
+      toast.success(`Saved "${token.surface}"`);
+    } catch {
+      toast.error("Failed to save");
+    }
+  };
+
+  // Keep the current question visible in the navigator list.
+  const asideRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    asideRef.current?.querySelector('[data-current="1"]')?.scrollIntoView({ block: "nearest" });
+  }, [n]);
+
   if (examQ.isLoading || !item) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -313,7 +379,6 @@ export default function TcfMockTab() {
 
   const media = mediaRef.current.get(`${examId}:${item.n}`);
   void mediaTick;
-  const transcriptShown = !!transcriptOpen[item.n];
   const revealChoiceText = !item.spokenChoices || isChecked || transcriptShown;
   const explanation = explanations[item.n];
   const transcriptLines: { label: string | null; text: string }[] = item.audio
@@ -325,41 +390,46 @@ export default function TcfMockTab() {
         .map(text => ({ label: null, text }));
 
   const hasDoc = item.hasImage || !!item.passage;
+  const glossLines: GlossLine[] | null = glossQ.data?.lines?.length ? (glossQ.data.lines as GlossLine[]) : null;
+  const isSavedHover = hover ? savedTerms.has(hover.token.surface.toLowerCase()) : false;
 
-  // Navigator button tone — shared by the right sidebar and the mobile strip.
-  const navClass = (it: (typeof items)[number]) => {
+  const navState = (it: (typeof items)[number]) => {
     const a = answers[it.n];
     const c = checkedSet.has(it.n);
-    const state = c ? (a === it.answer ? "right" : "wrong") : a ? "answered" : "blank";
+    return c ? (a === it.answer ? "right" : "wrong") : a ? "answered" : "blank";
+  };
+
+  // Compact number chip — used by the mobile strip.
+  const chipClass = (it: (typeof items)[number]) => {
+    const state = navState(it);
     const current = it.n === item.n && !showResults;
     return cn(
-      "h-8 min-w-8 rounded-md border text-xs font-semibold tabular-nums transition-colors",
-      current && "border-amber-600 bg-amber-600 text-white",
-      !current && state === "right" && "border-emerald-500/60 bg-emerald-500/10 text-emerald-800",
-      !current && state === "wrong" && "border-red-500/60 bg-red-500/10 text-red-800",
-      !current && state === "answered" && "border-foreground/40 bg-muted text-foreground",
-      !current && state === "blank" && "border-border text-muted-foreground hover:bg-muted"
+      "h-8 min-w-8 rounded-md border px-2 text-xs font-semibold tabular-nums transition-colors",
+      current && "border-speaking bg-speaking text-speaking-foreground",
+      !current && state === "right" && "border-emerald-600 text-emerald-800",
+      !current && state === "wrong" && "border-red-600 text-red-800",
+      !current && state === "answered" && "border-foreground/50 text-foreground",
+      !current && state === "blank" && `${LINE} text-muted-foreground hover:bg-muted`
     );
   };
 
   const toolBtn = (active = false) =>
     cn(
       "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-40",
-      active ? "border-amber-600 bg-amber-500/10 text-amber-800" : "border-border bg-transparent hover:border-amber-500/60 hover:bg-amber-500/5"
+      active ? "border-speaking bg-speaking-surface text-speaking" : `${LINE} bg-transparent hover:border-speaking hover:bg-speaking-surface/50`
     );
+  const primaryBtn =
+    "flex items-center gap-1.5 rounded-lg border border-speaking bg-speaking px-4 py-1.5 text-sm font-semibold text-speaking-foreground transition-colors hover:bg-speaking/90 disabled:opacity-40";
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* ── top bar ── */}
-      <header className="flex min-h-14 flex-shrink-0 items-center gap-2 border-b border-border bg-background/80 px-4 py-2 backdrop-blur-sm md:gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="font-display text-[10px] font-bold uppercase tracking-wider text-amber-700">Test Mock · admin</div>
-          <h1 className="truncate font-display text-base font-bold leading-tight md:text-lg">{title}</h1>
-        </div>
+      <header className={cn("flex min-h-14 flex-shrink-0 items-center gap-2 border-b bg-background/80 px-4 py-2 backdrop-blur-sm md:gap-3", LINE)}>
+        <h1 className="min-w-0 flex-1 truncate font-display text-lg font-bold leading-tight md:text-xl">{title}</h1>
         <select
           value={examId}
           onChange={e => switchExam(e.target.value)}
-          className="max-w-[11rem] truncate rounded-lg border border-border bg-transparent px-2 py-1.5 text-sm font-semibold focus:outline-none focus:border-amber-600 md:max-w-none"
+          className={cn("max-w-[11rem] truncate rounded-lg border bg-transparent px-2 py-1.5 text-sm font-semibold focus:border-speaking focus:outline-none md:max-w-none", LINE)}
           title="Série"
         >
           {(examsQ.data?.exams ?? [{ id: examId, title: title || examId, source: "romaintalk", itemCount: 40 }]).map(e => (
@@ -368,21 +438,23 @@ export default function TcfMockTab() {
             </option>
           ))}
         </select>
-        <span className="hidden font-display text-[11px] font-bold uppercase tracking-wider tabular-nums text-muted-foreground sm:inline">
-          {score.answered}/{score.total} répondues
-        </span>
         <button onClick={() => setShowResults(s => !s)} className={toolBtn(showResults)} title="Résultats">
           <Trophy className="h-4 w-4" /> <span className="hidden md:inline">Résultats</span>
         </button>
-        <button onClick={reset} title="Recommencer la série" className={cn(toolBtn(), "hover:border-red-400/60 hover:bg-red-500/5")}>
+        <button onClick={reset} title="Recommencer la série" className={cn(toolBtn(), "hover:border-red-600 hover:bg-red-500/5")}>
           <RotateCcw className="h-4 w-4" /> <span className="hidden md:inline">Recommencer</span>
         </button>
+        <span className="ml-1 font-display text-base font-bold tabular-nums md:text-lg">
+          {score.answered}
+          <span className="text-muted-foreground">/{score.total}</span>
+          <span className="ml-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">répondues</span>
+        </span>
       </header>
 
       {/* mobile navigator strip */}
-      <div className="flex flex-shrink-0 gap-1 overflow-x-auto border-b border-border px-3 py-2 md:hidden">
+      <div className={cn("flex flex-shrink-0 gap-1 overflow-x-auto border-b px-3 py-2 md:hidden", LINE)}>
         {items.map(it => (
-          <button key={it.n} onClick={() => go(it.n)} className={cn(navClass(it), "px-2")}>
+          <button key={it.n} onClick={() => go(it.n)} className={chipClass(it)}>
             {it.n}
           </button>
         ))}
@@ -398,15 +470,15 @@ export default function TcfMockTab() {
           ) : (
             <>
               {/* item strip: number · section · consigne */}
-              <div className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-background/50 px-4 py-2">
+              <div className={cn("flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-background/50 px-4 py-2", LINE)}>
                 <span className="font-display text-sm font-bold tabular-nums">
                   Question {item.n}
                   <span className="text-muted-foreground">/{items.length}</span>
                 </span>
-                <span className="h-4 w-px bg-border" />
+                <span className="h-4 w-px bg-foreground/25" />
                 <span className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{TCF_SECTION_META[item.section].label}</span>
                 {item.level && (
-                  <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground" title="Niveau visé">
+                  <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground", LINE)} title="Niveau visé">
                     {item.level}
                   </span>
                 )}
@@ -416,11 +488,11 @@ export default function TcfMockTab() {
               {/* document zone: picture / passage left, question + panels right */}
               <div className="flex min-h-0 flex-1 flex-col md:flex-row">
                 {hasDoc && (
-                  <section className="flex max-h-[38%] flex-shrink-0 flex-col border-b border-border md:max-h-none md:w-[52%] md:border-b-0 md:border-r">
+                  <section className={cn("flex max-h-[38%] flex-shrink-0 flex-col border-b md:max-h-none md:w-[52%] md:border-b-0 md:border-r", LINE)}>
                     {item.hasImage ? (
                       <div className="flex min-h-0 flex-1 items-center justify-center p-3 md:p-4">
                         {media?.imageUrl ? (
-                          <img src={media.imageUrl} alt="Document" className="max-h-full max-w-full rounded-md border border-border object-contain" />
+                          <img src={media.imageUrl} alt="Document" className="max-h-full max-w-full object-contain" />
                         ) : (
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                         )}
@@ -433,12 +505,12 @@ export default function TcfMockTab() {
 
                 <section className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-4">
                   {item.hasAudio && (
-                    <div className="flex items-center gap-3 border-b border-border pb-3">
+                    <div className={cn("flex items-center gap-3 border-b pb-3", LINE)}>
                       <button
                         onClick={() => (audioState === "idle" ? playItem(item.n) : stopAudio())}
                         className={cn(
-                          "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-white transition-colors",
-                          audioState === "idle" ? "bg-amber-600 hover:bg-amber-600/90" : "bg-neutral-700 hover:bg-neutral-700/90"
+                          "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg transition-colors",
+                          audioState === "idle" ? "bg-speaking text-speaking-foreground hover:bg-speaking/90" : "bg-foreground text-background hover:bg-foreground/90"
                         )}
                         title={audioState === "idle" ? "Écouter" : "Arrêter"}
                       >
@@ -476,13 +548,25 @@ export default function TcfMockTab() {
                   )}
 
                   {transcriptShown && transcriptLines.length > 0 && (
-                    <div className="rounded-lg border border-border p-3 text-sm leading-relaxed">
-                      <div className="mb-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Transcription</div>
+                    <div className={cn("rounded-lg border p-3 text-sm leading-[1.85]", LINE)}>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Transcription</span>
+                        {glossQ.isFetching && (
+                          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Loader2 className="h-3 w-3 animate-spin" /> glossaire…
+                          </span>
+                        )}
+                        {glossQ.isError && <span className="text-[11px] text-red-700">glossaire indisponible</span>}
+                      </div>
                       <div className="space-y-1.5">
                         {transcriptLines.map((line, i) => (
-                          <p key={i} className={cn(item.audio && i === turnIdx && audioState === "playing" && "font-medium text-amber-800")}>
+                          <p key={i} className={cn(item.audio && i === turnIdx && audioState === "playing" && "font-medium text-speaking")}>
                             {line.label && <span className="mr-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{line.label}</span>}
-                            {line.text}
+                            {glossLines?.[i] && glossLines[i].text === line.text ? (
+                              <GlossedLine line={glossLines[i]} onHover={openHover} onLeave={scheduleHoverClose} />
+                            ) : (
+                              line.text
+                            )}
                           </p>
                         ))}
                       </div>
@@ -491,9 +575,9 @@ export default function TcfMockTab() {
                   )}
 
                   {explanation && (
-                    <div className="rounded-lg border border-amber-500/50 p-3">
+                    <div className="rounded-lg border border-speaking/50 p-3">
                       <div className="mb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                        <div className="flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-speaking">
                           <Sparkles className="h-3.5 w-3.5" /> Explication
                         </div>
                         <button onClick={() => explain(true)} disabled={explainMut.isPending} className="text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50">
@@ -509,7 +593,7 @@ export default function TcfMockTab() {
               </div>
 
               {/* choices — bottom, like the TCF IRN screen */}
-              <div className="grid max-h-[40%] flex-shrink-0 gap-2 overflow-y-auto border-t border-border p-3 sm:grid-cols-2 md:px-4">
+              <div className={cn("grid max-h-[40%] flex-shrink-0 gap-2 overflow-y-auto border-t p-3 sm:grid-cols-2 md:px-4", LINE)}>
                 {LETTERS.map((letter, i) => {
                   const raw = item.choices[i] ?? "";
                   const text = revealChoiceText && raw.trim() ? raw : `Réponse ${letter}`;
@@ -520,26 +604,26 @@ export default function TcfMockTab() {
                       ? "border-emerald-600 bg-emerald-500/10"
                       : isChosen
                         ? "border-red-600 bg-red-500/10"
-                        : "border-border opacity-60"
+                        : `${LINE} opacity-60`
                     : isChosen
-                      ? "border-amber-600 bg-amber-500/10"
-                      : "border-border hover:border-amber-500/60 hover:bg-amber-500/5";
+                      ? "border-speaking bg-speaking-surface"
+                      : `${LINE} hover:border-speaking hover:bg-speaking-surface/50`;
                   const badge =
                     isChecked && isRight
                       ? "border-emerald-600 bg-emerald-600 text-white"
                       : isChecked && isChosen
                         ? "border-red-600 bg-red-600 text-white"
                         : isChosen
-                          ? "border-amber-600 bg-amber-600 text-white"
-                          : "border-border text-foreground";
+                          ? "border-speaking bg-speaking text-speaking-foreground"
+                          : `${LINE} text-foreground`;
                   return (
                     <button
                       key={letter}
                       onClick={() => choose(letter)}
                       disabled={isChecked}
-                      className={cn("flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-default", tone)}
+                      className={cn("flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors disabled:cursor-default", tone)}
                     >
-                      <span className={cn("mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border text-xs font-bold", badge)}>
+                      <span className={cn("flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border text-xs font-bold", badge)}>
                         {isChecked && isRight ? <Check className="h-3.5 w-3.5" /> : isChecked && isChosen ? <X className="h-3.5 w-3.5" /> : letter}
                       </span>
                       <span className="leading-snug">{text}</span>
@@ -549,16 +633,12 @@ export default function TcfMockTab() {
               </div>
 
               {/* action bar */}
-              <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-3 py-2 md:px-4">
+              <div className={cn("flex flex-shrink-0 items-center gap-2 border-t px-3 py-2 md:px-4", LINE)}>
                 <button onClick={() => go(item.n - 1)} disabled={item.n <= 1} className={toolBtn()}>
                   <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Précédente</span>
                 </button>
                 <div className="flex flex-1 flex-wrap items-center justify-center gap-2">
-                  <button
-                    onClick={check}
-                    disabled={isChecked}
-                    className="flex items-center gap-1.5 rounded-lg border border-amber-600 bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-600/90 disabled:opacity-40"
-                  >
+                  <button onClick={check} disabled={isChecked} className={primaryBtn}>
                     <Check className="h-4 w-4" /> Vérifier
                   </button>
                   {transcriptLines.length > 0 && (
@@ -578,15 +658,15 @@ export default function TcfMockTab() {
           )}
         </main>
 
-        {/* ── right navigator ── */}
-        <aside className="hidden min-h-0 w-60 flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-background/50 md:flex">
+        {/* ── right navigator: one question per row ── */}
+        <aside ref={asideRef} className={cn("hidden min-h-0 w-44 flex-shrink-0 flex-col overflow-y-auto border-l bg-background/50 md:flex", LINE)}>
           {SECTIONS.map(sec => {
             const group = items.filter(it => it.section === sec);
             if (group.length === 0) return null;
             const s = score.per[sec];
             return (
-              <div key={sec} className="border-b border-border">
-                <div className="flex items-center justify-between px-3 py-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              <div key={sec}>
+                <div className={cn("sticky top-0 z-10 flex items-center justify-between border-b bg-background px-3 py-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground", LINE)}>
                   <span title={TCF_SECTION_META[sec].label}>
                     {SECTION_SHORT[sec]} <span className="font-normal normal-case tracking-normal">· {TCF_SECTION_META[sec].label}</span>
                   </span>
@@ -594,25 +674,104 @@ export default function TcfMockTab() {
                     {s.right}/{s.total}
                   </span>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5 px-3 pb-3">
-                  {group.map(it => (
-                    <button key={it.n} onClick={() => go(it.n)} className={navClass(it)}>
-                      {it.n}
+                {group.map(it => {
+                  const state = navState(it);
+                  const current = it.n === item.n && !showResults;
+                  return (
+                    <button
+                      key={it.n}
+                      data-current={current ? "1" : undefined}
+                      onClick={() => go(it.n)}
+                      className={cn(
+                        "flex h-8 w-full items-center gap-2 border-b border-foreground/10 px-3 text-left text-xs transition-colors",
+                        current ? "bg-speaking text-speaking-foreground" : "hover:bg-muted"
+                      )}
+                    >
+                      <span className="w-6 font-display font-bold tabular-nums">{it.n}</span>
+                      <span className={cn("flex-1 truncate", !current && "text-muted-foreground")}>
+                        {state === "blank" ? "—" : `Réponse ${answers[it.n]}`}
+                      </span>
+                      {state === "right" && <Check className={cn("h-3.5 w-3.5", !current && "text-emerald-700")} />}
+                      {state === "wrong" && <X className={cn("h-3.5 w-3.5", !current && "text-red-700")} />}
+                      {state === "answered" && <span className={cn("h-2 w-2 rounded-full", current ? "bg-speaking-foreground" : "bg-foreground/60")} />}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             );
           })}
-          <div className="mt-auto space-y-1 px-3 py-3 text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-foreground/40 bg-muted" /> répondue</div>
-            <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-emerald-500/60 bg-emerald-500/10" /> juste</div>
-            <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-red-500/60 bg-red-500/10" /> fausse</div>
-          </div>
         </aside>
       </div>
+
+      {hover && (
+        <div
+          style={{ top: hover.top, left: hover.left }}
+          onMouseEnter={cancelHoverClose}
+          onMouseLeave={scheduleHoverClose}
+          className="fixed z-50 w-64 rounded-2xl bg-popover p-3 shadow-[0_12px_32px_-8px_rgb(23_63_107_/_0.35)] ring-1 ring-black/5"
+        >
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-sm font-bold text-foreground">{hover.token.surface}</p>
+              {hover.token.lemma && <p className="text-xs italic text-muted-foreground">{hover.token.lemma}</p>}
+            </div>
+            <PronounceButton
+              text={hover.token.surface}
+              speak={speak}
+              state={pronounceState}
+              activeText={activeText}
+              className="flex-shrink-0 bg-primary/15 p-1.5 text-primary hover:bg-primary/25"
+              iconSize="w-3.5 h-3.5"
+            />
+          </div>
+          <p className="mt-1.5 text-sm text-foreground">{hover.token.gloss || <span className="italic text-muted-foreground">no gloss</span>}</p>
+          <button
+            onClick={() => saveToken(hover.token)}
+            disabled={isSavedHover}
+            className={cn(
+              "mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition-colors",
+              isSavedHover ? "bg-emerald-500/15 text-emerald-700" : "bg-primary text-primary-foreground hover:bg-primary/90"
+            )}
+          >
+            {isSavedHover ? (
+              <>
+                <Check className="h-3.5 w-3.5" /> Saved
+              </>
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5" /> Save to library
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+/** One transcript line with each token underlined and hoverable (same look as Reading / Listening). */
+function GlossedLine({ line, onHover, onLeave }: { line: GlossLine; onHover: (t: GlossToken, el: HTMLElement) => void; onLeave: () => void }) {
+  const parts: React.ReactNode[] = [];
+  let at = 0;
+  line.tokens.forEach(t => {
+    if (t.s > at) parts.push(<span key={`gap-${at}`}>{line.text.slice(at, t.s)}</span>);
+    parts.push(
+      <span
+        key={`tok-${t.s}`}
+        onMouseEnter={e => onHover(t, e.currentTarget)}
+        onMouseLeave={onLeave}
+        className={cn(
+          "cursor-help transition-colors",
+          t.kind === "expression" ? "border-b-2 border-dashed border-speaking/60 hover:bg-speaking-surface" : "border-b border-dashed border-muted-foreground/40 hover:bg-primary/10"
+        )}
+      >
+        {line.text.slice(t.s, t.e)}
+      </span>
+    );
+    at = t.e;
+  });
+  if (at < line.text.length) parts.push(<span key="tail">{line.text.slice(at)}</span>);
+  return <>{parts}</>;
 }
 
 function ResultsCard({
@@ -630,7 +789,7 @@ function ResultsCard({
   const blank = items.filter(it => !answers[it.n]);
   return (
     <div className="mx-auto max-w-3xl space-y-5 p-4 md:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-foreground/25 pb-4">
         <div>
           <div className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Résultats</div>
           <div className="font-display text-4xl font-bold tabular-nums">
@@ -647,14 +806,14 @@ function ResultsCard({
           const s = score.per[sec];
           const pct = s.total ? Math.round((100 * s.right) / s.total) : 0;
           return (
-            <div key={sec} className="rounded-lg border border-border p-3">
+            <div key={sec} className="rounded-lg border border-foreground/25 p-3">
               <div className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{TCF_SECTION_META[sec].label}</div>
               <div className="mt-1 text-2xl font-bold tabular-nums">
                 {s.right}
                 <span className="text-sm text-muted-foreground">/{s.total}</span>
               </div>
               <div className="mt-2 h-1 overflow-hidden bg-muted">
-                <div className="h-full bg-amber-600" style={{ width: `${pct}%` }} />
+                <div className="h-full bg-speaking" style={{ width: `${pct}%` }} />
               </div>
             </div>
           );
@@ -677,7 +836,7 @@ function ResultsCard({
           <div className="mb-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Sans réponse</div>
           <div className="flex flex-wrap gap-1.5">
             {blank.map(it => (
-              <button key={it.n} onClick={() => onGo(it.n)} className="rounded-md border border-border px-2.5 py-1 text-xs font-semibold hover:bg-muted">
+              <button key={it.n} onClick={() => onGo(it.n)} className="rounded-md border border-foreground/25 px-2.5 py-1 text-xs font-semibold hover:bg-muted">
                 {it.n}
               </button>
             ))}
