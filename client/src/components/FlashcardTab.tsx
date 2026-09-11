@@ -64,9 +64,9 @@ const SM2_STATUS_COLORS: Record<string, string> = {
  * is the middle option and has no natural side.
  */
 const GRADES = [
-  { grade: 1 as const, key: "again" as const, label: "Again", dir: "left" as const, color: "bg-red-500/20 hover:bg-red-500/40 text-red-800 border-red-500/30" },
-  { grade: 3 as const, key: "good" as const, label: "Good", dir: "up" as const, color: "bg-blue-500/20 hover:bg-blue-500/40 text-blue-800 border-blue-500/30" },
-  { grade: 5 as const, key: "easy" as const, label: "Easy", dir: "right" as const, color: "bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-800 border-emerald-500/30" },
+  { grade: 1 as const, key: "again" as const, label: "Again", dir: "left" as const, color: "bg-card hover:bg-red-50 text-red-800 border-foreground/15" },
+  { grade: 3 as const, key: "good" as const, label: "Good", dir: "up" as const, color: "bg-card hover:bg-primary/5 text-primary border-foreground/15" },
+  { grade: 5 as const, key: "easy" as const, label: "Easy", dir: "right" as const, color: "bg-card hover:bg-emerald-50 text-emerald-800 border-foreground/15" },
 ];
 
 type SwipeDir = "left" | "up" | "right";
@@ -621,7 +621,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
                 <input
                   value={editTerm}
                   onChange={(e) => setEditTerm(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:border-primary"
+                  className="w-full px-0 py-2 rounded-none bg-transparent border-0 border-b border-foreground/20 text-2xl font-bold text-center text-foreground focus:outline-none focus:border-primary"
                 />
               </div>
               <div className="space-y-1">
@@ -630,7 +630,7 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
                   value={editTranslation}
                   onChange={(e) => setEditTranslation(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && saveEdit()}
-                  className="w-full px-3 py-2 rounded-xl bg-background border border-border text-sm text-foreground focus:outline-none focus:border-primary"
+                  className="w-full px-0 py-2 rounded-none bg-transparent border-0 border-b border-foreground/20 text-2xl font-bold text-center text-foreground focus:outline-none focus:border-primary"
                 />
               </div>
               <div className="flex gap-2 pt-1">
@@ -662,17 +662,17 @@ export default function FlashcardTab({ reviewTarget }: { reviewTarget?: { dateKe
           >
           <div className="flip-card w-full h-full" onClick={() => setFlipped((f) => !f)}>
             <div className={cn("flip-card-inner w-full h-full", flipped && "flipped")}>
-              <div className="flip-card-front absolute inset-0 bg-gradient-to-br from-card to-muted/30 rounded-2xl flex flex-col items-center justify-center p-6 cursor-grab active:cursor-grabbing shadow-lg">
+              <div className="flip-card-front absolute inset-0 bg-card border border-foreground/10 rounded-2xl flex flex-col items-center justify-center p-6 cursor-grab active:cursor-grabbing">
                 {sm2Status && (
                   <span className={cn("absolute top-3 right-3 text-[10px] px-1.5 py-0.5 rounded-full font-semibold", SM2_STATUS_COLORS[sm2Status] ?? "bg-muted text-muted-foreground")}>
                     {SM2_STATUS_LABELS[sm2Status] ?? sm2Status}
                   </span>
                 )}
-                <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.term : currentWord.translation}</p>
+                <p onDoubleClick={e => { e.stopPropagation(); startEdit(); }} className="text-2xl sm:text-3xl font-bold text-foreground text-center">{front === "fr" ? currentWord.term : currentWord.translation}</p>
                 <p className="text-xs text-muted-foreground mt-2">Tap or press <kbd className="font-mono border border-current rounded px-1 leading-tight">space</kbd> to reveal</p>
               </div>
-              <div className="flip-card-back absolute inset-0 bg-gradient-to-br from-primary/10 to-card border border-primary/30 rounded-2xl flex flex-col items-center justify-center p-5 cursor-grab active:cursor-grabbing shadow-lg">
-                <p className="text-2xl font-bold text-foreground text-center">{front === "fr" ? currentWord.translation : currentWord.term}</p>
+              <div className="flip-card-back absolute inset-0 bg-card border border-foreground/10 rounded-2xl flex flex-col items-center justify-center p-5 cursor-grab active:cursor-grabbing">
+                <p onDoubleClick={e => { e.stopPropagation(); startEdit(); }} className="text-2xl sm:text-3xl font-bold text-foreground text-center">{front === "fr" ? currentWord.translation : currentWord.term}</p>
                 {/* Always keyed on the French side, whichever face it is on, so
                     the sentence demonstrates the French rather than the gloss. */}
                 <CardExample

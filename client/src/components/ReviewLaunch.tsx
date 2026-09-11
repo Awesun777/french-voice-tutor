@@ -1,456 +1,87 @@
-/**
- * ReviewLaunch — the shared first screen for both Quiz and Flashcards.
- *
- * Step 1: choose a source — "Due Today" (the spaced-repetition queue),
- *         "Latest saved" (most recently added words, newest first), or a
- *         specific date from the picker.
- * Step 2: choose how many words — a few presets or "All … left".
- *
- * Calls `onStart({ mode, dateKey, limit })`:
- *   - Due Today      → { mode: "due",    limit }
- *   - Latest saved   → { mode: "latest", limit }
- *   - a date group   → { mode: "all",  dateKey, limit }
- * `limit` is omitted when the user picks "All … left".
- *
- * When `initialDateKey` is provided (deep-linked from an import / voice CTA),
- * that date is pre-selected and we jump straight to the count chooser.
- *
- * Visually this is the app's front door for reviewing, so it carries more
- * weight than a form: drifting colour fields behind the content, a hero card
- * that counts up to the due total, and the SM-2 buckets surfaced as live stats
- * rather than left buried in the Progress tab. All motion is suppressed under
- * prefers-reduced-motion.
- */
-import { useState, useEffect, useRef } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { useRef, useState } from "react";
+import { ArrowRight, ChevronLeft, ChevronRight, History, Star, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Brain, ChevronLeft, Sparkles, ArrowRight, Check, History } from "lucide-react";
-import { VocabHeatmap } from "@/components/VocabHeatmap";
+import { VocabHeatmap } from "./VocabHeatmap";
 
-function todayKey() { return new Date().toISOString().split("T")[0]; }
-function yesterdayKey() { return new Date(Date.now() - 86400000).toISOString().split("T")[0]; }
-function fmtDateLabel(dk: string) {
-  if (dk === todayKey()) return "Today";
-  if (dk === yesterdayKey()) return "Yesterday";
-  return new Date(dk + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-/**
- * GitHub-style contribution calendar of saved words over the last year —
- * replaces the old date dropdown. Green scales with that day's word count,
- * today reads as the accent square, and clicking a day with words launches
- * straight into choosing how many to review. Same visual grammar as the
- * news-radar applications calendar, in this app's tokens.
- */
 export interface ReviewLaunchChoice {
-  mode: "due" | "all" | "latest";
+  mode: "due" | "all" | "latest" | "starred";
   dateKey?: string;
   limit?: number;
-  /** Flashcards only — which side of the card shows first. */
   front?: "fr" | "en";
 }
-
 interface ReviewLaunchProps {
-  /** What kind of session this launches into — only affects the copy. */
   kind: "quiz" | "flashcards";
-  /** Pre-select this date and jump to the count chooser (used by CTAs). */
   initialDateKey?: string | null;
   onStart: (choice: ReviewLaunchChoice) => void;
-  /** Optional art rendered above the copy, inside the centred column so it
-   *  doesn't strand the launch controls halfway down the pane. */
   header?: React.ReactNode;
 }
 
-// ─── Motion helpers ───────────────────────────────────────────────────────────
-
-/**
- * Counts from 0 to `value` on mount. Ease-out so it decelerates into the final
- * number rather than stopping dead. Written with rAF rather than a spring: the
- * value must land on exactly `value`, and it has to read as a count, not a blur.
- */
-function CountUp({ value, className }: { value: number; className?: string }) {
-  const reduce = useReducedMotion();
-  const [shown, setShown] = useState(reduce ? value : 0);
-  const frame = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (reduce) { setShown(value); return; }
-    const DURATION = 900;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / DURATION);
-      const eased = 1 - Math.pow(1 - t, 3);
-      setShown(Math.round(value * eased));
-      if (t < 1) frame.current = requestAnimationFrame(tick);
-    };
-    frame.current = requestAnimationFrame(tick);
-    return () => { if (frame.current !== null) cancelAnimationFrame(frame.current); };
-  }, [value, reduce]);
-
-  return <span className={className}>{shown}</span>;
+function LanguageSwipe({ value, onChange }: { value: "fr" | "en"; onChange: (v: "fr" | "en") => void }) {
+  const drag = useRef<{ x: number; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const [offset, setOffset] = useState<number | null>(null);
+  const english = value === "en";
+  return <button type="button" role="switch" aria-label="Show English first" aria-checked={english}
+    onPointerDown={e => { if (e.button !== 0) return; suppressClick.current = false; drag.current = { x: e.clientX, moved: false }; e.currentTarget.setPointerCapture(e.pointerId); }}
+    onPointerMove={e => { if (!drag.current) return; const delta = e.clientX - drag.current.x; if (Math.abs(delta) > 5) drag.current.moved = true; if (drag.current.moved) setOffset(Math.max(0, Math.min(162, (english ? 162 : 0) + delta))); }}
+    onPointerUp={e => { const d = drag.current; drag.current = null; if (d?.moved) { suppressClick.current = true; onChange((english ? 162 : 0) + e.clientX - d.x > 81 ? "en" : "fr"); } setOffset(null); if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId); }}
+    onPointerCancel={() => { drag.current = null; setOffset(null); }}
+    onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } onChange(english ? "fr" : "en"); }}
+    onKeyDown={e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); onChange(e.key === "ArrowRight" ? "en" : "fr"); } }}
+    className={cn("relative h-12 w-[210px] shrink-0 touch-pan-y select-none rounded-full text-white text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary", english ? "bg-[#A63D4A] pl-3 pr-12" : "bg-[#244FA0] pl-12 pr-3")}>
+    <span aria-hidden="true" style={{ transform: `translateX(${offset ?? (english ? 162 : 0)}px)` }} className={cn("absolute top-[3px] left-[3px] grid h-[42px] w-[42px] place-items-center rounded-full bg-white", offset === null && "transition-transform motion-reduce:transition-none", english ? "text-[#A63D4A]" : "text-[#244FA0]")}>
+      <ChevronRight className={cn("h-4 w-4", english && "rotate-180")} />
+      <span className="absolute bottom-1 left-2.5 h-2 w-[22px]" style={{ background: english ? "linear-gradient(90deg, transparent 42%, #BD3342 42% 58%, transparent 58%), linear-gradient(transparent 35%, #BD3342 35% 65%, transparent 65%), white" : "linear-gradient(90deg, #244FA0 33%, white 33% 66%, #CF3544 66%)" }} />
+    </span>
+    {english ? "Show English" : "Show French"}
+  </button>;
 }
 
-/**
- * Two large, heavily blurred colour fields drifting behind the content. Cheap
- * (two transformed divs) and the only thing standing between this screen and
- * the flat cream it used to be. Purely decorative, so aria-hidden.
- */
-function DriftingField() {
-  const reduce = useReducedMotion();
-  const common = "absolute rounded-full blur-3xl pointer-events-none";
-  if (reduce) {
-    return (
-      <div aria-hidden className="absolute inset-0 overflow-hidden">
-        <div className={cn(common, "w-[28rem] h-[28rem] -top-32 -left-24 bg-accent/25")} />
-        <div className={cn(common, "w-[24rem] h-[24rem] -bottom-28 -right-20 bg-speaking/15")} />
-      </div>
-    );
-  }
-  return (
-    <div aria-hidden className="absolute inset-0 overflow-hidden">
-      <motion.div
-        className={cn(common, "w-[28rem] h-[28rem] -top-32 -left-24 bg-accent/25")}
-        animate={{ x: [0, 40, -20, 0], y: [0, 30, 50, 0], scale: [1, 1.08, 0.96, 1] }}
-        transition={{ duration: 26, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className={cn(common, "w-[24rem] h-[24rem] -bottom-28 -right-20 bg-speaking/15")}
-        animate={{ x: [0, -35, 15, 0], y: [0, -25, -45, 0], scale: [1, 0.94, 1.06, 1] }}
-        transition={{ duration: 32, repeat: Infinity, ease: "easeInOut" }}
-      />
-    </div>
-  );
-}
-
-/**
- * One element rising into place.
- *
- * Each item owns its own delay rather than inheriting a staggerChildren
- * orchestration from the parent. Half this screen mounts late — the stats grid
- * and the date picker only appear once their queries resolve — and with parent
- * orchestration the children present at first paint were left stranded on the
- * `hidden` variant while the later arrivals animated normally.
- */
-function Rise({
-  delay = 0,
-  className,
-  children,
-}: {
-  delay?: number;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const reduce = useReducedMotion();
-  if (reduce) return <div className={className}>{children}</div>;
-  return (
-    <motion.div
-      className={className}
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, delay, ease: [0.22, 1, 0.36, 1] }}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-/** The four SM-2 buckets, in the order a word actually travels through them. */
-const BUCKETS = [
-  { key: "new", label: "New", dot: "bg-accent-strong" },
-  { key: "learning", label: "Learning", dot: "bg-star" },
-  { key: "review", label: "Review", dot: "bg-primary" },
-  { key: "mastered", label: "Mastered", dot: "bg-emerald-600" },
-] as const;
-
-// ─── Screen ───────────────────────────────────────────────────────────────────
-
-export default function ReviewLaunch({ kind, initialDateKey, onStart, header }: ReviewLaunchProps) {
-  const { data: stats } = trpc.review.getStats.useQuery();
-  const { data: dates = [] } = trpc.review.getDates.useQuery();
-  const reduce = useReducedMotion();
-
-  // source: null = step 1; "due" or a dateKey string = step 2 (count chooser)
+export default function ReviewLaunch({ kind, initialDateKey, onStart }: ReviewLaunchProps) {
+  const statsQ = trpc.review.getStats.useQuery();
+  const datesQ = trpc.review.getDates.useQuery();
+  const stats = statsQ.data;
+  const dates = datesQ.data ?? [];
   const [source, setSource] = useState<string | null>(initialDateKey ?? null);
-  // Flashcards: which side shows first (French term or English translation).
   const [front, setFront] = useState<"fr" | "en">("fr");
-
-  const dueToday = stats?.dueToday ?? 0;
-  const verb = kind === "quiz" ? "Quiz" : "Review";
-  const totalWords = dates.reduce((sum, d) => sum + d.total, 0);
-
-  // Available word count for the chosen source (bounds the presets).
-  const available =
-    source === "due"
-      ? dueToday
-      : source === "latest"
-        ? totalWords
-        : source
-          ? dates.find((d) => d.dateKey === source)?.total ?? 0
-          : 0;
-
-  const presets = [10, 20, 30, 50].filter((n) => n < available);
-
-  const frontChoice = kind === "flashcards" ? front : undefined;
-
-  function start(limit?: number) {
-    if (source === "due") {
-      // For "All left", pass the due count as an explicit limit so the server
-      // returns every due word (an explicit limit overrides the daily cap).
-      onStart({ mode: "due", limit: limit ?? (available || undefined), front: frontChoice });
-    } else if (source === "latest") {
-      // Same trick: "All" passes the library total so the server's default
-      // latest-cap (20) doesn't truncate the session. Clamped to the API's
-      // max limit (500) in case the library is bigger than that.
-      onStart({ mode: "latest", limit: limit ?? (available ? Math.min(available, 500) : undefined), front: frontChoice });
-    } else if (source) {
-      onStart({ mode: "all", dateKey: source, limit, front: frontChoice });
-    }
+  const remaining = stats?.dueToday ?? 0;
+  const reviewed = stats?.reviewedToday ?? 0;
+  const total = remaining + reviewed;
+  const percent = total ? Math.round(reviewed / total * 100) : 0;
+  const allWords = dates.reduce((n, d) => n + d.total, 0);
+  const available = source === "due" ? remaining : source === "latest" ? allWords : source === "starred" ? stats?.starred ?? 0 : dates.find(d => d.dateKey === source)?.total ?? 0;
+  const max = Math.min(available, 500);
+  const label = source === "due" ? "Due today" : source === "latest" ? "Latest saved words" : source === "starred" ? "Starred words" : source ? new Date(source + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  function start(limit: number) {
+    if (!source) return;
+    onStart({ mode: source === "due" || source === "latest" || source === "starred" ? source : "all", dateKey: ["due", "latest", "starred"].includes(source) ? undefined : source, limit, front });
   }
-
-  // ── Step 2: how many words ──────────────────────────────────────────────
-  if (source) {
-    const label = source === "due" ? "Due Today" : source === "latest" ? "Latest Saved" : fmtDateLabel(source);
-    return (
-      <div className="relative flex-1 flex flex-col items-center justify-center p-6 overflow-hidden">
-        <DriftingField />
-        <div className="relative w-full max-w-md space-y-6 text-center">
-          <Rise>
-            <button
-              onClick={() => setSource(initialDateKey ? source : null)}
-              disabled={!!initialDateKey}
-              className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors disabled:opacity-0"
-            >
-              <ChevronLeft className="w-3.5 h-3.5 inline -mt-0.5" /> Back
-            </button>
-          </Rise>
-
-          <Rise delay={0.07}>
-            <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-[0.18em]">{verb}</p>
-            <h2 className="font-display text-2xl font-bold text-foreground mt-1.5">{label}</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              <CountUp value={available} className="font-bold text-foreground" /> word{available === 1 ? "" : "s"} available
-            </p>
-            {source === "latest" && (
-              <p className="text-xs text-muted-foreground mt-1">Newest first — starts from the words you saved most recently</p>
-            )}
-          </Rise>
-
-          {available === 0 ? (
-            <Rise delay={0.14}>
-              <p className="text-sm text-muted-foreground">
-                Nothing to review here right now. {source === "due" ? "Come back later or pick a date." : ""}
-              </p>
-            </Rise>
-          ) : (
-            <>
-              <Rise delay={0.14}>
-                <p className="text-sm font-semibold text-foreground">How many words?</p>
-              </Rise>
-              <Rise delay={0.21} className="flex flex-wrap gap-2.5 justify-center">
-                {presets.map((n) => (
-                  <motion.button
-                    key={n}
-                    onClick={() => start(n)}
-                    whileHover={reduce ? undefined : { y: -2 }}
-                    whileTap={reduce ? undefined : { scale: 0.96 }}
-                    className="px-6 py-3 rounded-2xl bg-card text-foreground font-bold text-sm shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.2)] hover:shadow-[0_10px_24px_-10px_rgb(23_63_107_/_0.35)] transition-shadow"
-                  >
-                    {n}
-                  </motion.button>
-                ))}
-                <motion.button
-                  onClick={() => start(undefined)}
-                  whileHover={reduce ? undefined : { y: -2 }}
-                  whileTap={reduce ? undefined : { scale: 0.96 }}
-                  className="group px-6 py-3 rounded-2xl bg-primary text-primary-foreground font-bold text-sm shadow-[0_8px_20px_-8px_rgb(23_63_107_/_0.6)] hover:shadow-[0_14px_30px_-10px_rgb(23_63_107_/_0.7)] transition-shadow inline-flex items-center gap-2"
-                >
-                  All {available} left
-                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-                </motion.button>
-              </Rise>
-            </>
-          )}
+  const primary = "rounded-xl bg-primary text-primary-foreground px-5 py-3 text-sm font-bold disabled:opacity-40 hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+  return <div className="flex-1 min-h-0 overflow-y-auto bg-background px-4 py-5 sm:px-6">
+    <div className="mx-auto w-full max-w-5xl">
+      <h1 className="text-2xl font-bold tracking-tight mb-5">{kind === "quiz" ? "Quiz" : "Flashcards"}</h1>
+      {statsQ.isLoading ? <div className="p-12 flex justify-center"><Loader2 aria-label="Loading review counts" className="animate-spin" /></div> : statsQ.isError ? <div role="alert" className="p-6">Couldn’t load your review counts. <button onClick={() => statsQ.refetch()} className="underline">Try again</button></div> : <section aria-label="Daily review summary" className="bg-card border border-foreground/10 rounded-3xl px-5 sm:px-7 py-5">
+        <p className="text-xs text-muted-foreground">YOUR DAILY REVIEW</p>
+        <div className="flex flex-wrap items-center justify-between gap-5 mt-2 mb-5">
+          <div><div className="text-7xl sm:text-8xl font-black leading-none tracking-tighter tabular-nums">{remaining.toLocaleString()}</div><p className="text-lg font-bold mt-2">words left to review</p></div>
+          <div className="flex flex-col gap-2.5"><button disabled={!remaining} onClick={() => setSource("due")} className={primary}>{remaining ? "Start review" : "All caught up"}</button><LanguageSwipe value={front} onChange={setFront} /></div>
         </div>
-      </div>
-    );
-  }
-
-  // ── Step 1: choose source ───────────────────────────────────────────────
-  const caughtUp = dueToday === 0;
-  const total = (stats?.new ?? 0) + (stats?.learning ?? 0) + (stats?.review ?? 0) + (stats?.mastered ?? 0);
-
-  return (
-    <div className="relative flex-1 flex flex-col items-center justify-center p-6 overflow-hidden">
-      <DriftingField />
-
-      <div className="relative w-full max-w-lg space-y-6">
-        {header && (
-          <Rise className="flex justify-center">
-            {/* Soft halo behind whatever art the tab supplies, so it sits on the
-                page rather than floating unattached. */}
-            <div className="relative">
-              <div aria-hidden className="absolute inset-0 -m-3 rounded-full bg-accent/20 blur-2xl" />
-              <div className="relative">{header}</div>
-            </div>
-          </Rise>
-        )}
-
-        <Rise delay={0.07} className="text-center">
-          <p className="font-display text-xs font-bold text-muted-foreground uppercase tracking-[0.18em]">{verb}</p>
-          <h2 className="font-display text-2xl sm:text-3xl font-bold text-foreground mt-1.5 leading-tight">
-            What do you want to review?
-          </h2>
-        </Rise>
-
-        {/* Hero — the one obvious thing to press. */}
-        <Rise delay={0.14}>
-        <motion.button
-          onClick={() => !caughtUp && setSource("due")}
-          disabled={caughtUp}
-          whileHover={reduce || caughtUp ? undefined : { y: -3 }}
-          whileTap={reduce || caughtUp ? undefined : { scale: 0.99 }}
-          className={cn(
-            "group relative w-full overflow-hidden rounded-3xl px-6 py-6 text-left transition-shadow",
-            caughtUp
-              ? "bg-card cursor-default shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)]"
-              : "bg-primary text-primary-foreground shadow-[0_14px_34px_-14px_rgb(23_63_107_/_0.75)] hover:shadow-[0_20px_44px_-14px_rgb(23_63_107_/_0.85)]"
-          )}
-        >
-          {/* Shimmer sweep on hover — the "this is the button" cue. */}
-          {!caughtUp && !reduce && (
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 group-hover:translate-x-full"
-            />
-          )}
-
-          {caughtUp ? (
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
-                <Check className="w-6 h-6 text-emerald-600" />
-              </div>
-              <div>
-                <p className="font-display text-lg font-bold text-foreground">All caught up</p>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Nothing due today. Pick a date below to review anyway.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-5">
-              <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center flex-shrink-0">
-                <Brain className="w-7 h-7" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground/70">
-                  Due today
-                </p>
-                <p className="font-display text-4xl font-bold leading-none mt-1">
-                  <CountUp value={dueToday} />
-                  <span className="text-base font-semibold text-primary-foreground/70 ml-2">
-                    word{dueToday === 1 ? "" : "s"}
-                  </span>
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5 text-sm font-bold flex-shrink-0">
-                Start
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-              </div>
-            </div>
-          )}
-        </motion.button>
-        </Rise>
-
-        {/* Latest saved — jump straight to the words added most recently,
-            newest first, without hunting for today's square on the heatmap. */}
-        {totalWords > 0 && (
-          <Rise delay={0.18}>
-            <motion.button
-              onClick={() => setSource("latest")}
-              whileHover={reduce ? undefined : { y: -2 }}
-              whileTap={reduce ? undefined : { scale: 0.99 }}
-              className="group w-full rounded-3xl bg-card px-6 py-4 text-left shadow-[0_2px_12px_-4px_rgb(23_63_107_/_0.18)] hover:shadow-[0_10px_26px_-10px_rgb(23_63_107_/_0.4)] transition-shadow flex items-center gap-4"
-            >
-              <div className="w-11 h-11 rounded-2xl bg-accent/25 flex items-center justify-center flex-shrink-0">
-                <History className="w-5 h-5 text-accent-strong" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-display text-base font-bold text-foreground">Latest saved words</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{verb} the words you added most recently</p>
-              </div>
-              <ArrowRight className="w-4 h-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 flex-shrink-0" />
-            </motion.button>
-          </Rise>
-        )}
-
-        {/* Live SM-2 buckets. Already computed for the due count — surfacing them
-            turns a blank screen into a sense of a collection being worked
-            through. */}
-        {total > 0 && (
-          <Rise delay={0.21} className="grid grid-cols-4 gap-2.5">
-            {BUCKETS.map((b) => (
-              <div
-                key={b.key}
-                className="rounded-2xl bg-card px-3 py-3 text-center shadow-[0_2px_10px_-4px_rgb(23_63_107_/_0.16)]"
-              >
-                <p className="font-display text-xl font-bold text-foreground leading-none">
-                  <CountUp value={stats?.[b.key] ?? 0} />
-                </p>
-                <p className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-                  <span className={cn("w-1.5 h-1.5 rounded-full", b.dot)} />
-                  {b.label}
-                </p>
-              </div>
-            ))}
-          </Rise>
-        )}
-
-        {kind === "flashcards" && (
-          <Rise delay={0.28} className="flex items-center justify-center gap-3">
-            <p className="text-xs font-semibold text-muted-foreground">Show first</p>
-            <div className="flex gap-1 p-1 rounded-xl bg-muted/60">
-              {([
-                { id: "fr" as const, label: "French" },
-                { id: "en" as const, label: "English" },
-              ]).map((o) => (
-                <button
-                  key={o.id}
-                  onClick={() => setFront(o.id)}
-                  className={cn(
-                    "relative px-4 py-1.5 rounded-lg text-xs font-bold transition-colors",
-                    front === o.id ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {/* The pill slides between options rather than blinking. */}
-                  {front === o.id && (
-                    <motion.span
-                      layoutId="front-pill"
-                      className="absolute inset-0 rounded-lg bg-primary"
-                      transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                    />
-                  )}
-                  <span className="relative">{o.label}</span>
-                </button>
-              ))}
-            </div>
-          </Rise>
-        )}
-
-        {/* Secondary path, deliberately quieter than the hero. */}
-        {dates.length > 0 && (
-          <Rise delay={0.35}>
-            <VocabHeatmap dates={dates} onPick={(dk) => setSource(dk)} />
-          </Rise>
-        )}
-
-        {dates.length === 0 && (
-          <Rise delay={0.35} className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
-            <Sparkles className="w-3.5 h-3.5 text-star flex-shrink-0" />
-            No words yet — import vocab or save words from a voice chat to start reviewing.
-          </Rise>
-        )}
-      </div>
+        <div role="progressbar" aria-label="Daily review progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className="h-2 rounded-full overflow-hidden bg-primary/10"><div className="h-full bg-primary" style={{ width: `${percent}%` }} /></div>
+        <div className="flex justify-between text-xs text-muted-foreground mt-2"><span>{reviewed} of {total} reviewed today (UTC)</span><span>{percent}%</span></div>
+        <div className="grid grid-cols-3 mt-4">{[{ label: "LEFT TO REVIEW", n: remaining }, { label: "REVIEWED TODAY", n: reviewed }, { label: "DAILY QUEUE", n: total }].map(s => <div key={s.label} className="text-center py-2 px-1 border-r border-foreground/10 last:border-0"><p className="text-[11px] text-muted-foreground">{s.label}</p><strong className="text-2xl sm:text-3xl tracking-tight tabular-nums">{s.n.toLocaleString()}</strong></div>)}</div>
+      </section>}
+      {source ? <section className="py-7">
+        <button onClick={() => setSource(null)} className="text-sm text-muted-foreground flex items-center gap-1 mb-6"><ChevronLeft className="w-4 h-4" /> Choose words</button>
+        <h2 className="text-2xl font-bold">{label}</h2><p className="text-sm text-muted-foreground mt-1">{available} words available{source === "latest" ? " · newest first" : ""}</p>
+        <p className="font-semibold mt-6 mb-3">How many words?</p>
+        <div className="flex flex-wrap gap-3">{[10,20,30,50].filter(n => n < max && (kind !== "quiz" || n > 1)).map(n => <button key={n} onClick={() => start(n)} className="bg-card border border-foreground/15 rounded-xl px-6 py-3 font-semibold hover:border-primary">{n}</button>)}<button disabled={max < (kind === "quiz" ? 2 : 1)} onClick={() => start(max)} className={primary}>{available > 500 ? "Review 500 words" : `All ${max} words`} <ArrowRight className="inline w-4 h-4 ml-1" /></button></div>
+        {max < (kind === "quiz" ? 2 : 1) && <p className="text-sm text-muted-foreground mt-4">{kind === "quiz" ? "Choose at least two words for a quiz." : "No words in this collection yet."}</p>}
+      </section> : <section className="pt-7">
+        <h2 className="text-base font-bold mb-2">Or choose your words</h2>
+        {[{ id: "latest", title: "Latest saved words", text: "Pick up where your curiosity left off", count: allWords, icon: History }, { id: "starred", title: "Starred words", text: "A little extra practice for your favourites", count: stats?.starred ?? 0, icon: Star }].map(row => <button key={row.id} onClick={() => setSource(row.id)} className="flex w-full items-center gap-3 text-left py-5 border-b border-foreground/15 hover:text-primary"><row.icon className="w-5 h-5 text-primary shrink-0" /><span className="flex-1"><strong className="text-sm block">{row.title}</strong><span className="text-xs text-muted-foreground">{row.text}</span></span><span className="text-xs text-muted-foreground">{row.count} words</span><ArrowRight className="w-4 h-4 shrink-0" /></button>)}
+        <div className="mt-7">{datesQ.isError ? <button onClick={() => datesQ.refetch()} className="text-sm underline">Retry loading saved days</button> : dates.length ? <VocabHeatmap dates={dates} tone="blue" stretch onPick={setSource} idleLabel="Saved words · pick a day" /> : <p className="text-sm text-muted-foreground">{datesQ.isLoading ? "Loading saved days…" : "Save words in your library to start reviewing."}</p>}</div>
+      </section>}
     </div>
-  );
+  </div>;
 }

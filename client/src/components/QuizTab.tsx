@@ -250,6 +250,8 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
   // Launch a session for the chosen queue. Fetches the words imperatively so we
   // never start before the queue resolves, then builds the questions.
   const startQuiz = async (c: ReviewLaunchChoice) => {
+    const sessionDirection = c.front === "en" ? "en2fr" : "fr2en";
+    setDirection(sessionDirection);
     setChoice(c);
     setStarting(true);
     try {
@@ -258,8 +260,8 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
       const qs: QuizQuestion[] = pool.map((word) => ({
         word,
         isPhrase: word.entryKind === "phrase",
-        choices: (word.entryKind !== "phrase" && direction === "fr2en")
-          ? buildChoices(word, words, direction)
+        choices: (word.entryKind !== "phrase" && sessionDirection === "fr2en")
+          ? buildChoices(word, words, sessionDirection)
           : undefined,
       }));
       setQuestions(qs);
@@ -492,7 +494,7 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-card to-muted/30 rounded-2xl p-6 sm:p-8 text-center card-float">
+          <div className="bg-card border border-foreground/10 rounded-2xl p-6 sm:p-8 text-center">
             <p className="font-display text-xs uppercase tracking-widest text-muted-foreground mb-4">
               {isTypingMode ? "Write in French:" : "What does this mean?"}
             </p>
@@ -524,10 +526,10 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
                 disabled={!!fillResult || fillGrading}
                 autoFocus
                 className={cn(
-                  "w-full px-4 py-3 rounded-xl border text-sm transition focus:outline-none",
+                  "w-full px-0 py-3 rounded-none border-0 border-b text-base transition focus:outline-none",
                   fillResult?.correct ? "bg-emerald-500/10 border-emerald-500 text-emerald-900"
                     : fillResult && !fillResult.correct ? "bg-red-500/10 border-red-500 text-red-900"
-                    : "bg-card border-border text-foreground placeholder-muted-foreground focus:border-primary"
+                    : "bg-transparent border-foreground/20 text-foreground placeholder-muted-foreground focus:border-primary"
                 )}
               />
               {fillResult && (
@@ -647,26 +649,6 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
           </button>
         </div>
       )}
-
-      {/* Direction toggle */}
-      {/* h-14 matches the sidebar header, so this divider continues that line. */}
-      <div className="flex-shrink-0 h-14 border-b border-border bg-background/80 backdrop-blur-sm px-4 flex items-center justify-center gap-2">
-        {[
-          { id: "fr2en" as const, label: "FR → EN" },
-          { id: "en2fr" as const, label: "EN → FR" },
-        ].map((d) => (
-          <button
-            key={d.id}
-            onClick={() => setDirection(d.id)}
-            className={cn(
-              "px-4 py-1.5 rounded-lg text-xs font-semibold border transition-all",
-              direction === d.id ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {d.label}
-          </button>
-        ))}
-      </div>
 
       {starting ? (
         <div className="flex-1 flex items-center justify-center">

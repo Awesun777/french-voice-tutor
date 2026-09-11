@@ -619,7 +619,7 @@ export function orderForReview(words: VocabEntry[]): VocabEntry[] {
  */
 export async function getReviewQueue(
   userId: number,
-  opts: { mode: "due" | "all" | "latest"; dateKey?: string; limit?: number }
+  opts: { mode: "due" | "all" | "latest" | "starred"; dateKey?: string; limit?: number }
 ): Promise<VocabEntry[]> {
   const db = await getDb();
   if (!db) return [];
@@ -646,8 +646,10 @@ export async function getReviewQueue(
     return cap ? scoped.slice(0, cap) : scoped;
   }
 
-  // mode "all"
-  const where = opts.dateKey
+  // mode "all" or "starred"
+  const where = opts.mode === "starred"
+    ? and(eq(vocabEntries.userId, userId), eq(vocabEntries.starred, true))
+    : opts.dateKey
     ? and(eq(vocabEntries.userId, userId), eq(vocabEntries.dateKey, opts.dateKey))
     : eq(vocabEntries.userId, userId);
   const rows = await db.select().from(vocabEntries).where(where);
@@ -765,17 +767,24 @@ export async function getSm2Stats(userId: number): Promise<{
   review: number;
   mastered: number;
   dueToday: number;
+  reviewedToday: number;
+  starred: number;
 }> {
   const db = await getDb();
-  if (!db) return { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0 };
+  if (!db) return { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0, reviewedToday: 0, starred: 0 };
 
   const rows = await db
-    .select({ status: vocabEntries.sm2Status })
+    .select({ status: vocabEntries.sm2Status, lastReviewAt: vocabEntries.sm2LastReviewAt, starred: vocabEntries.starred })
     .from(vocabEntries)
     .where(eq(vocabEntries.userId, userId));
 
-  const counts = { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0 };
-  for (const row of rows) counts[row.status]++;
+  const counts = { new: 0, learning: 0, review: 0, mastered: 0, dueToday: 0, reviewedToday: 0, starred: 0 };
+  const dayStart = new Date().setUTCHours(0, 0, 0, 0);
+  for (const row of rows) {
+    counts[row.status]++;
+    if (row.lastReviewAt != null && row.lastReviewAt >= dayStart) counts.reviewedToday++;
+    if (row.starred) counts.starred++;
+  }
 
   // "Due Today" is the size of today's daily-goal queue — the exact set the
   // user gets when they tap "Due Today". It counts down as they review (in any
