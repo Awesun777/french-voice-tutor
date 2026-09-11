@@ -16,6 +16,7 @@ import LandingPage from "@/components/LandingPage";
 import DashboardTab from "@/components/DashboardTab";
 import DictionaryTab from "@/components/DictionaryTab";
 import LibraryTab from "@/components/LibraryTab";
+import LibraryDesignDemo, { type LibraryDemoVariant } from "@/components/LibraryDesignDemo";
 import QuizTab from "@/components/QuizTab";
 import FlashcardTab from "@/components/FlashcardTab";
 import WritingTab from "@/components/WritingTab";
@@ -62,8 +63,8 @@ function surroundingSentence(term: string): string | undefined {
   }
 }
 
-const TAB_IDS: SidebarTab[] = ["dashboard", "dictionary", "library", "quiz", "flashcards", "grammar", "listening", "reading", "tutor", "voice-chat", "progress", "settings", "writing", "ai", "ingest", "ops", "testlogs", "accounts", "workflow"];
-const ADMIN_TABS: SidebarTab[] = ["ai", "ingest", "ops", "testlogs", "accounts", "workflow"];
+const TAB_IDS: SidebarTab[] = ["library-demo-compact", "library-demo-cards", "library-demo-notebook", "dashboard", "dictionary", "library", "quiz", "flashcards", "grammar", "listening", "reading", "tutor", "voice-chat", "progress", "settings", "writing", "ai", "ingest", "ops", "testlogs", "accounts", "workflow"];
+const ADMIN_TABS: SidebarTab[] = ["library-demo-compact", "library-demo-cards", "library-demo-notebook", "ai", "ingest", "ops", "testlogs", "accounts", "workflow"];
 
 /**
  * Which tab to open on load: the URL hash wins (survives refresh AND makes
@@ -302,13 +303,16 @@ export default function Home() {
 
   if (!user) return <LandingPage />;
 
+  const demoVariant = activeTab.startsWith("library-demo-") ? activeTab.replace("library-demo-", "") as LibraryDemoVariant : null;
+  const navigationTab = demoVariant ? "library" : activeTab;
+
   return (
     <div className="flex h-dvh bg-background overflow-hidden">
       {isMobile ? (
-        <MobileNav activeTab={activeTab} setActiveTab={navTab} isAdmin={user.role === "admin"} />
+        <MobileNav activeTab={navigationTab} setActiveTab={navTab} isAdmin={user.role === "admin"} />
       ) : (
         <Sidebar
-          activeTab={activeTab}
+          activeTab={navigationTab}
           setActiveTab={navTab}
           open={sidebarOpen}
           setOpen={setSidebarOpen}
@@ -319,6 +323,7 @@ export default function Home() {
         {activeTab === "dashboard" && <DashboardTab setActiveTab={navTab} />}
         {activeTab === "dictionary" && <DictionaryTab />}
         {activeTab === "library" && <LibraryTab setActiveTab={setActiveTab} onStartReview={startReview} showVocabularySummary={user?.role === "admin"} />}
+        {demoVariant && user.role === "admin" && <LibraryDesignDemo key={demoVariant} variant={demoVariant} />}
         {activeTab === "quiz" && <QuizTab reviewTarget={reviewTarget} />}
         {activeTab === "flashcards" && <FlashcardTab reviewTarget={reviewTarget} />}
         {activeTab === "grammar" && <GrammarTestTab />}

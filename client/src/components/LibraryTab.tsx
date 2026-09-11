@@ -543,6 +543,9 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
                 </>}
                 calendar={libraryCalendar}
               />
+              <div className="mt-3 text-right">
+                <a href="#library-demo-compact" className="text-sm text-primary/70 underline underline-offset-4 hover:text-primary">Compare library designs</a>
+              </div>
             </div>
           </div>
         )}
