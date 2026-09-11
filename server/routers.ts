@@ -1302,6 +1302,64 @@ Return ONLY this JSON: {"correct": true/false, "note": "...", "grammarNote": "..
         const gradeStr = typeof gradeRaw === 'string' ? gradeRaw : JSON.stringify(gradeRaw);
         return JSON.parse(gradeStr) as { correct: boolean; note: string; grammarNote: string };
       }),
+
+    /**
+     * One near-miss trap per word: an option similar to the correct answer
+     * (spelling, sound, or meaning-family) but definitely wrong — bank words
+     * are usually unrelated, so without this the right answer stands out.
+     * Batched at quiz start; per-word results cache in dict_cache so a word
+     * only ever costs one generation.
+     */
+    distractors: protectedProcedure
+      .input(z.object({
+        direction: z.enum(["fr2en", "en2fr"]),
+        items: z.array(z.object({ term: z.string().max(200), translation: z.string().max(300) })).min(1).max(60),
+      }))
+      .mutation(async ({ input }) => {
+        const lang = input.direction === "fr2en" ? "English" : "French";
+        const correctOf = (it: { term: string; translation: string }) =>
+          input.direction === "fr2en" ? it.translation : it.term;
+        const keyOf = (it: { term: string; translation: string }) =>
+          `qdis::v1::${input.direction}::${it.term.toLowerCase().trim()}::${it.translation.toLowerCase().trim()}`;
+
+        const out: (string | null)[] = await Promise.all(
+          input.items.map(async (it) => ((await getCached(keyOf(it))) as { d?: string } | null)?.d ?? null)
+        );
+        const missing = input.items.map((it, i) => ({ it, i })).filter(({ i }) => !out[i]);
+        if (missing.length) {
+          try {
+            const list = missing.map(({ it }, n) => `${n + 1}. term "${it.term}" — correct answer "${correctOf(it)}"`).join("\n");
+            const resp = await invokeLLM({
+              messages: [
+                { role: "system", content: "You craft quiz trap answers for a French vocabulary app. Return only valid JSON." },
+                { role: "user", content: `For each numbered item, invent ONE trap answer in ${lang}. Rules:
+- It must be SIMILAR to the correct answer — close in spelling, sound, or the same meaning family — so it genuinely tempts the student.
+- It must be CLEARLY WRONG: never a synonym, never an acceptable alternative translation of the term, and never the correct answer itself.${input.direction === "en2fr" ? "\n- It must be a real French word." : ""}
+- Keep roughly the same length and register as the correct answer.
+
+Items:
+${list}
+
+Return {"distractors": ["<answer for 1>", "<answer for 2>", ...]} — exactly ${missing.length} strings, in order.` },
+              ],
+              response_format: { type: "json_object" } as any,
+            });
+            const raw = resp.choices[0].message.content ?? "{}";
+            const parsed = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
+            const gen: unknown[] = Array.isArray(parsed.distractors) ? parsed.distractors : [];
+            await Promise.all(missing.map(async ({ it, i }, n) => {
+              const d = typeof gen[n] === "string" ? (gen[n] as string).trim() : "";
+              // A trap equal to the right answer defeats the purpose — drop it
+              // and let the client fall back to a bank option.
+              if (d && d.toLowerCase() !== correctOf(it).trim().toLowerCase()) {
+                out[i] = d;
+                await setCache(keyOf(it), { d });
+              }
+            }));
+          } catch { /* misses stay null — the client falls back to bank options */ }
+        }
+        return { distractors: out };
+      }),
   }),
 
   // ─── AI Import ───────────────────────────────────────────────────────────────

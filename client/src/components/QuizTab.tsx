@@ -78,18 +78,25 @@ interface QuizQuestion {
   isPhrase: boolean;
 }
 
-function buildChoices(word: VocabEntry, allWords: VocabEntry[], direction: "fr2en" | "en2fr") {
-  const others = shuffle(allWords.filter((w) => w.id !== word.id && w.translation));
-  const wrongs = others.slice(0, 3);
-  if (direction === "en2fr") {
-    return shuffle([
-      { display: word.term, isCorrect: true },
-      ...wrongs.map((w) => ({ display: w.term, isCorrect: false })),
-    ]);
-  }
+function buildChoices(
+  word: VocabEntry,
+  allWords: VocabEntry[],
+  direction: "fr2en" | "en2fr",
+  /** LLM-made near-miss trap; when present it replaces one bank option. */
+  similar?: string | null
+) {
+  const correct = direction === "en2fr" ? word.term : word.translation;
+  const eq = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const bankWrongs = shuffle(allWords.filter((w) => w.id !== word.id && w.translation))
+    .map((w) => (direction === "en2fr" ? w.term : w.translation))
+    .filter((d) => d && !eq(d, correct));
+  const trap = similar && !eq(similar, correct) ? similar.trim() : null;
+  const wrongs = trap
+    ? [trap, ...bankWrongs.filter((d) => !eq(d, trap)).slice(0, 2)]
+    : bankWrongs.slice(0, 3);
   return shuffle([
-    { display: word.translation, isCorrect: true },
-    ...wrongs.map((w) => ({ display: w.translation, isCorrect: false })),
+    { display: correct, isCorrect: true },
+    ...wrongs.map((d) => ({ display: d, isCorrect: false })),
   ]);
 }
 
@@ -146,13 +153,38 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
   const fillRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
   const { speak, preload, state: pronounceState, activeText } = usePronounce();
+  const distractorsMutation = trpc.quiz.distractors.useMutation();
+
+  // Live question index for async callbacks (the late-arriving trap patch
+  // must not touch questions the student already reached).
+  const qIndexRef = useRef(qIndex);
+  qIndexRef.current = qIndex;
 
   // Preload the current question's French term so pronunciation is instant.
   useEffect(() => {
     if (phase !== "quiz") return;
     const term = questions[qIndex]?.word?.term;
     if (term) void preload(term);
+    const next = questions[qIndex + 1]?.word?.term;
+    if (next) void preload(next);
   }, [phase, qIndex, questions, preload]);
+
+  // The French is read aloud automatically: multiple choice speaks its term
+  // the moment the question appears; typing mode only shows the French with
+  // the result, so it speaks on reveal instead. questions.length (not the
+  // array) keeps a late trap patch from re-announcing the same question.
+  useEffect(() => {
+    if (phase !== "quiz") return;
+    const q = questions[qIndex];
+    if (q?.choices) void speak(q.word.term);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, qIndex, questions.length]);
+  useEffect(() => {
+    if (phase !== "quiz" || !fillResult) return;
+    const q = questions[qIndex];
+    if (q && !q.choices) void speak(q.word.term);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fillResult]);
 
   // Publish the on-screen question as the voice-ask fallback context, so
   // Shift+Return + "explain this" with nothing selected means THIS question.
@@ -257,11 +289,43 @@ export default function QuizTab({ reviewTarget }: { reviewTarget?: { dateKey: st
     try {
       const pool = (await utils.review.getQueue.fetch(c)) as VocabEntry[];
       if (pool.length < 2) { toast.error("Need at least 2 words to start a quiz"); setStarting(false); return; }
+
+      // Near-miss traps for the multiple-choice words. Wait briefly so the
+      // first questions get theirs; past the deadline, start with bank-only
+      // options and patch unreached questions when the batch lands.
+      const mcItems = pool
+        .filter((w) => w.entryKind !== "phrase" && sessionDirection === "fr2en")
+        .slice(0, 60);
+      const trapsOf = (r: { distractors: (string | null)[] } | null) => {
+        const m = new Map<number, string>();
+        if (r) mcItems.forEach((w, i) => { const d = r.distractors[i]; if (d) m.set(w.id, d); });
+        return m;
+      };
+      const trapPromise = mcItems.length
+        ? distractorsMutation.mutateAsync({
+            direction: sessionDirection,
+            items: mcItems.map((w) => ({ term: w.term, translation: w.translation })),
+          }).catch(() => null)
+        : Promise.resolve(null);
+      const early = await Promise.race([trapPromise, new Promise<null>((r) => setTimeout(() => r(null), 4000))]);
+      const traps = trapsOf(early);
+      if (!early) {
+        void trapPromise.then((late) => {
+          const lateTraps = trapsOf(late);
+          if (!lateTraps.size) return;
+          setQuestions((prev) => prev.map((q, idx) =>
+            idx > qIndexRef.current && q.choices && lateTraps.has(q.word.id)
+              ? { ...q, choices: buildChoices(q.word, words, sessionDirection, lateTraps.get(q.word.id)) }
+              : q
+          ));
+        });
+      }
+
       const qs: QuizQuestion[] = pool.map((word) => ({
         word,
         isPhrase: word.entryKind === "phrase",
         choices: (word.entryKind !== "phrase" && sessionDirection === "fr2en")
-          ? buildChoices(word, words, sessionDirection)
+          ? buildChoices(word, words, sessionDirection, traps.get(word.id))
           : undefined,
       }));
       setQuestions(qs);
