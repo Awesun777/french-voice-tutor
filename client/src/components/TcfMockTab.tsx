@@ -666,11 +666,11 @@ export default function TcfMockTab() {
             const s = score.per[sec];
             return (
               <div key={sec}>
-                <div className={cn("sticky top-0 z-10 flex items-center justify-between border-b bg-background px-3 py-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground", LINE)}>
-                  <span title={TCF_SECTION_META[sec].label}>
+                <div className={cn("sticky top-0 z-10 flex items-center justify-between border-b bg-background px-3 py-1.5 font-display text-[10px] font-bold uppercase tracking-wider text-muted-foreground", LINE)}>
+                  <span className="min-w-0 truncate" title={TCF_SECTION_META[sec].label}>
                     {SECTION_SHORT[sec]} <span className="font-normal normal-case tracking-normal">· {TCF_SECTION_META[sec].label}</span>
                   </span>
-                  <span className="tabular-nums">
+                  <span className="ml-2 flex-shrink-0 tabular-nums">
                     {s.right}/{s.total}
                   </span>
                 </div>
