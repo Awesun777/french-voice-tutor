@@ -877,21 +877,29 @@ export default function WritingTab() {
                     {m.fix.after}
                     {i === 0 && <kbd className="font-mono text-[9px] border border-white/50 rounded px-0.5 leading-tight">⌥</kbd>}
                   </button>
+                  {/* Static wrapper owns the position + upward shift so the
+                      motion child only ever animates opacity/scale — mixing
+                      a percent translate into the spring left exits stuck. */}
+                  <div
+                    className={cn("absolute z-30 -translate-y-full", !expanded && "pointer-events-none")}
+                    style={{ left: m.left, top: m.top - 4 }}
+                  >
                   <AnimatePresence>
                     {expanded && (
                       <motion.button
+                        key="why"
                         data-fix-chip
-                        initial={{ opacity: 0, scale: 0.55, y: "-100%" }}
-                        animate={{ opacity: 1, scale: 1, y: "-100%" }}
-                        exit={{ opacity: 0, scale: 0.75, y: "-100%" }}
+                        initial={{ opacity: 0, scale: 0.55 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.75 }}
                         transition={{ type: "spring", stiffness: 380, damping: 28 }}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => applyFix(m.fix)}
                         className={cn(
-                          "absolute z-30 block text-left rounded-xl px-3.5 py-2.5 text-white shadow-[0_16px_38px_-10px_rgb(0_0_0_/_0.45)] w-max max-w-[280px] cursor-pointer",
+                          "block text-left rounded-xl px-3.5 py-2.5 text-white shadow-[0_16px_38px_-10px_rgb(0_0_0_/_0.45)] w-max max-w-[280px] cursor-pointer",
                           KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar
                         )}
-                        style={{ left: m.left, top: m.top - 4, transformOrigin: "bottom left" }}
+                        style={{ transformOrigin: "bottom left" }}
                       >
                         <span className="block text-sm font-bold">
                           {m.fix.kind === "translation" ? m.fix.before.replace(/`/g, "") + " → " : ""}{m.fix.after}
@@ -905,6 +913,7 @@ export default function WritingTab() {
                       </motion.button>
                     )}
                   </AnimatePresence>
+                  </div>
                 </div>
               );
             })}
