@@ -407,13 +407,13 @@ SPOKEN_PROMPT = "Entraînement au TCF, compréhension orale. Chaque proposition 
 DOC_PROMPT = "Entraînement au TCF, compréhension orale : un document sonore (reportage, interview, annonce) suivi de la question."
 
 
-def _transcribe_once(path: Path, prompt: str) -> str:
+def _transcribe_once(path: Path, prompt: str, model: str = TRANSCRIBE_MODEL) -> str:
     with open(path, "rb") as f:
         r = requests.post(
             f"{OPENAI}/audio/transcriptions",
             headers=openai_headers(),
             files={"file": (path.name, f, "audio/mpeg")},
-            data={"model": TRANSCRIBE_MODEL, "language": "fr", "response_format": "text", "prompt": prompt},
+            data={"model": model, "language": "fr", "response_format": "text", "prompt": prompt},
             timeout=300,
         )
     r.raise_for_status()
@@ -439,8 +439,18 @@ def transcribe(path: Path, spoken: bool = True) -> str:
     if len(first) >= expected:
         return first
     second = _transcribe_once(path, DOC_PROMPT) if spoken else _transcribe_once(trimmed, DOC_PROMPT)
-    log(f"  transcript fallback: {len(first)} → {len(second)} chars")
-    return second if len(second) > len(first) else first
+    best = second if len(second) > len(first) else first
+    if len(best) < expected and not spoken:
+        # gpt-4o-transcribe occasionally answers with just the question for a
+        # whole clip (series 4 item 12); the mini model and whisper-1 do not.
+        for model in ("gpt-4o-mini-transcribe", "whisper-1"):
+            alt = _transcribe_once(path, DOC_PROMPT, model)
+            if len(alt) > len(best):
+                best = alt
+            if len(best) >= expected:
+                break
+    log(f"  transcript fallback: {len(first)} → {len(best)} chars")
+    return best
 
 
 def pregloss(series: int):
