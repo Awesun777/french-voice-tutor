@@ -544,7 +544,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
         </div>
       )}
 
-      {/* Admins scroll the unified summary and list together; the standard
+      {/* The summary layout scrolls the summary and list together; the standard
           library keeps its pinned calendar and search. */}
       <div ref={showVocabularySummary ? scrollRef : undefined} className={cn("flex-1 flex flex-col min-h-0", showVocabularySummary && "overflow-y-auto")}>
         {showVocabularySummary && !isLoading && (
@@ -573,7 +573,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
       <div ref={stickyToolsRef} className={cn("flex-shrink-0", showVocabularySummary && "sticky top-0 z-20 w-full max-w-5xl mx-auto px-4 sm:px-6")}>
         <div className={showVocabularySummary ? "bg-background rounded-b-3xl pt-3 pb-1 text-[#1D1D1B]" : undefined}>
           {showVocabularySummary && !isLoading && libraryCalendar}
-      {/* Starred is a list filter, so it sits beside search in the admin view. */}
+      {/* Starred is a list filter, so it sits beside search in the summary view. */}
       {!isLoading && words.length > 0 && (
         <div className={cn("flex-shrink-0 pt-3 pb-2", !showVocabularySummary && "px-4")}>
           <div className={cn("mx-auto flex items-center gap-2", showVocabularySummary ? "border-b border-black/20 py-2" : "max-w-3xl")}>
