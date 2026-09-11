@@ -6,6 +6,8 @@ import { invokeLLM } from "./_core/llm";
 import { enforceVerbPreposition } from "./verbPrepositions";
 import { enforcePronunciation } from "./ipaLexicon";
 import { synthesizeFrench } from "./tts";
+import { tcfItemAudio, explainTcfItem, explanationCacheKey } from "./tcfMock";
+import { getTcfMockItem } from "@shared/tcfMockExams";
 import { fetchCommonsRecording, commonsInCooldown } from "./commonsAudio";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { storagePut } from "./storage";
@@ -3509,6 +3511,41 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
           },
           blocks,
         };
+      }),
+  }),
+  // ── TCF mock exam (admin-only, Romaintalk's own items) ──
+  tcf: router({
+    /** Multi-voice audio for one listening item, one clip per speaker turn. */
+    audio: adminProcedure
+      .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40) }))
+      .mutation(async ({ input }) => {
+        const item = getTcfMockItem(input.examId, input.n);
+        if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF item" });
+        try {
+          return { turns: await tcfItemAudio(item) };
+        } catch (e) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `TTS error: ${String(e).slice(0, 300)}` });
+        }
+      }),
+    /** AI explanation of one item, cached forever (content is static). */
+    explain: adminProcedure
+      .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40), force: z.boolean().optional() }))
+      .mutation(async ({ input }) => {
+        if (!getTcfMockItem(input.examId, input.n)) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF item" });
+        }
+        const key = explanationCacheKey(input.examId, input.n);
+        if (!input.force) {
+          const hit = await getCached(key);
+          if (typeof hit === "string" && hit.trim()) return { explanation: hit, cached: true };
+        }
+        try {
+          const explanation = await explainTcfItem(input.examId, input.n);
+          await setCache(key, explanation);
+          return { explanation, cached: false };
+        } catch (e) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Explanation failed: ${String(e).slice(0, 300)}` });
+        }
       }),
   }),
 });

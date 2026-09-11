@@ -18,6 +18,17 @@ import { ttsCache } from "../drizzle/schema";
 import { getDb } from "./db";
 
 export const ANNA_VOICE_ID = "nVPCtAFzgyMX3FZKNzH0";
+/**
+ * Other native-French voices in the account, used by the TCF mock exam so a
+ * dialogue has distinct speakers. All verified for `fr` by ElevenLabs.
+ */
+export const FRENCH_VOICES = {
+  anna: ANNA_VOICE_ID, // female, Parisian — the app's tutor voice
+  maxime: "ZLI7yULK3cOkcZl6GABN", // male, standard French
+  marco: "CYR0HqHoZAUmoZsLWPob", // male, Parisian
+  sarah: "EXAVITQu4vr4xnSDxMaL", // female, mature/reassuring (fr-verified)
+  matilda: "XrExE9yKIg1WjnnlVkGX", // female, professional (fr-verified)
+} as const;
 const ELEVEN_MODEL = "eleven_flash_v2_5";
 /** Bump to invalidate cached audio when the voice/model choice changes. */
 const ENGINE_VERSION = `anna-${ELEVEN_MODEL}`;
@@ -25,15 +36,25 @@ const ENGINE_VERSION = `anna-${ELEVEN_MODEL}`;
 const MEM_CAP = 300;
 const memCache = new Map<string, { base64: string; mimeType: string; engine: string }>();
 
-function cacheKey(text: string): string {
-  return createHash("sha256").update(`${ENGINE_VERSION}:${text}`).digest("hex");
+export interface TtsVoiceOptions {
+  /** ElevenLabs voice id; defaults to Anna. */
+  voiceId?: string;
+  /** OpenAI fallback voice for that speaker; defaults to "marin". */
+  openaiVoice?: string;
 }
 
-async function synthesizeElevenLabs(text: string): Promise<{ base64: string; mimeType: string }> {
+function cacheKey(text: string, voiceId: string): string {
+  // Anna keeps the historical key so the existing cache stays warm; other
+  // voices get their own namespace.
+  const scope = voiceId === ANNA_VOICE_ID ? ENGINE_VERSION : `${ENGINE_VERSION}:${voiceId}`;
+  return createHash("sha256").update(`${scope}:${text}`).digest("hex");
+}
+
+async function synthesizeElevenLabs(text: string, voiceId: string): Promise<{ base64: string; mimeType: string }> {
   const key = process.env.ELEVENLABS_API_KEY;
   if (!key) throw new Error("ELEVENLABS_API_KEY not set");
   const resp = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ANNA_VOICE_ID}?output_format=mp3_44100_64`,
+    `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_64`,
     {
       method: "POST",
       headers: { "xi-api-key": key, "content-type": "application/json" },
@@ -44,7 +65,7 @@ async function synthesizeElevenLabs(text: string): Promise<{ base64: string; mim
   return { base64: Buffer.from(await resp.arrayBuffer()).toString("base64"), mimeType: "audio/mpeg" };
 }
 
-async function synthesizeOpenAi(text: string): Promise<{ base64: string; mimeType: string }> {
+async function synthesizeOpenAi(text: string, voice: string): Promise<{ base64: string; mimeType: string }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY not set");
   const resp = await fetch("https://api.openai.com/v1/audio/speech", {
@@ -53,7 +74,7 @@ async function synthesizeOpenAi(text: string): Promise<{ base64: string; mimeTyp
     body: JSON.stringify({
       model: "gpt-4o-mini-tts",
       input: text,
-      voice: "marin",
+      voice,
       response_format: "mp3",
       speed: 0.9,
       instructions:
@@ -65,9 +86,12 @@ async function synthesizeOpenAi(text: string): Promise<{ base64: string; mimeTyp
 }
 
 export async function synthesizeFrench(
-  text: string
+  text: string,
+  opts: TtsVoiceOptions = {}
 ): Promise<{ base64: string; mimeType: string; engine: string }> {
-  const key = cacheKey(text);
+  const voiceId = opts.voiceId ?? ANNA_VOICE_ID;
+  const openaiVoice = opts.openaiVoice ?? "marin";
+  const key = cacheKey(text, voiceId);
 
   const l1 = memCache.get(key);
   if (l1) return l1;
@@ -86,10 +110,10 @@ export async function synthesizeFrench(
 
   let result: { base64: string; mimeType: string; engine: string };
   try {
-    result = { ...(await synthesizeElevenLabs(text)), engine: "elevenlabs" };
+    result = { ...(await synthesizeElevenLabs(text, voiceId)), engine: "elevenlabs" };
   } catch (e) {
     console.warn("[TTS] ElevenLabs failed, falling back to OpenAI:", String(e).slice(0, 200));
-    result = { ...(await synthesizeOpenAi(text)), engine: "openai" };
+    result = { ...(await synthesizeOpenAi(text, openaiVoice)), engine: "openai" };
   }
 
   remember(key, result);
