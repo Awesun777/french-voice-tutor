@@ -1,108 +1,149 @@
 import { useState } from "react";
-import { ArrowLeft, Search, Star, X, BookOpen, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, Star, X, Copy, Check, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import type { VocabEntry } from "@/types";
-import { vocabularyStage } from "@/lib/vocabularySummary";
+import { summarizeVocabulary, vocabularyStage, type VocabularyStage } from "@/lib/vocabularySummary";
+import VocabularyStatusBlocks, { libraryStatusPalette, type Swatch } from "./VocabularyStatusBlocks";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 
+// Keep the existing admin-only URLs so previously shared demo links still work.
 export type LibraryDemoVariant = "compact" | "cards" | "notebook";
+const ink = "#1D1D1B";
+const cream = "#F8F3EC";
 const designs = [
-  { id: "compact", name: "Compact list", description: "A clear French–English column layout for scanning a growing collection." },
-  { id: "cards", name: "Flashcard grid", description: "Room for each word to breathe, with its meaning and source kept together." },
-  { id: "notebook", name: "Learning notebook", description: "A dated journal of the words and phrases you meet along the way." },
+  { id: "compact", name: "Equal panels", layout: "columns", description: "Three equal status panels. Bold color bands for dates, generous swatches for words.", status: libraryStatusPalette,
+    dates: [{ background: "#282828", color: cream }, { background: cream, color: ink }, { background: "#FF6E54", color: ink }, { background: "#9ED6DF", color: ink }, { background: "#FFE459", color: ink }],
+    words: [{ background: "#1C213E", color: "#F9F3EF" }, { background: "#F9F3EF", color: ink }, { background: "#D77A48", color: ink }, { background: "#BB8F82", color: ink }],
+  },
+  { id: "cards", name: "Color mosaic", layout: "mosaic", description: "A palette-style composition: New spans the left, Learning and Mastered share the right.",
+    status: [{ background: "#EAE4DA", color: ink }, { background: "#808BC5", color: ink }, { background: "#245E55", color: cream }],
+    dates: [{ background: "#245E55", color: cream }, { background: "#EAE4DA", color: ink }, { background: "#808BC5", color: ink }, { background: "#EAA7C7", color: ink }, { background: "#9ED6DF", color: ink }],
+    words: [{ background: "#245E55", color: cream }, { background: "#EAE4DA", color: ink }, { background: "#808BC5", color: ink }, { background: "#EAA7C7", color: ink }],
+  },
+  { id: "notebook", name: "Stacked bands", layout: "bands", description: "Three horizontal status strips, echoed by the stacked date bands below.",
+    status: [{ background: "#EAE4DA", color: ink }, { background: "#EAC119", color: ink }, { background: "#1D1D1B", color: cream }],
+    dates: [{ background: "#1D1D1B", color: cream }, { background: "#EAC119", color: ink }, { background: "#EAE4DA", color: ink }, { background: "#C63F3E", color: "#FFFFFF" }, { background: "#9ED6DF", color: ink }],
+    words: [{ background: "#1D1D1B", color: cream }, { background: "#EAE4DA", color: ink }, { background: "#EAC119", color: ink }, { background: "#9ED6DF", color: ink }],
+  },
 ] as const;
 
 function dateLabel(key: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return key;
-  return new Date(`${key}T12:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return { title: key, detail: "Saved vocabulary" };
+  const date = new Date(`${key}T12:00:00`);
+  return { title: date.toLocaleDateString("en-US", { month: "long", day: "numeric" }), detail: date.toLocaleDateString("en-US", { weekday: "long", year: "numeric" }) };
 }
 
-function Status({ word }: { word: VocabEntry }) {
-  const stage = vocabularyStage(word);
-  return <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium", stage === "mastered" ? "bg-primary text-primary-foreground" : stage === "learning" ? "bg-star/15 text-primary" : "bg-secondary text-primary")}>
-    {word.starred && <Star className="h-3 w-3 fill-current" aria-label="Starred" />}
-    {stage === "new" ? "New" : stage === "learning" ? "Learning" : "Mastered"}
-  </span>;
+function WordSwatch({ word, swatch }: { word: VocabEntry; swatch: Swatch }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${word.term} — ${word.translation}`);
+      setCopied(true);
+    } catch {
+      toast.error("Couldn't copy this word. You can select and copy the text instead.");
+    }
+  };
+  return <article style={swatch} className="relative rounded-xl px-5 py-6 sm:px-7 sm:py-7">
+    <div className="flex items-start justify-between gap-4">
+      <h3 className="min-w-0 text-2xl sm:text-4xl leading-tight font-medium tracking-tight break-words">{word.term}</h3>
+      <button type="button" onClick={copy} aria-label={copied ? `Copy ${word.term} again` : `Copy ${word.term} and its meaning`} className="shrink-0 flex h-11 w-11 items-center justify-center rounded-lg hover:bg-current/10 focus-visible:outline-2 focus-visible:outline-current">{copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}</button>
+    </div>
+    <p className="mt-4 text-base sm:text-lg break-words">{word.translation}</p>
+    <div className="mt-5 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
+      <span className="min-w-0 break-words">{word.lessonSource || word.groupLabel || (word.entryKind === "phrase" ? "Phrase" : "Word")}</span>
+      <span className="inline-flex items-center gap-1 capitalize">{word.starred && <Star className="h-3 w-3 fill-current" aria-label="Starred" />}{vocabularyStage(word)}</span>
+    </div>
+    <span className="sr-only" aria-live="polite">{copied ? "Copied to clipboard" : ""}</span>
+  </article>;
 }
 
 export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVariant }) {
   const { data: words = [], isLoading, isError } = trpc.vocab.list.useQuery();
   const [search, setSearch] = useState("");
   const [starred, setStarred] = useState(false);
+  const [stage, setStage] = useState<VocabularyStage | null>(null);
+  const [percent, setPercent] = useState(true);
+  const [openDates, setOpenDates] = useState<string[]>([]);
   const design = designs.find((item) => item.id === variant)!;
+  const counts = summarizeVocabulary(words);
+  const display = (value: number) => {
+    if (!percent) return value.toLocaleString();
+    const share = counts.total ? value / counts.total * 100 : 0;
+    return `${share > 0 && share < 1 ? "<1" : share > 99 && share < 100 ? ">99" : Math.round(share)}%`;
+  };
   const query = search.trim().toLocaleLowerCase();
-  const filtered = words.filter((word) => (!starred || word.starred) && (!query || [word.term, word.translation, word.lessonSource, word.groupLabel].some((value) => value?.toLocaleLowerCase().includes(query))));
+  const filtered = words.filter((word) => (!starred || word.starred) && (!stage || vocabularyStage(word) === stage) && (!query || [word.term, word.translation, word.lessonSource, word.groupLabel].some((value) => value?.toLocaleLowerCase().includes(query))));
   const grouped = filtered.reduce<Record<string, VocabEntry[]>>((groups, word) => {
     (groups[word.dateKey] ??= []).push(word);
     return groups;
   }, {});
-  const groups = Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a));
+  const sortDates = (a: string, b: string) => {
+    const aDate = /^\d{4}-\d{2}-\d{2}$/.test(a), bDate = /^\d{4}-\d{2}-\d{2}$/.test(b);
+    return aDate && bDate ? b.localeCompare(a) : aDate ? -1 : bDate ? 1 : a.localeCompare(b);
+  };
+  const allDates = Array.from(new Set(words.map((word) => word.dateKey))).sort(sortDates);
+  const groups = Object.entries(grouped).sort(([a], [b]) => sortDates(a, b));
+  const changeSearch = (value: string) => {
+    setSearch(value);
+    // Show search matches immediately; clearing search restores a folded stack.
+    setOpenDates(value.trim() ? allDates : []);
+  };
 
-  const searchControl = (
-    <div className={cn("flex flex-wrap items-center gap-3", variant === "compact" && "rounded-2xl bg-secondary/60 p-3", variant === "cards" && "rounded-3xl bg-card p-3 shadow-sm", variant === "notebook" && "border-y border-primary/15 py-4")}>
-      <div className="relative flex-1 min-w-0 basis-40">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary/60" aria-hidden="true" />
-        <input aria-label="Search vocabulary demos" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={variant === "notebook" ? "Find a word in your notes…" : "Search French, English, or source…"} className={cn("w-full min-h-11 pl-10 pr-10 text-base text-primary placeholder:text-primary/60 focus-visible:outline-2 focus-visible:outline-primary", variant === "compact" ? "rounded-xl bg-card" : variant === "cards" ? "rounded-full bg-background" : "bg-transparent rounded-lg")} />
-        {search && <button type="button" aria-label="Clear search" onClick={() => setSearch("")} className="absolute right-0 top-0 flex h-11 w-10 items-center justify-center text-primary"><X className="h-4 w-4" /></button>}
+  return <div className="h-full overflow-y-auto px-4 pt-5 pb-24 sm:px-8 sm:pb-8">
+    <div className="mx-auto max-w-3xl">
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm mb-4">
+        <a href="#library" className="inline-flex items-center gap-2 text-primary hover:underline"><ArrowLeft className="h-4 w-4" />My Library</a>
+        <span className="text-muted-foreground">Admin preview · saved words unchanged</span>
       </div>
-      <button type="button" aria-pressed={starred} onClick={() => setStarred(!starred)} className={cn("inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold", starred ? "bg-primary text-primary-foreground" : "text-primary hover:bg-primary/5")}><Star className={cn("h-4 w-4", starred && "fill-current")} />Starred</button>
-    </div>
-  );
-
-  return (
-    <div className="h-full overflow-y-auto px-4 py-5 sm:px-8">
-      <div className="mx-auto max-w-4xl">
-        <div className="flex flex-wrap items-center justify-between gap-3 text-sm mb-4">
-          <a href="#library" className="inline-flex items-center gap-2 text-primary hover:underline"><ArrowLeft className="h-4 w-4" />My Library</a>
-          <span className="text-muted-foreground">Admin preview · read-only vocabulary</span>
-        </div>
-        <nav aria-label="Library design previews" className="flex flex-wrap gap-2 mb-6">
-          {designs.map((item) => <a key={item.id} href={`#library-demo-${item.id}`} aria-current={variant === item.id ? "page" : undefined} className={cn("rounded-full px-4 py-2 text-sm font-semibold", variant === item.id ? "bg-primary text-primary-foreground" : "bg-secondary/60 text-primary hover:bg-secondary")}>{item.name}</a>)}
-        </nav>
-        <p className="text-xs uppercase tracking-[0.18em] text-primary/60 mb-2">My vocabulary</p>
-        <h1 className={cn("text-primary mb-2", variant === "notebook" ? "font-serif italic text-4xl sm:text-5xl" : "font-display font-bold text-3xl sm:text-4xl")}>{design.name}</h1>
-        <p className="text-base text-muted-foreground mb-6 max-w-xl">{design.description}</p>
-        {searchControl}
-        <p className="mt-4 mb-5 text-sm text-muted-foreground" aria-live="polite">{filtered.length} of {words.length} vocab items{starred ? " · starred" : ""}</p>
-        {isLoading ? <div role="status" className="py-10 flex items-center justify-center gap-2"><Loader2 className="h-5 w-5 animate-spin" />Loading vocabulary…</div> : isError ? <p role="alert" className="py-8 text-destructive">Couldn't load your vocabulary. Please try again later.</p> : groups.length === 0 ? <div className="py-12 text-center text-muted-foreground"><BookOpen className="h-8 w-8 mx-auto mb-3" /><p>{words.length ? "No matching vocabulary" : "Your library is empty"}</p></div> : (
-          <div className="space-y-7">
-            {groups.map(([date, entries]) => (
-              <section key={date} aria-label={dateLabel(date)} className={cn(variant === "notebook" && "grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]")}>
-                <div className={cn("flex items-center gap-2 mb-3", variant === "notebook" && "sm:block sm:border-l-2 sm:border-primary/20 sm:pl-4")}>
-                  <h2 className={cn("text-primary", variant === "notebook" ? "font-serif text-lg" : "text-sm font-semibold")}>{dateLabel(date)}</h2>
-                  <span className="text-xs text-muted-foreground">{entries.length} {entries.length === 1 ? "item" : "items"}</span>
-                </div>
-                {variant === "compact" ? (
-                  <div className="overflow-hidden rounded-2xl border border-primary/10 bg-card">
-                    <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_88px] gap-4 px-5 py-2 bg-secondary/40 text-xs text-primary/70"><span>French</span><span>English</span><span>Status</span></div>
-                    {entries.map((word) => <div key={word.id} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_88px] sm:gap-4 px-5 py-4 border-t border-primary/5 hover:bg-secondary/15">
-                      <div className="min-w-0"><p className="font-semibold text-base text-primary break-words">{word.term}</p>{word.lessonSource && <p className="text-xs text-muted-foreground mt-1 break-words">{word.lessonSource}</p>}</div>
-                      <p className="text-base text-foreground/80 break-words">{word.translation}</p><div><Status word={word} /></div>
-                    </div>)}
-                  </div>
-                ) : variant === "cards" ? (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {entries.map((word) => <article key={word.id} className="flex flex-col rounded-t-3xl rounded-b-xl border border-b-4 border-primary/10 bg-card p-5">
-                      <div className="flex justify-between items-center gap-2 mb-5"><span className="text-xs text-primary/60 uppercase tracking-wider">{word.entryKind}</span><Status word={word} /></div>
-                      <p className="font-display font-bold text-2xl leading-tight text-primary break-words">{word.term}</p>
-                      <p className="text-base text-foreground/75 mt-3 mb-6 break-words">{word.translation}</p>
-                      <p className="mt-auto pt-3 border-t border-primary/10 text-xs text-muted-foreground break-words">{word.lessonSource || word.groupLabel || dateLabel(date)}</p>
-                    </article>)}
-                  </div>
-                ) : (
-                  <div className="rounded-r-2xl border-l border-star/40 bg-card/70 px-5 sm:px-7">
-                    {entries.map((word) => <article key={word.id} className="py-5 border-b last:border-b-0 border-primary/10">
-                      <div className="flex flex-wrap items-start justify-between gap-3"><p className="min-w-0 flex-1 basis-40 font-serif text-2xl text-primary break-words">{word.term}</p><Status word={word} /></div>
-                      <p className="mt-2 text-base text-foreground/80 break-words">{word.translation}</p>
-                      {(word.lessonSource || word.groupLabel) && <p className="mt-3 text-sm italic text-muted-foreground break-words">From {word.lessonSource || word.groupLabel}</p>}
-                    </article>)}
-                  </div>
-                )}
-              </section>
-            ))}
+      <nav aria-label="Library design previews" className="flex flex-wrap gap-2 mb-5">
+        {designs.map((item) => <a key={item.id} href={`#library-demo-${item.id}`} aria-current={variant === item.id ? "page" : undefined} className={cn("rounded-full px-4 py-2 text-sm font-semibold", variant === item.id ? "bg-primary text-primary-foreground" : "bg-secondary/60 text-primary hover:bg-secondary")}>{item.name}</a>)}
+      </nav>
+      <h1 className="font-display font-black text-3xl text-primary">{design.name}</h1>
+      <p className="mt-2 mb-6 text-base text-muted-foreground">{design.description}</p>
+      {isLoading ? <p role="status" className="flex gap-2 py-12"><Loader2 className="h-5 w-5 animate-spin" />Loading vocabulary…</p> : isError ? <p role="alert" className="py-8 text-destructive">Couldn't load your vocabulary. Please try again later.</p> : <>
+        <section aria-label="Vocabulary overview" className="text-primary">
+          <div className="flex items-center justify-between gap-4 pb-5">
+            <div>
+              <button type="button" onClick={() => setPercent(!percent)} aria-label={`Mastered ${display(counts.mastered)}. Show ${percent ? "numbers" : "percentages"}.`} className="block text-6xl sm:text-8xl font-black leading-none tracking-tighter text-left rounded-md focus-visible:outline-2 focus-visible:outline-primary">{display(counts.mastered)}</button>
+              <p className="text-lg font-bold mt-1">Mastered</p>
+              <p className="text-sm mt-2">{counts.total.toLocaleString()} total vocab items</p>
+            </div>
+            <img src="/brand/romaintalk-icon.png" alt="RomainTalk mascot" className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl" />
           </div>
-        )}
-      </div>
+          <VocabularyStatusBlocks counts={counts} selected={stage} onSelect={setStage} displayValue={display} layout={design.layout} palette={[...design.status]} />
+        </section>
+        <div className="flex items-center gap-2 mt-7 border-b border-primary/20 py-2">
+          <Search className="h-5 w-5 text-primary shrink-0" aria-hidden="true" />
+          <input aria-label="Search vocabulary" value={search} onChange={(event) => changeSearch(event.target.value)} placeholder="Search your vocabulary…" className="min-w-0 flex-1 bg-transparent text-base min-h-11 px-1 text-primary placeholder:text-primary/60 focus-visible:outline-2 focus-visible:outline-primary" />
+          {search && <button type="button" aria-label="Clear search" onClick={() => changeSearch("")} className="flex h-11 w-9 shrink-0 items-center justify-center text-primary"><X className="h-4 w-4" /></button>}
+          <button type="button" aria-label="Filter starred words" aria-pressed={starred} onClick={() => setStarred(!starred)} className={cn("flex h-11 shrink-0 items-center justify-center gap-2 px-2 rounded-md", starred ? "bg-primary text-primary-foreground" : "text-primary")}><Star className={cn("h-4 w-4", starred && "fill-current")} /><span className="hidden sm:inline text-sm">Starred</span></button>
+        </div>
+        <div className="flex flex-wrap justify-between items-center gap-2 mt-3 mb-5 text-sm text-primary/75">
+          <span aria-live="polite">{filtered.length} of {words.length} items</span>
+          <div className="flex gap-4"><button type="button" onClick={() => setOpenDates([])} className="py-2 hover:underline">Fold all</button><button type="button" onClick={() => setOpenDates(groups.map(([date]) => date))} className="py-2 hover:underline">Unfold all</button></div>
+        </div>
+        {!groups.length ? <p className="text-center text-muted-foreground py-12">{words.length ? "No matching vocabulary" : "Your library is empty"}</p> : <Accordion type="multiple" value={openDates} onValueChange={setOpenDates} aria-label="Vocabulary by date" className="isolate">
+          {groups.map(([date, entries], index) => {
+            const paletteIndex = allDates.indexOf(date);
+            const swatch = design.dates[paletteIndex % design.dates.length];
+            const label = dateLabel(date);
+            return <AccordionItem value={date} key={date} style={{ ...swatch, zIndex: index }} className={cn("relative border-0 rounded-t-2xl last:rounded-b-2xl", index > 0 && "-mt-3")}>
+              <AccordionTrigger className="items-center px-5 sm:px-7 pt-5 pb-8 gap-3 rounded-t-2xl hover:no-underline [&>svg]:text-current [&>svg]:h-5 [&>svg]:w-5 focus-visible:ring-inset">
+                <span className="min-w-0 flex-1 text-left text-2xl sm:text-4xl font-black uppercase leading-[0.95] tracking-tighter break-words">{label.title}</span>
+                <span className="hidden sm:block w-28 text-left text-xs leading-relaxed">{label.detail}</span>
+                <span className="shrink-0 text-right text-sm font-medium">{entries.length}<span className="block text-xs font-normal">{entries.length === 1 ? "item" : "items"}</span></span>
+              </AccordionTrigger>
+              <AccordionContent className="px-3 sm:px-5 pb-7">
+                <div className="space-y-3">
+                  {entries.map((word, wordIndex) => <WordSwatch key={word.id} word={word} swatch={design.words[wordIndex % design.words.length]} />)}
+                </div>
+              </AccordionContent>
+            </AccordionItem>;
+          })}
+        </Accordion>}
+      </>}
     </div>
-  );
+  </div>;
 }

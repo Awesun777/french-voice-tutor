@@ -1,13 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { Sparkles, BookOpen, BadgeCheck, Check } from "lucide-react";
 import type { VocabEntry } from "@/types";
-import { cn } from "@/lib/utils";
+import VocabularyStatusBlocks from "./VocabularyStatusBlocks";
 import { summarizeVocabulary, type VocabularyStage } from "@/lib/vocabularySummary";
 
 const stages = [
-  { key: "new", label: "New", color: "bg-accent", surface: "bg-accent/15 text-primary border-accent/25", icon: Sparkles, description: "Words you haven't reviewed yet" },
-  { key: "learning", label: "Learning", color: "bg-star", surface: "bg-star/15 text-primary border-star/25", icon: BookOpen, description: "Includes words in learning and review" },
-  { key: "mastered", label: "Mastered", color: "bg-primary", surface: "bg-primary text-primary-foreground border-primary", icon: BadgeCheck, description: "Words marked mastered by spaced repetition" },
+  { key: "new", color: "bg-[#9ED6DF]" },
+  { key: "learning", color: "bg-[#EAC119]" },
+  { key: "mastered", color: "bg-primary" },
 ] as const;
 
 export default function VocabularySummary({ words, selected, onSelect, actions, calendar }: {
@@ -50,15 +49,8 @@ export default function VocabularySummary({ words, selected, onSelect, actions, 
       <div className="flex h-3 overflow-hidden rounded-full bg-primary/10" role="img" aria-label={`${counts.new} new, ${counts.learning} learning including review, ${counts.mastered} mastered`}>
         {stages.map(({ key, color }) => <span key={key} className={color} style={{ width: `${percent(counts[key])}%` }} />)}
       </div>
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-4 pb-1">
-        {stages.map(({ key, label, surface, icon: Icon, description }) => (
-          <button key={key} type="button" aria-pressed={selected === key} aria-label={`${label}: ${counts[key]}. ${description}. ${selected === key ? "Click again to remove filter." : "Filter library."}`} onClick={() => onSelect(selected === key ? null : key)} className={cn("relative min-w-0 flex flex-col items-center justify-center gap-1.5 rounded-t-2xl rounded-b-xl border border-b-4 px-1.5 py-4 text-center shadow-sm motion-safe:transition-transform motion-safe:hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary", surface, selected === key && "ring-2 ring-primary ring-offset-2 ring-offset-secondary")}>
-            {selected === key && <Check aria-hidden="true" className="absolute right-1.5 top-1.5 h-3.5 w-3.5" />}
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-current/10" aria-hidden="true"><Icon className="h-4 w-4" strokeWidth={1.75} /></span>
-            <span className="text-sm font-semibold">{label}</span>
-            <strong className="block w-full break-all font-display text-2xl sm:text-3xl font-black leading-tight tracking-tight tabular-nums">{mode === "percent" ? `${displayPercent(counts[key])}%` : counts[key].toLocaleString()}</strong>
-          </button>
-        ))}
+      <div className="mt-4">
+        <VocabularyStatusBlocks counts={counts} selected={selected} onSelect={onSelect} displayValue={(value) => mode === "percent" ? `${displayPercent(value)}%` : value.toLocaleString()} />
       </div>
       {actions && <div className="mt-3">{actions}</div>}
       {calendar && <div className="mt-4 border-t border-primary/10 pt-4">{calendar}</div>}
