@@ -513,7 +513,7 @@ export default function TcfMockTab() {
                   </section>
                 )}
 
-                <section className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-4">
+                <section className={cn("min-h-0 min-w-0 flex-1 overflow-y-auto p-4", item.section === "structure" ? "flex flex-col gap-3" : "space-y-3")}>
                   {item.hasAudio && (
                     <div className={cn("flex items-center gap-3 border-b pb-3", LINE)}>
                       <button
@@ -551,7 +551,7 @@ export default function TcfMockTab() {
                   {item.section === "oral" && !item.hasAudio && (
                     <p className="text-xs text-muted-foreground">Document sonore pas encore importé pour cette série (podcast manquant).</p>
                   )}
-                  {item.question && <p className="text-base font-semibold leading-snug md:text-lg">{item.question}</p>}
+                  {item.question && <p className={cn("font-semibold leading-snug", item.section === "structure" ? "my-auto w-full shrink-0 break-words py-6 text-center text-2xl md:text-3xl lg:text-4xl" : "text-base md:text-lg")}>{item.question}</p>}
 
                   {isChecked && (
                     <div className={cn("border-l-2 pl-3 text-sm", chosen === item.answer ? "border-emerald-600" : "border-red-600")}>
