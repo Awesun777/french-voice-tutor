@@ -427,6 +427,23 @@ export async function glossTcfTranscript(examId: string, n: number): Promise<Tcf
   return glossTcfLines(examId, n, "transcript");
 }
 
+/**
+ * The breakdown pass labels its English renderings by line number, and at
+ * batch scale it sometimes returns fewer lines than it was given or misnumbers
+ * them, which would put a translation under the wrong sentence. Keep the
+ * English only when every line got one and each is plausibly sized for its
+ * French; otherwise drop it for the whole item (the glosses are unaffected).
+ */
+function sanitizeEnglish(lines: TcfGlossLine[]): TcfGlossLine[] {
+  const ok = lines.length > 0 && lines.every(l => {
+    const en = (l.en ?? "").trim();
+    if (!en) return false;
+    const ratio = en.length / Math.max(1, l.text.length);
+    return ratio >= 0.35 && ratio <= 2.5;
+  });
+  return ok ? lines : lines.map(l => ({ text: l.text, tokens: l.tokens }));
+}
+
 /** Cached variant used by the router and by scripts/tcf-pregloss.ts (dict_cache, generated once). */
 export async function glossTcfCached(examId: string, n: number, kind: TcfGlossKind): Promise<{ lines: TcfGlossLine[]; cached: boolean }> {
   const key = glossCacheKey(examId, n, kind);
@@ -436,7 +453,7 @@ export async function glossTcfCached(examId: string, n: number, kind: TcfGlossKi
     if (rows.length > 0) {
       try {
         const parsed = JSON.parse(rows[0].entryJson);
-        if (Array.isArray(parsed)) return { lines: parsed as TcfGlossLine[], cached: true };
+        if (Array.isArray(parsed)) return { lines: sanitizeEnglish(parsed as TcfGlossLine[]), cached: true };
       } catch {
         /* regenerate */
       }
@@ -450,7 +467,7 @@ export async function glossTcfCached(examId: string, n: number, kind: TcfGlossKi
       .values({ termKey: key, entryJson, createdAt: Date.now() })
       .onDuplicateKeyUpdate({ set: { entryJson, createdAt: Date.now() } });
   }
-  return { lines, cached: false };
+  return { lines: sanitizeEnglish(lines), cached: false };
 }
 
 export async function glossTcfLines(examId: string, n: number, kind: TcfGlossKind): Promise<TcfGlossLine[]> {
