@@ -39,7 +39,12 @@ import { SPEAKER_LABEL, TCF_SECTION_META, type TcfLetter, type TcfSection } from
 const LETTERS: TcfLetter[] = ["A", "B", "C", "D"];
 const SECTIONS: TcfSection[] = ["oral", "structure", "ecrit"];
 const SECTION_SHORT: Record<TcfSection, string> = { oral: "CO", structure: "SL", ecrit: "CE" };
-const DEFAULT_EXAM = "romaintalk-1";
+const DEFAULT_EXAM = "tv5-1";
+// Version the selection preference so existing users start on TV5MONDE once.
+// Per-exam answer storage remains unchanged.
+const EXAM_PREFERENCE = "rt-tcf-mock:exam:v2";
+const seriesTitle = (exam: { id: string; title: string; source: string }) =>
+  exam.source === "tv5" ? `TV5MONDE — Livret d’entrainement n°${exam.id.replace("tv5-", "")}` : exam.title;
 const HOVER_CARD_H = 170;
 /** Structural lines: charcoal, not the pale-blue border token — burgundy stays for actions. */
 const LINE = "border-foreground/25";
@@ -87,7 +92,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 export default function TcfMockTab() {
   const [examId, setExamId] = useState<string>(() => {
     try {
-      return localStorage.getItem("rt-tcf-mock:exam") || DEFAULT_EXAM;
+      return localStorage.getItem(EXAM_PREFERENCE) || DEFAULT_EXAM;
     } catch {
       return DEFAULT_EXAM;
     }
@@ -110,7 +115,7 @@ export default function TcfMockTab() {
     stopAudio();
     setExamId(id);
     try {
-      localStorage.setItem("rt-tcf-mock:exam", id);
+      localStorage.setItem(EXAM_PREFERENCE, id);
     } catch {
       /* ignore */
     }
@@ -366,7 +371,7 @@ export default function TcfMockTab() {
         {examQ.error ? (
           <div className="text-sm">
             Série indisponible : {examQ.error.message}{" "}
-            <button className="underline" onClick={() => switchExam(DEFAULT_EXAM)}>
+            <button className="underline" onClick={() => switchExam("romaintalk-1")}>
               revenir à la série Romaintalk
             </button>
           </div>
@@ -425,7 +430,10 @@ export default function TcfMockTab() {
     <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* ── top bar ── */}
       <header className={cn("flex min-h-14 flex-shrink-0 items-center gap-2 border-b bg-background/80 px-4 py-2 backdrop-blur-sm md:gap-3", LINE)}>
-        <h1 className="min-w-0 flex-1 truncate font-display text-lg font-bold leading-tight md:text-xl">{title}</h1>
+        <h1 className="flex min-w-0 flex-1 items-center gap-3" aria-label={source === "tv5" ? "TCF — TV5MONDE" : `TCF — ${title}`}>
+          <img src="/tcf/tcf-logo.png" alt="TCF — France Éducation international" className="h-8 w-auto shrink-0" />
+          {source === "tv5" ? <img src="/tcf/tv5monde-logo.svg" alt="TV5MONDE" className="h-5 w-auto min-w-0 max-w-36" /> : <span className="truncate font-display text-lg font-bold">RomainTalk</span>}
+        </h1>
         <select
           value={examId}
           onChange={e => switchExam(e.target.value)}
@@ -434,7 +442,7 @@ export default function TcfMockTab() {
         >
           {(examsQ.data?.exams ?? [{ id: examId, title: title || examId, source: "romaintalk", itemCount: 40 }]).map(e => (
             <option key={e.id} value={e.id}>
-              {e.title}
+              {seriesTitle(e)}
             </option>
           ))}
         </select>
@@ -470,7 +478,8 @@ export default function TcfMockTab() {
           ) : (
             <>
               {/* item strip: number · section · consigne */}
-              <div className={cn("flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b bg-background/50 px-4 py-2", LINE)}>
+              <div className={cn("flex-shrink-0 space-y-1 border-b bg-background/50 px-4 py-2", LINE)}>
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
                 <span className="font-display text-sm font-bold tabular-nums">
                   Question {item.n}
                   <span className="text-muted-foreground">/{items.length}</span>
@@ -482,7 +491,8 @@ export default function TcfMockTab() {
                     {item.level}
                   </span>
                 )}
-                <p className="min-w-0 basis-full text-sm text-foreground/90 md:ml-auto md:basis-auto md:text-right">{item.consigne}</p>
+                </div>
+                <p className="w-full min-w-0 text-left text-sm text-foreground/90">{item.consigne}</p>
               </div>
 
               {/* document zone: picture / passage left, question + panels right */}
