@@ -1063,8 +1063,13 @@ async function main() {
 
 // Only run the CLI when invoked directly, so tests can import glossBatch
 // without kicking off a fetch.
+// The basename test matters once this module is bundled into the server
+// (dist/index.js): there import.meta.url IS argv[1], and without it the CLI
+// would run at server start-up and exit with the usage text.
 const invokedDirectly =
-  !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  !!process.argv[1] &&
+  /ingest-article\.[cm]?[jt]s$/.test(process.argv[1]) &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((err) => {
