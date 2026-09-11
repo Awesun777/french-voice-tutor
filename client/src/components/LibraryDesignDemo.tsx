@@ -98,7 +98,7 @@ export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVar
   };
 
   return <div ref={scrollRef} className="h-full overflow-y-auto px-4 pt-5 pb-24 sm:px-6 sm:pb-8">
-    <div className={cn("mx-auto", variant !== "compact" && "max-w-3xl")}>
+    <div className={cn("mx-auto", variant === "compact" ? "max-w-5xl" : "max-w-3xl")}>
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm mb-4">
         <a href="#library" className="inline-flex items-center gap-2 text-primary hover:underline"><ArrowLeft className="h-4 w-4" />My Library</a>
         <span className="text-muted-foreground">Admin preview · saved words unchanged</span>
@@ -121,7 +121,7 @@ export default function LibraryDesignDemo({ variant }: { variant: LibraryDemoVar
           <VocabularyStatusBlocks counts={counts} selected={stage} onSelect={setStage} displayValue={display} layout={design.layout} palette={[...design.status]} />
         </section>
         <div ref={toolsRef} className="sticky top-0 z-20 bg-secondary rounded-b-2xl px-4 pt-3 mt-5">
-          <VocabHeatmap tone="blue" dates={groups.filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key)).map(([dateKey, entries]) => ({ dateKey, total: entries.length }))} idleLabel="Saved words · pick a day" onPick={(date) => {
+          <VocabHeatmap stretch={variant === "compact"} tone="blue" dates={groups.filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key)).map(([dateKey, entries]) => ({ dateKey, total: entries.length }))} idleLabel="Saved words · pick a day" onPick={(date) => {
             setOpenDates((old) => Array.from(new Set([...old, date])));
             requestAnimationFrame(() => { const root = scrollRef.current, item = dateRefs.current[date]; if (root && item) root.scrollTop += item.getBoundingClientRect().top - root.getBoundingClientRect().top - (toolsRef.current?.offsetHeight ?? 0) - 8; });
           }} />

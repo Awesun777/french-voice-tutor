@@ -52,7 +52,7 @@ function RollingLabel({ text }: { text: string }) {
   );
 }
 
-export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick a day you saved words", tone = "green" }: {
+export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick a day you saved words", tone = "green", stretch = false }: {
   dates: { dateKey: string; total: number }[];
   onPick: (dateKey: string) => void;
   /** Ringed rather than filled — marks position without restating the count. */
@@ -60,6 +60,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
   idleLabel?: string;
   /** Blue keeps the admin library calendar in the same family as its summary. */
   tone?: "green" | "blue";
+  stretch?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState<{ k: string; c: number } | null>(null);
@@ -95,12 +96,12 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
         <CalendarDays className="w-3.5 h-3.5 flex-none" /> <RollingLabel text={label} />
       </p>
       <div ref={scrollRef} className="overflow-x-auto pb-1" onMouseLeave={() => setHovered(null)}>
-        <div className="w-max mx-auto">
+        <div className={stretch ? "w-full" : "w-max mx-auto"} style={stretch ? { minWidth: weeks.length * 15 } : undefined}>
           <div className="flex gap-[3px] mb-1">
             {weeks.map((week, i) => {
               const first = week.find((d) => d.getDate() === 1);
               return (
-                <span key={i} className={cn("w-3 flex-none whitespace-nowrap overflow-visible", tone === "blue" ? "text-xs text-primary/75" : "text-[9px] text-muted-foreground")}>
+                <span key={i} className={cn("whitespace-nowrap overflow-visible", stretch ? "flex-1 min-w-3" : "w-3 flex-none", tone === "blue" ? "text-xs text-primary/75" : "text-[9px] text-muted-foreground")}>
                   {first ? first.toLocaleDateString("en-US", { month: "short" }) : ""}
                 </span>
               );
@@ -108,7 +109,7 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
           </div>
           <div className="flex gap-[3px]">
             {weeks.map((week, i) => (
-              <div key={i} className="flex flex-col gap-[3px]">
+              <div key={i} className={cn("flex flex-col gap-[3px]", stretch && "flex-1 min-w-3")}>
                 {week.map((d) => {
                   const k = ymd(d);
                   const c = counts.get(k) ?? 0;
@@ -130,7 +131,8 @@ export function VocabHeatmap({ dates, onPick, selectedKey, idleLabel = "Or pick 
                       aria-label={c ? `${c} words from ${fmtHeatmapDate(k)}` : undefined}
                       style={style}
                       className={cn(
-                        "w-3 h-3 rounded-[3px] flex-none p-0 border-0",
+                        "rounded-[3px] flex-none p-0 border-0",
+                        stretch ? "w-full aspect-square" : "w-3 h-3",
                         isToday && "bg-primary",
                         selectedKey === k && "ring-2 ring-primary ring-offset-1 ring-offset-background",
                         c ? "cursor-pointer hover:ring-2 hover:ring-primary/50" : "cursor-default"

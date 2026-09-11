@@ -160,7 +160,7 @@ function GroupHeader({
         </div>
       ) : (
         <>
-          <p className={cn("flex-1 min-w-0 font-display font-bold uppercase cursor-pointer select-none", paletteMode ? "text-2xl sm:text-4xl leading-none tracking-tighter break-words" : "text-xs text-primary tracking-wider")}>
+          <p className={cn("flex-1 min-w-0 uppercase cursor-pointer select-none", paletteMode ? "font-sans font-black text-2xl sm:text-4xl leading-none tracking-tighter break-words" : "font-display font-bold text-xs text-primary tracking-wider")}>
             {fmtDateLabel(dateKey)}
           </p>
           <button
@@ -496,6 +496,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
     <>
               <VocabHeatmap
                 tone={showVocabularySummary ? "blue" : "green"}
+                stretch={showVocabularySummary}
                 dates={sortedGroups
                   .filter(([k]) => /^\d{4}-\d{2}-\d{2}$/.test(k))
                   .map(([k, ws]) => ({ dateKey: k, total: ws.length }))}
@@ -547,7 +548,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
           library keeps its pinned calendar and search. */}
       <div ref={showVocabularySummary ? scrollRef : undefined} className={cn("flex-1 flex flex-col min-h-0", showVocabularySummary && "overflow-y-auto")}>
         {showVocabularySummary && !isLoading && (
-          <div className="flex-shrink-0 px-4 sm:px-6 pt-4">
+          <div className="flex-shrink-0 w-full max-w-5xl mx-auto px-4 sm:px-6 pt-4">
             <div className={cn("mx-auto", !showVocabularySummary && "max-w-3xl")}>
               <VocabularySummary
                 words={words}
@@ -569,24 +570,25 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
           </div>
         )}
 
-      <div ref={stickyToolsRef} className={cn("flex-shrink-0", showVocabularySummary && "sticky top-0 z-20 px-4 sm:px-6")}>
-        <div className={showVocabularySummary ? "bg-secondary rounded-b-3xl px-5 sm:px-7 pt-2 pb-3" : undefined}>
+      <div ref={stickyToolsRef} className={cn("flex-shrink-0", showVocabularySummary && "sticky top-0 z-20 w-full max-w-5xl mx-auto px-4 sm:px-6")}>
+        <div className={showVocabularySummary ? "bg-background rounded-b-3xl pt-3 pb-1 text-[#1D1D1B]" : undefined}>
           {showVocabularySummary && !isLoading && libraryCalendar}
       {/* Starred is a list filter, so it sits beside search in the admin view. */}
       {!isLoading && words.length > 0 && (
         <div className={cn("flex-shrink-0 pt-3 pb-2", !showVocabularySummary && "px-4")}>
-          <div className={cn("mx-auto flex items-center gap-2", !showVocabularySummary && "max-w-3xl")}>
+          <div className={cn("mx-auto flex items-center gap-2", showVocabularySummary ? "border-b border-black/20 py-2" : "max-w-3xl")}>
             <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Search className={cn("absolute top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none", showVocabularySummary ? "left-0 text-[#1D1D1B]" : "left-3 text-muted-foreground")} />
             <input
               value={search}
               onChange={(e) => { setSearch(e.target.value); if (showVocabularySummary) setExpandedGroups(e.target.value.trim() ? new Set(words.map((word) => word.dateKey)) : new Set()); }}
-              placeholder="Search your library…"
-              className="w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+              aria-label="Search vocabulary"
+              placeholder={showVocabularySummary ? "Search your vocabulary…" : "Search your library…"}
+              className={showVocabularySummary ? "w-full pl-8 pr-3 min-h-11 bg-transparent text-base text-[#1D1D1B] placeholder:text-black/60 focus-visible:outline-2 focus-visible:outline-primary" : "w-full pl-9 pr-4 py-2 bg-card border border-border rounded-xl text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"}
             />
             </div>
             {showVocabularySummary && (
-              <button type="button" aria-label="Filter starred words" aria-pressed={filterStarred} onClick={() => setFilterStarred(!filterStarred)} className={cn("shrink-0 flex items-center justify-center gap-1.5 min-h-10 px-3 rounded-xl text-sm border border-border focus-visible:outline-2 focus-visible:outline-primary", filterStarred ? "bg-star/15 text-star" : "bg-card text-muted-foreground hover:text-primary")}>
+              <button type="button" aria-label="Filter starred words" aria-pressed={filterStarred} onClick={() => setFilterStarred(!filterStarred)} className={cn("shrink-0 flex items-center justify-center gap-2 min-h-11 px-2 rounded-md text-sm focus-visible:outline-2 focus-visible:outline-primary", filterStarred ? "bg-[#282828] text-white" : "text-[#1D1D1B] hover:bg-black/5")}>
                 <Star className={cn("w-4 h-4", filterStarred && "fill-current")} /><span className="hidden sm:inline">Starred</span>
               </button>
             )}
@@ -594,10 +596,28 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
         </div>
       )}
 
+          {showVocabularySummary && !isLoading && (            <div className="flex items-center justify-between py-4">
+              <p className="text-sm text-[#1D1D1B]">{filtered.length} of {words.length} items</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => showVocabularySummary ? setExpandedGroups(new Set()) : setCollapsed(new Set(sortedGroups.map(([k]) => k)))}
+                  className="text-sm text-[#1D1D1B] hover:text-foreground transition-colors"
+                >
+                  Fold all
+                </button>
+                <span className="text-black/40">·</span>
+                <button
+                  onClick={() => showVocabularySummary ? setExpandedGroups(new Set(sortedGroups.map(([k]) => k))) : setCollapsed(new Set())}
+                  className="text-sm text-[#1D1D1B] hover:text-foreground transition-colors"
+                >
+                  Unfold all
+                </button>
+              </div>
+            </div>)}
         </div>
       </div>
 
-      <div ref={showVocabularySummary ? undefined : scrollRef} className={cn("px-4 pb-4 pt-1", showVocabularySummary ? "flex-shrink-0 sm:px-6" : "flex-1 overflow-y-auto")}>
+      <div ref={showVocabularySummary ? undefined : scrollRef} className={cn("px-4 pb-4 pt-1", showVocabularySummary ? "flex-shrink-0 sm:px-6 w-full max-w-5xl mx-auto" : "flex-1 overflow-y-auto")}>
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -623,7 +643,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
             </div>
             ) : (
             <>
-            <div className="flex items-center justify-between py-4">
+            {!showVocabularySummary && (            <div className="flex items-center justify-between py-4">
               <p className="text-xs text-muted-foreground">{filtered.length} of {words.length} words</p>
               <div className="flex gap-2">
                 <button
@@ -640,7 +660,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
                   Expand all
                 </button>
               </div>
-            </div>
+            </div>)}
 
             {sortedGroups.map(([dateKey, dayWords], groupIndex) => {
               const isOpen = showVocabularySummary ? expandedGroups.has(dateKey) : !collapsed.has(dateKey);

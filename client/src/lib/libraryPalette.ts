@@ -1,10 +1,10 @@
-// The existing Ops Color Palette tokens, excluding the warm-cream page ground.
+// Library swatches: demo black and yellow replace navy and accent blue.
 export const libraryPalette = [
-  { background: "var(--primary)", color: "var(--primary-foreground)" },
-  { background: "var(--speaking-surface)", color: "var(--primary)" },
-  { background: "var(--accent)", color: "var(--accent-foreground)" },
+  { background: "#282828", color: "var(--primary-foreground)" },
+  { background: "var(--speaking-surface)", color: "#1D1D1B" },
+  { background: "#FFE459", color: "#1D1D1B" },
   { background: "var(--speaking)", color: "var(--primary-foreground)" },
-  { background: "var(--secondary)", color: "var(--primary)" },
+  { background: "var(--secondary)", color: "#1D1D1B" },
 ];
 
 export const libraryStatusColors = [

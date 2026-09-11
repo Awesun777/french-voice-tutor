@@ -28,7 +28,7 @@ export default function VocabularySummary({ words, selected, onSelect, actions, 
   };
 
   return (
-    <section aria-label="Vocabulary progress" className={`bg-secondary p-5 sm:px-7 sm:py-5 text-primary ${joined ? "rounded-t-3xl" : "rounded-3xl"}`}>
+    <section aria-label="Vocabulary progress" className={`bg-secondary p-5 sm:px-7 sm:py-5 text-[#1D1D1B] ${joined ? "rounded-t-3xl" : "rounded-3xl"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={() => onSelect(null)} aria-pressed={selected === null} className="text-sm rounded-md focus-visible:outline-2 focus-visible:outline-primary">
           <strong className="text-base tabular-nums">{counts.total.toLocaleString()}</strong> total vocab items
@@ -36,7 +36,7 @@ export default function VocabularySummary({ words, selected, onSelect, actions, 
       </div>
       <div className="flex items-center justify-between gap-3 py-2">
         <div className="min-w-0" aria-live="polite">
-          <button type="button" onClick={() => setMode((value) => value === "percent" ? "number" : "percent")} aria-label={`Mastered: ${mode === "percent" ? `${displayPercent(counts.mastered)} percent` : counts.mastered.toLocaleString()}. Click to show ${mode === "percent" ? "numbers" : "percentages"}.`} className="block max-w-full text-left font-display font-black leading-none tracking-tighter text-6xl sm:text-8xl break-all rounded-lg hover:text-accent-strong focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary transition-colors">
+          <button type="button" onClick={() => setMode((value) => value === "percent" ? "number" : "percent")} aria-label={`Mastered: ${mode === "percent" ? `${displayPercent(counts.mastered)} percent` : counts.mastered.toLocaleString()}. Click to show ${mode === "percent" ? "numbers" : "percentages"}.`} className="block max-w-full text-left font-sans font-black leading-none tracking-tighter text-6xl sm:text-8xl break-all rounded-lg hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary transition-colors">
             {mode === "percent" ? displayPercent(counts.mastered) : counts.mastered.toLocaleString()}
             {mode === "percent" && <span className="text-3xl sm:text-5xl">%</span>}
           </button>
