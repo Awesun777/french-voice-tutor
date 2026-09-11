@@ -173,7 +173,8 @@ def extract_items(doc: pymupdf.Document, cache_dir: Path | None):
         for it in page_items:
             n = int(it["n"])
             cb = (it.get("consigne_before") or "").strip().lstrip(">").strip()
-            if cb:
+            # "Validé par CIE" is the item's caption, not an instruction.
+            if cb and "CIE" not in cb and len(cb) > 20:
                 current_consigne = cb
             ch = [clean_choice(c) for c in (it.get("choices") or [])][:4]
             while len(ch) < 4:

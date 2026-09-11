@@ -14,7 +14,6 @@
  * on demand (cached server-side, so it is generated once).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import {
@@ -32,7 +31,6 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { idleContainer, idleItem } from "@/components/idleReveal";
 import { SPEAKER_LABEL, TCF_SECTION_META, type TcfLetter, type TcfSection } from "@shared/tcfMockExams";
 
 const LETTERS: TcfLetter[] = ["A", "B", "C", "D"];
@@ -326,296 +324,293 @@ export default function TcfMockTab() {
         .filter(Boolean)
         .map(text => ({ label: null, text }));
 
-  return (
-    <div className="h-full overflow-y-auto">
-      <motion.div variants={idleContainer} initial="hidden" animate="show" className="mx-auto max-w-4xl px-4 py-6 md:px-6 space-y-5">
-        {/* header */}
-        <motion.div variants={idleItem} className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="font-display text-[11px] font-bold uppercase tracking-wider text-amber-700">Test Mock · admin</div>
-            <h1 className="font-display text-2xl font-bold">{title}</h1>
-            <p className="text-sm text-muted-foreground">
-              {source === "tv5"
-                ? "Livret d'entraînement TV5MONDE / France Éducation international, ingéré pour usage privé."
-                : "40 questions · compréhension orale, structure de la langue, compréhension écrite. Contenu original Romaintalk."}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={examId}
-              onChange={e => switchExam(e.target.value)}
-              className="rounded-xl border border-border bg-card px-3 py-1.5 text-sm font-semibold focus:outline-none"
-              title="Série"
-            >
-              {(examsQ.data?.exams ?? [{ id: examId, title: title || examId, source: "romaintalk", itemCount: 40 }]).map(e => (
-                <option key={e.id} value={e.id}>
-                  {e.title}
-                </option>
-              ))}
-            </select>
-            <span className="rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold tabular-nums">
-              {score.answered}/{score.total} répondues
-            </span>
-            <button
-              onClick={() => setShowResults(s => !s)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-semibold transition-all",
-                showResults ? "border-amber-500/60 bg-amber-500/10 text-amber-800" : "border-border bg-card hover:border-amber-500/60 hover:bg-amber-500/5"
-              )}
-            >
-              <Trophy className="h-4 w-4" /> Résultats
-            </button>
-            <button
-              onClick={reset}
-              title="Recommencer la série"
-              className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-1.5 text-sm font-semibold transition-all hover:border-red-400/60 hover:bg-red-500/5"
-            >
-              <RotateCcw className="h-4 w-4" /> Recommencer
-            </button>
-          </div>
-        </motion.div>
+  const hasDoc = item.hasImage || !!item.passage;
 
-        {/* navigator */}
-        <motion.div variants={idleItem} className="bg-card card-float rounded-2xl border border-border p-3 md:p-4 space-y-3">
-          {SECTIONS.map(sec => {
-            const group = items.filter(it => it.section === sec);
-            if (group.length === 0) return null;
-            return (
-              <div key={sec} className="flex flex-wrap items-center gap-1.5">
-                <span className="mr-1 w-8 shrink-0 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground" title={TCF_SECTION_META[sec].label}>
-                  {SECTION_SHORT[sec]}
+  // Navigator button tone — shared by the right sidebar and the mobile strip.
+  const navClass = (it: (typeof items)[number]) => {
+    const a = answers[it.n];
+    const c = checkedSet.has(it.n);
+    const state = c ? (a === it.answer ? "right" : "wrong") : a ? "answered" : "blank";
+    const current = it.n === item.n && !showResults;
+    return cn(
+      "h-8 min-w-8 rounded-md border text-xs font-semibold tabular-nums transition-colors",
+      current && "border-amber-600 bg-amber-600 text-white",
+      !current && state === "right" && "border-emerald-500/60 bg-emerald-500/10 text-emerald-800",
+      !current && state === "wrong" && "border-red-500/60 bg-red-500/10 text-red-800",
+      !current && state === "answered" && "border-foreground/40 bg-muted text-foreground",
+      !current && state === "blank" && "border-border text-muted-foreground hover:bg-muted"
+    );
+  };
+
+  const toolBtn = (active = false) =>
+    cn(
+      "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors disabled:opacity-40",
+      active ? "border-amber-600 bg-amber-500/10 text-amber-800" : "border-border bg-transparent hover:border-amber-500/60 hover:bg-amber-500/5"
+    );
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-background">
+      {/* ── top bar ── */}
+      <header className="flex min-h-14 flex-shrink-0 items-center gap-2 border-b border-border bg-background/80 px-4 py-2 backdrop-blur-sm md:gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-[10px] font-bold uppercase tracking-wider text-amber-700">Test Mock · admin</div>
+          <h1 className="truncate font-display text-base font-bold leading-tight md:text-lg">{title}</h1>
+        </div>
+        <select
+          value={examId}
+          onChange={e => switchExam(e.target.value)}
+          className="max-w-[11rem] truncate rounded-lg border border-border bg-transparent px-2 py-1.5 text-sm font-semibold focus:outline-none focus:border-amber-600 md:max-w-none"
+          title="Série"
+        >
+          {(examsQ.data?.exams ?? [{ id: examId, title: title || examId, source: "romaintalk", itemCount: 40 }]).map(e => (
+            <option key={e.id} value={e.id}>
+              {e.title}
+            </option>
+          ))}
+        </select>
+        <span className="hidden font-display text-[11px] font-bold uppercase tracking-wider tabular-nums text-muted-foreground sm:inline">
+          {score.answered}/{score.total} répondues
+        </span>
+        <button onClick={() => setShowResults(s => !s)} className={toolBtn(showResults)} title="Résultats">
+          <Trophy className="h-4 w-4" /> <span className="hidden md:inline">Résultats</span>
+        </button>
+        <button onClick={reset} title="Recommencer la série" className={cn(toolBtn(), "hover:border-red-400/60 hover:bg-red-500/5")}>
+          <RotateCcw className="h-4 w-4" /> <span className="hidden md:inline">Recommencer</span>
+        </button>
+      </header>
+
+      {/* mobile navigator strip */}
+      <div className="flex flex-shrink-0 gap-1 overflow-x-auto border-b border-border px-3 py-2 md:hidden">
+        {items.map(it => (
+          <button key={it.n} onClick={() => go(it.n)} className={cn(navClass(it), "px-2")}>
+            {it.n}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex min-h-0 flex-1">
+        {/* ── main ── */}
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {showResults ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ResultsCard score={score} items={items} answers={answers} onGo={go} />
+            </div>
+          ) : (
+            <>
+              {/* item strip: number · section · consigne */}
+              <div className="flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border bg-background/50 px-4 py-2">
+                <span className="font-display text-sm font-bold tabular-nums">
+                  Question {item.n}
+                  <span className="text-muted-foreground">/{items.length}</span>
                 </span>
-                {group.map(it => {
-                  const a = answers[it.n];
-                  const c = checkedSet.has(it.n);
-                  const state = c ? (a === it.answer ? "right" : "wrong") : a ? "answered" : "blank";
+                <span className="h-4 w-px bg-border" />
+                <span className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{TCF_SECTION_META[item.section].label}</span>
+                {item.level && (
+                  <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground" title="Niveau visé">
+                    {item.level}
+                  </span>
+                )}
+                <p className="min-w-0 basis-full text-sm text-foreground/90 md:ml-auto md:basis-auto md:text-right">{item.consigne}</p>
+              </div>
+
+              {/* document zone: picture / passage left, question + panels right */}
+              <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+                {hasDoc && (
+                  <section className="flex max-h-[38%] flex-shrink-0 flex-col border-b border-border md:max-h-none md:w-[52%] md:border-b-0 md:border-r">
+                    {item.hasImage ? (
+                      <div className="flex min-h-0 flex-1 items-center justify-center p-3 md:p-4">
+                        {media?.imageUrl ? (
+                          <img src={media.imageUrl} alt="Document" className="max-h-full max-w-full rounded-md border border-border object-contain" />
+                        ) : (
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="min-h-0 flex-1 overflow-y-auto p-4 font-serif text-[15px] leading-relaxed whitespace-pre-line md:p-5">{item.passage}</div>
+                    )}
+                  </section>
+                )}
+
+                <section className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-4">
+                  {item.hasAudio && (
+                    <div className="flex items-center gap-3 border-b border-border pb-3">
+                      <button
+                        onClick={() => (audioState === "idle" ? playItem(item.n) : stopAudio())}
+                        className={cn(
+                          "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-white transition-colors",
+                          audioState === "idle" ? "bg-amber-600 hover:bg-amber-600/90" : "bg-neutral-700 hover:bg-neutral-700/90"
+                        )}
+                        title={audioState === "idle" ? "Écouter" : "Arrêter"}
+                      >
+                        {audioState === "loading" ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : audioState === "playing" ? (
+                          <Square className="h-3.5 w-3.5" fill="currentColor" />
+                        ) : (
+                          <Play className="h-4 w-4" fill="currentColor" />
+                        )}
+                      </button>
+                      <div className="min-w-0 flex-1 text-sm">
+                        <div className="font-semibold">
+                          {audioState === "loading" && "Préparation de l'audio…"}
+                          {audioState === "playing" &&
+                            (item.audio && turnIdx >= 0
+                              ? `${SPEAKER_LABEL[item.audio[turnIdx]?.speaker as Speaker] ?? ""} · tour ${turnIdx + 1}/${item.audio.length}`
+                              : "Lecture…")}
+                          {audioState === "idle" && "Document sonore"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.audio ? `${item.audio.length} tours de parole · le document, puis la question.` : "Le document se joue une seule fois dans le vrai test."}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {item.question && <p className="text-base font-semibold leading-snug md:text-lg">{item.question}</p>}
+
+                  {isChecked && (
+                    <div className={cn("border-l-2 pl-3 text-sm", chosen === item.answer ? "border-emerald-600" : "border-red-600")}>
+                      <div className="font-semibold">{chosen === item.answer ? "Bonne réponse !" : `Mauvaise réponse — la bonne réponse est ${item.answer}.`}</div>
+                      {item.note && <div className="mt-1 text-muted-foreground">{item.note}</div>}
+                    </div>
+                  )}
+
+                  {transcriptShown && transcriptLines.length > 0 && (
+                    <div className="rounded-lg border border-border p-3 text-sm leading-relaxed">
+                      <div className="mb-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Transcription</div>
+                      <div className="space-y-1.5">
+                        {transcriptLines.map((line, i) => (
+                          <p key={i} className={cn(item.audio && i === turnIdx && audioState === "playing" && "font-medium text-amber-800")}>
+                            {line.label && <span className="mr-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{line.label}</span>}
+                            {line.text}
+                          </p>
+                        ))}
+                      </div>
+                      {source === "tv5" && <p className="pt-2 text-xs text-muted-foreground">Transcription automatique — peut contenir de petites erreurs.</p>}
+                    </div>
+                  )}
+
+                  {explanation && (
+                    <div className="rounded-lg border border-amber-500/50 p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-amber-800">
+                          <Sparkles className="h-3.5 w-3.5" /> Explication
+                        </div>
+                        <button onClick={() => explain(true)} disabled={explainMut.isPending} className="text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50">
+                          Régénérer
+                        </button>
+                      </div>
+                      <div className="prose prose-sm max-w-none dark:prose-invert">
+                        <Streamdown>{explanation}</Streamdown>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </div>
+
+              {/* choices — bottom, like the TCF IRN screen */}
+              <div className="grid max-h-[40%] flex-shrink-0 gap-2 overflow-y-auto border-t border-border p-3 sm:grid-cols-2 md:px-4">
+                {LETTERS.map((letter, i) => {
+                  const raw = item.choices[i] ?? "";
+                  const text = revealChoiceText && raw.trim() ? raw : `Réponse ${letter}`;
+                  const isChosen = chosen === letter;
+                  const isRight = item.answer === letter;
+                  const tone = isChecked
+                    ? isRight
+                      ? "border-emerald-600 bg-emerald-500/10"
+                      : isChosen
+                        ? "border-red-600 bg-red-500/10"
+                        : "border-border opacity-60"
+                    : isChosen
+                      ? "border-amber-600 bg-amber-500/10"
+                      : "border-border hover:border-amber-500/60 hover:bg-amber-500/5";
+                  const badge =
+                    isChecked && isRight
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : isChecked && isChosen
+                        ? "border-red-600 bg-red-600 text-white"
+                        : isChosen
+                          ? "border-amber-600 bg-amber-600 text-white"
+                          : "border-border text-foreground";
                   return (
                     <button
-                      key={it.n}
-                      onClick={() => go(it.n)}
-                      className={cn(
-                        "h-8 w-8 rounded-lg text-xs font-semibold tabular-nums transition-all border",
-                        it.n === item.n && !showResults ? "ring-2 ring-amber-500 ring-offset-1 ring-offset-background" : "",
-                        state === "right" && "border-emerald-500/50 bg-emerald-500/15 text-emerald-800",
-                        state === "wrong" && "border-red-500/50 bg-red-500/15 text-red-800",
-                        state === "answered" && "border-border bg-muted text-foreground",
-                        state === "blank" && "border-border bg-card text-muted-foreground hover:bg-muted"
-                      )}
+                      key={letter}
+                      onClick={() => choose(letter)}
+                      disabled={isChecked}
+                      className={cn("flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors disabled:cursor-default", tone)}
                     >
-                      {it.n}
+                      <span className={cn("mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border text-xs font-bold", badge)}>
+                        {isChecked && isRight ? <Check className="h-3.5 w-3.5" /> : isChecked && isChosen ? <X className="h-3.5 w-3.5" /> : letter}
+                      </span>
+                      <span className="leading-snug">{text}</span>
                     </button>
                   );
                 })}
               </div>
-            );
-          })}
-        </motion.div>
 
-        {showResults ? (
-          <ResultsCard score={score} items={items} answers={answers} onGo={go} />
-        ) : (
-          <motion.div variants={idleItem} className="bg-card card-float rounded-2xl border border-border p-4 md:p-6 space-y-5">
-            {/* consigne */}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-amber-600 px-2.5 py-0.5 text-xs font-bold text-white tabular-nums">
-                  {String(item.n).padStart(2, "0")}/{items.length}
-                </span>
-                <span className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  {TCF_SECTION_META[item.section].label}
-                </span>
-              </div>
-              {item.level && (
-                <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold text-muted-foreground" title="Niveau visé">
-                  {item.level}
-                </span>
-              )}
-            </div>
-            <p className="text-center text-sm font-medium">{item.consigne}</p>
-
-            {/* document image (TV5 reading documents, picture-based listening items) */}
-            {item.hasImage && (
-              <div className="flex justify-center">
-                {media?.imageUrl ? (
-                  <img src={media.imageUrl} alt="Document" className="max-h-[520px] w-auto max-w-full rounded-xl border border-border" />
-                ) : (
-                  <div className="flex h-40 w-full items-center justify-center rounded-xl border border-border bg-muted/40 text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* audio */}
-            {item.hasAudio && (
-              <div className="rounded-2xl border border-border bg-muted/40 p-4 space-y-3">
-                <div className="flex flex-wrap items-center gap-3">
+              {/* action bar */}
+              <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-3 py-2 md:px-4">
+                <button onClick={() => go(item.n - 1)} disabled={item.n <= 1} className={toolBtn()}>
+                  <ChevronLeft className="h-4 w-4" /> <span className="hidden sm:inline">Précédente</span>
+                </button>
+                <div className="flex flex-1 flex-wrap items-center justify-center gap-2">
                   <button
-                    onClick={() => (audioState === "idle" ? playItem(item.n) : stopAudio())}
-                    className={cn(
-                      "flex h-12 w-12 items-center justify-center rounded-full text-white transition-all",
-                      audioState === "idle" ? "bg-amber-600 hover:bg-amber-600/90" : "bg-neutral-700 hover:bg-neutral-700/90"
-                    )}
-                    title={audioState === "idle" ? "Écouter" : "Arrêter"}
+                    onClick={check}
+                    disabled={isChecked}
+                    className="flex items-center gap-1.5 rounded-lg border border-amber-600 bg-amber-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-amber-600/90 disabled:opacity-40"
                   >
-                    {audioState === "loading" ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : audioState === "playing" ? (
-                      <Square className="h-4 w-4" fill="currentColor" />
-                    ) : (
-                      <Play className="h-5 w-5" fill="currentColor" />
-                    )}
+                    <Check className="h-4 w-4" /> Vérifier
                   </button>
-                  <div className="min-w-0 flex-1 text-sm">
-                    <div className="font-semibold">
-                      {audioState === "loading" && "Préparation de l'audio…"}
-                      {audioState === "playing" &&
-                        (item.audio && turnIdx >= 0
-                          ? `${SPEAKER_LABEL[item.audio[turnIdx]?.speaker as Speaker] ?? ""} · tour ${turnIdx + 1}/${item.audio.length}`
-                          : "Lecture…")}
-                      {audioState === "idle" && "Document sonore"}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.audio ? `${item.audio.length} tours de parole · le document se joue en entier, puis la question.` : "Le document se joue une seule fois dans le vrai test."}
-                    </div>
-                  </div>
                   {transcriptLines.length > 0 && (
-                    <button
-                      onClick={() => setTranscriptOpen(t => ({ ...t, [item.n]: !t[item.n] }))}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm font-semibold transition-all",
-                        transcriptShown ? "border-amber-500/60 bg-amber-500/10 text-amber-800" : "border-border bg-card hover:border-amber-500/60 hover:bg-amber-500/5"
-                      )}
-                    >
+                    <button onClick={() => setTranscriptOpen(t => ({ ...t, [item.n]: !t[item.n] }))} className={toolBtn(transcriptShown)}>
                       <FileText className="h-4 w-4" /> Transcription
                     </button>
                   )}
-                </div>
-                {transcriptShown && (
-                  <div className="rounded-xl border border-border bg-card p-3 text-sm leading-relaxed space-y-1.5">
-                    {transcriptLines.map((line, i) => (
-                      <p key={i} className={cn(item.audio && i === turnIdx && audioState === "playing" && "text-amber-800 font-medium")}>
-                        {line.label && (
-                          <span className="mr-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{line.label}</span>
-                        )}
-                        {line.text}
-                      </p>
-                    ))}
-                    {source === "tv5" && <p className="pt-1 text-xs text-muted-foreground">Transcription automatique (Whisper) — peut contenir de petites erreurs.</p>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {item.passage && (
-              <div className="rounded-2xl border border-border bg-muted/40 p-4 md:p-5 font-serif text-[15px] leading-relaxed whitespace-pre-line">
-                {item.passage}
-              </div>
-            )}
-
-            {item.question && <p className="text-lg font-semibold leading-snug">{item.question}</p>}
-
-            {/* choices */}
-            <div className="grid gap-2 sm:grid-cols-2">
-              {LETTERS.map((letter, i) => {
-                const raw = item.choices[i] ?? "";
-                const text = revealChoiceText && raw.trim() ? raw : `Réponse ${letter}`;
-                const isChosen = chosen === letter;
-                const isRight = item.answer === letter;
-                const tone = isChecked
-                  ? isRight
-                    ? "border-emerald-500/60 bg-emerald-500/10"
-                    : isChosen
-                      ? "border-red-500/60 bg-red-500/10"
-                      : "border-border bg-card opacity-70"
-                  : isChosen
-                    ? "border-amber-500/70 bg-amber-500/10"
-                    : "border-border bg-card hover:border-amber-500/60 hover:bg-amber-500/5";
-                return (
-                  <button
-                    key={letter}
-                    onClick={() => choose(letter)}
-                    disabled={isChecked}
-                    className={cn("flex items-start gap-3 rounded-xl border p-3 text-left text-sm transition-all disabled:cursor-default", tone)}
-                  >
-                    <span
-                      className={cn(
-                        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-                        isChecked && isRight ? "bg-emerald-600 text-white" : isChecked && isChosen ? "bg-red-600 text-white" : isChosen ? "bg-amber-600 text-white" : "bg-muted text-foreground"
-                      )}
-                    >
-                      {isChecked && isRight ? <Check className="h-3.5 w-3.5" /> : isChecked && isChosen ? <X className="h-3.5 w-3.5" /> : letter}
-                    </span>
-                    <span className="leading-snug">{text}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* actions */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-              <button
-                onClick={() => go(item.n - 1)}
-                disabled={item.n <= 1}
-                className="flex items-center gap-1 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold transition-all hover:bg-muted disabled:opacity-40"
-              >
-                <ChevronLeft className="h-4 w-4" /> Précédente
-              </button>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={check}
-                  disabled={isChecked}
-                  className="flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-amber-600/90 disabled:opacity-40"
-                >
-                  <Check className="h-4 w-4" /> Vérifier
-                </button>
-                <button
-                  onClick={() => explain(false)}
-                  disabled={explainMut.isPending}
-                  className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold transition-all hover:border-amber-500/60 hover:bg-amber-500/5 disabled:opacity-60"
-                >
-                  {explainMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Expliquer (IA)
-                </button>
-              </div>
-              <button
-                onClick={() => (item.n >= items.length ? setShowResults(true) : go(item.n + 1))}
-                className="flex items-center gap-1 rounded-xl border border-border bg-card px-3 py-2 text-sm font-semibold transition-all hover:bg-muted"
-              >
-                {item.n >= items.length ? "Terminer" : "Suivante"} <ChevronRight className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* feedback */}
-            {isChecked && (
-              <div
-                className={cn(
-                  "rounded-xl border p-3 text-sm",
-                  chosen === item.answer ? "border-emerald-500/40 bg-emerald-500/5" : "border-red-500/40 bg-red-500/5"
-                )}
-              >
-                <div className="font-semibold">{chosen === item.answer ? "Bonne réponse !" : `Mauvaise réponse — la bonne réponse est ${item.answer}.`}</div>
-                {item.note && <div className="mt-1 text-muted-foreground">{item.note}</div>}
-              </div>
-            )}
-
-            {explanation && (
-              <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-display text-[11px] font-bold uppercase tracking-wider text-amber-800">
-                    <Sparkles className="h-3.5 w-3.5" /> Explication
-                  </div>
-                  <button onClick={() => explain(true)} disabled={explainMut.isPending} className="text-xs font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50">
-                    Régénérer
+                  <button onClick={() => explain(false)} disabled={explainMut.isPending} className={toolBtn(!!explanation)}>
+                    {explainMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Expliquer (IA)
                   </button>
                 </div>
-                <div className="prose prose-sm max-w-none dark:prose-invert">
-                  <Streamdown>{explanation}</Streamdown>
+                <button onClick={() => (item.n >= items.length ? setShowResults(true) : go(item.n + 1))} className={toolBtn()}>
+                  <span className="hidden sm:inline">{item.n >= items.length ? "Terminer" : "Suivante"}</span> <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </>
+          )}
+        </main>
+
+        {/* ── right navigator ── */}
+        <aside className="hidden min-h-0 w-60 flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-background/50 md:flex">
+          {SECTIONS.map(sec => {
+            const group = items.filter(it => it.section === sec);
+            if (group.length === 0) return null;
+            const s = score.per[sec];
+            return (
+              <div key={sec} className="border-b border-border">
+                <div className="flex items-center justify-between px-3 py-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <span title={TCF_SECTION_META[sec].label}>
+                    {SECTION_SHORT[sec]} <span className="font-normal normal-case tracking-normal">· {TCF_SECTION_META[sec].label}</span>
+                  </span>
+                  <span className="tabular-nums">
+                    {s.right}/{s.total}
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5 px-3 pb-3">
+                  {group.map(it => (
+                    <button key={it.n} onClick={() => go(it.n)} className={navClass(it)}>
+                      {it.n}
+                    </button>
+                  ))}
                 </div>
               </div>
-            )}
-          </motion.div>
-        )}
-      </motion.div>
+            );
+          })}
+          <div className="mt-auto space-y-1 px-3 py-3 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-foreground/40 bg-muted" /> répondue</div>
+            <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-emerald-500/60 bg-emerald-500/10" /> juste</div>
+            <div className="flex items-center gap-2"><span className="h-3 w-3 rounded-sm border border-red-500/60 bg-red-500/10" /> fausse</div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -634,8 +629,8 @@ function ResultsCard({
   const wrong = items.filter(it => answers[it.n] && answers[it.n] !== it.answer);
   const blank = items.filter(it => !answers[it.n]);
   return (
-    <motion.div variants={idleItem} className="bg-card card-float rounded-2xl border border-border p-4 md:p-6 space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto max-w-3xl space-y-5 p-4 md:p-6">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
         <div>
           <div className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Résultats</div>
           <div className="font-display text-4xl font-bold tabular-nums">
@@ -652,14 +647,14 @@ function ResultsCard({
           const s = score.per[sec];
           const pct = s.total ? Math.round((100 * s.right) / s.total) : 0;
           return (
-            <div key={sec} className="rounded-xl border border-border p-3">
+            <div key={sec} className="rounded-lg border border-border p-3">
               <div className="font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{TCF_SECTION_META[sec].label}</div>
               <div className="mt-1 text-2xl font-bold tabular-nums">
                 {s.right}
                 <span className="text-sm text-muted-foreground">/{s.total}</span>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-amber-600" style={{ width: `${pct}%` }} />
+              <div className="mt-2 h-1 overflow-hidden bg-muted">
+                <div className="h-full bg-amber-600" style={{ width: `${pct}%` }} />
               </div>
             </div>
           );
@@ -670,7 +665,7 @@ function ResultsCard({
           <div className="mb-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">À revoir</div>
           <div className="flex flex-wrap gap-1.5">
             {wrong.map(it => (
-              <button key={it.n} onClick={() => onGo(it.n)} className="rounded-lg border border-red-500/50 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-500/20">
+              <button key={it.n} onClick={() => onGo(it.n)} className="rounded-md border border-red-500/60 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-500/20">
                 {it.n} · {SECTION_SHORT[it.section]} · vous {answers[it.n]} / correct {it.answer}
               </button>
             ))}
@@ -682,13 +677,13 @@ function ResultsCard({
           <div className="mb-2 font-display text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Sans réponse</div>
           <div className="flex flex-wrap gap-1.5">
             {blank.map(it => (
-              <button key={it.n} onClick={() => onGo(it.n)} className="rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-semibold hover:bg-muted">
+              <button key={it.n} onClick={() => onGo(it.n)} className="rounded-md border border-border px-2.5 py-1 text-xs font-semibold hover:bg-muted">
                 {it.n}
               </button>
             ))}
           </div>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

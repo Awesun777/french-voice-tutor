@@ -131,7 +131,10 @@ interface Tv5Light {
 }
 
 function tv5Consigne(row: Tv5Light, section: TcfSection, spoken: boolean): string {
-  if (row.consigne && row.consigne.trim()) return row.consigne.trim();
+  // The booklet prints "Validé par CIE" under every item; the ingest used to
+  // mistake it for an instruction. Never show it as a consigne.
+  const own = (row.consigne ?? "").trim();
+  if (own && !/CIE\b/.test(own)) return own;
   if (spoken) return TCF_SPOKEN_CHOICES_CONSIGNE;
   return TCF_SECTION_META[section].consigne;
 }
