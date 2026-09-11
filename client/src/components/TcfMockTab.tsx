@@ -1,13 +1,13 @@
 /**
- * TCF mock exam (admin-only).
+ * TCF Mock — full-length TCF practice papers (Test Prep › TCF Mock).
  *
  * A 40-question paper in the official tout-public layout — 15 listening,
  * 10 structure, 15 reading. Two sources, one UI:
  *  - Romaintalk's own series (shared/tcfMockExams.ts), audio synthesised per
  *    speaker turn with distinct voices;
  *  - TV5MONDE / FEI training booklets ingested into MySQL by
- *    scripts/tcf_tv5_ingest.py (one clip + Whisper transcript per listening
- *    item, the reading document as a photo). Admin-only, unmonetised.
+ *    scripts/tcf_tv5_ingest.py (one clip + transcript per listening item, the
+ *    reading document as a photo). Available to every signed-in user, unmonetised.
  *
  * What the official trainers lack and this adds: a transcript toggle for
  * every listening item, a per-question answer check, and an AI explanation
@@ -365,7 +365,7 @@ export default function TcfMockTab() {
         term: token.surface,
         translation: token.gloss || token.surface,
         entryKind: token.surface.trim().split(/\s+/).length >= 3 ? "phrase" : "word",
-        lessonSource: title || "TCF Blanc",
+        lessonSource: title || "TCF Mock",
       });
       utils.vocab.list.invalidate();
       toast.success(`Saved "${token.surface}"`);

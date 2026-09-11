@@ -65,7 +65,7 @@ function surroundingSentence(term: string): string | undefined {
 }
 
 const TAB_IDS: SidebarTab[] = ["library-demo-compact", "library-demo-cards", "library-demo-notebook", "dashboard", "dictionary", "library", "quiz", "flashcards", "grammar", "listening", "reading", "tutor", "voice-chat", "progress", "settings", "writing", "ai", "ingest", "ops", "testlogs", "accounts", "workflow", "tcf"];
-const ADMIN_TABS: SidebarTab[] = ["library-demo-compact", "library-demo-cards", "library-demo-notebook", "ai", "ingest", "ops", "testlogs", "accounts", "workflow", "tcf"];
+const ADMIN_TABS: SidebarTab[] = ["library-demo-compact", "library-demo-cards", "library-demo-notebook", "ai", "ingest", "ops", "testlogs", "accounts", "workflow"];
 
 /**
  * Which tab to open on load: the URL hash wins (survives refresh AND makes
@@ -336,7 +336,7 @@ export default function Home() {
         {activeTab === "testlogs" && user?.role === "admin" && <TestLogsTab />}
         {activeTab === "accounts" && user?.role === "admin" && <AccountsTab />}
         {activeTab === "workflow" && user?.role === "admin" && <WorkflowTab />}
-        {activeTab === "tcf" && user?.role === "admin" && <TcfMockTab />}
+        {activeTab === "tcf" && <TcfMockTab />}
         {activeTab === "reading" && <ReadingTab />}
         {activeTab === "tutor" && <TutorTab />}
         {activeTab === "voice-chat" && <VoiceAgentChooser onStartReview={startReview} />}

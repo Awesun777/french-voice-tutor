@@ -59,7 +59,6 @@ const ADMIN_TABS: { id: SidebarTab; label: string; icon: React.ComponentType<{ c
   { id: "testlogs", label: "Test Logs", icon: Clapperboard },
   { id: "accounts", label: "Accounts", icon: Users },
   { id: "workflow", label: "Workflow", icon: Workflow },
-  { id: "tcf", label: "TCF Blanc", icon: ListChecks },
 ];
 
 const SPRING = { type: "spring", stiffness: 420, damping: 32 } as const;

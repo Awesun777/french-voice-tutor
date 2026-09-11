@@ -3514,14 +3514,14 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
   }),
   // ── TCF mock exams (admin-only): Romaintalk items + ingested TV5MONDE booklets ──
   tcf: router({
-    exams: adminProcedure.query(async () => ({ exams: await listTcfExams() })),
-    exam: adminProcedure.input(z.object({ examId: z.string() })).query(async ({ input }) => {
+    exams: protectedProcedure.query(async () => ({ exams: await listTcfExams() })),
+    exam: protectedProcedure.input(z.object({ examId: z.string() })).query(async ({ input }) => {
       const exam = await loadTcfExam(input.examId);
       if (!exam) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
       return exam;
     }),
     /** Audio (voice turns or one clip) and the document image for one item. */
-    media: adminProcedure
+    media: protectedProcedure
       .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40) }))
       .mutation(async ({ input }) => {
         if (!parseExamId(input.examId)) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
@@ -3535,7 +3535,7 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
         }
       }),
     /** AI explanation of one item, cached forever (content is static). */
-    explain: adminProcedure
+    explain: protectedProcedure
       .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40), force: z.boolean().optional() }))
       .mutation(async ({ input }) => {
         if (!parseExamId(input.examId)) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
@@ -3553,7 +3553,7 @@ If the text is already correct, return it unchanged with an empty fixes array.` 
         }
       }),
     /** Word-by-word glossed transcript (listening) or document text (reading), Listening-Lab style, cached forever. */
-    gloss: adminProcedure
+    gloss: protectedProcedure
       .input(z.object({ examId: z.string(), n: z.number().int().min(1).max(40), kind: z.enum(["transcript", "document"]).default("transcript") }))
       .query(async ({ input }) => {
         if (!parseExamId(input.examId)) throw new TRPCError({ code: "NOT_FOUND", message: "Unknown TCF exam" });
