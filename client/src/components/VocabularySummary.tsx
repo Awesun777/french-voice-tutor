@@ -28,7 +28,7 @@ export default function VocabularySummary({ words, selected, onSelect, actions, 
   };
 
   return (
-    <section aria-label="Vocabulary progress" className={`bg-secondary p-5 sm:px-7 sm:py-5 text-[#1D1D1B] ${joined ? "rounded-t-3xl" : "rounded-3xl"}`}>
+    <section aria-label="Vocabulary progress" className={`bg-card border border-foreground/10 p-5 sm:px-7 sm:py-5 text-[#1D1D1B] ${joined ? "rounded-t-3xl" : "rounded-3xl"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button type="button" onClick={() => onSelect(null)} aria-pressed={selected === null} className="text-sm rounded-md focus-visible:outline-2 focus-visible:outline-primary">
           <strong className="text-base tabular-nums">{counts.total.toLocaleString()}</strong> total vocab items
@@ -47,11 +47,11 @@ export default function VocabularySummary({ words, selected, onSelect, actions, 
           <img src="/brand/romaintalk-icon.png" alt="" width={80} height={80} className="h-16 w-16 sm:h-20 sm:w-20 mx-auto rounded-2xl" />
         </div>
       </div>
-      <div className="flex h-3 overflow-hidden rounded-full bg-primary/10" role="img" aria-label={`${counts.new} new, ${counts.learning} learning including review, ${counts.mastered} mastered`}>
+      <div className="flex h-2 overflow-hidden rounded-full bg-primary/10" role="img" aria-label={`${counts.new} new, ${counts.learning} learning including review, ${counts.mastered} mastered`}>
         {stages.map(({ key, color }) => <span key={key} className={color} style={{ width: `${percent(counts[key])}%` }} />)}
       </div>
       <div className="mt-4">
-        <VocabularyStatusBlocks counts={counts} selected={selected} onSelect={onSelect} displayValue={(value) => mode === "percent" ? `${displayPercent(value)}%` : value.toLocaleString()} />
+        <VocabularyStatusBlocks subdued counts={counts} selected={selected} onSelect={onSelect} displayValue={(value) => mode === "percent" ? `${displayPercent(value)}%` : value.toLocaleString()} />
       </div>
       {actions && <div className="mt-3">{actions}</div>}
       {calendar && <div className="mt-4 border-t border-primary/10 pt-4">{calendar}</div>}

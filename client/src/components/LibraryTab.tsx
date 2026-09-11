@@ -9,7 +9,7 @@ import ImportModal from "./ImportModal";
 import { GoogleDrivePanel } from "./GoogleDrivePanel";
 import VocabularySummary from "./VocabularySummary";
 import LibraryPaletteWord from "./LibraryPaletteWord";
-import { libraryPalette } from "@/lib/libraryPalette";
+
 import { vocabularyStage, type VocabularyStage } from "@/lib/vocabularySummary";
 
 function todayKey() { return new Date().toISOString().split("T")[0]; }
@@ -125,7 +125,7 @@ function GroupHeader({
 
   return (
     <div
-      className={cn("flex items-center gap-2 group/header", paletteMode ? "px-5 sm:px-7 pt-5 pb-7 flex-wrap" : "px-4 py-3 border-b border-primary/20 bg-primary/10")}
+      className={cn("flex items-center gap-2 group/header", paletteMode ? "px-5 sm:px-7 py-5 flex-wrap" : "px-4 py-3 border-b border-primary/20 bg-primary/10")}
       onClick={(e) => { if (!editing) { e.stopPropagation(); onToggle(); } }}
     >
       {/* Collapse toggle */}
@@ -662,7 +662,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
               </div>
             </div>)}
 
-            {sortedGroups.map(([dateKey, dayWords], groupIndex) => {
+            {sortedGroups.map(([dateKey, dayWords]) => {
               const isOpen = showVocabularySummary ? expandedGroups.has(dateKey) : !collapsed.has(dateKey);
               const groupDue = dayWords.filter(isDue).length;
               return (
@@ -670,8 +670,7 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
                   key={dateKey}
                   ref={(el) => { groupRefs.current[dateKey] = el; }}
                   data-group-key={dateKey}
-                  style={showVocabularySummary ? { ...libraryPalette[groupIndex % libraryPalette.length], zIndex: groupIndex } : undefined}
-                  className={cn("overflow-hidden scroll-mt-4", showVocabularySummary ? "relative rounded-t-2xl last:rounded-b-2xl [&+div]:-mt-3" : "bg-card card-float rounded-2xl")}
+                  className={cn("overflow-hidden scroll-mt-4", showVocabularySummary ? "relative bg-background text-foreground border-b border-foreground/15" : "bg-card card-float rounded-2xl")}
                 >
                   <GroupHeader
                     paletteMode={showVocabularySummary}
@@ -686,11 +685,11 @@ export default function LibraryTab({ setActiveTab, onStartReview, showVocabulary
 
                   {isOpen && (
                     <div className={showVocabularySummary ? "space-y-2 px-3 sm:px-5 pb-6" : "divide-y divide-border/50"}>
-                      {dayWords.map((w, wordIndex) => showVocabularySummary ? (
+                      {dayWords.map((w) => showVocabularySummary ? (
                         <LibraryPaletteWord
                           key={w.id}
                           word={w}
-                          swatch={libraryPalette[(groupIndex + (wordIndex % (libraryPalette.length - 1)) + 1) % libraryPalette.length]}
+                          swatch={{ background: "var(--card)", color: "var(--foreground)" }}
                           onSave={(term, translation) => updateMutation.mutateAsync({ id: w.id, term, translation })}
                           onStar={() => starMutation.mutate({ id: w.id })}
                           onDelete={() => handleDelete(w.id)}
