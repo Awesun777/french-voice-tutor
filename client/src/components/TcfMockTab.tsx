@@ -502,7 +502,7 @@ export default function TcfMockTab() {
                     {item.hasImage ? (
                       <div className="flex min-h-0 flex-1 items-start justify-center p-3 md:p-4">
                         {media?.imageUrl ? (
-                          <img src={media.imageUrl} alt="Document" className="max-h-full max-w-full object-contain object-top" />
+                          <img src={media.imageUrl} alt="Document" className="h-full w-full min-h-0 min-w-0 object-contain object-top" />
                         ) : (
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                         )}
