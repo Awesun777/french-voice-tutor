@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  Languages,
   Loader2,
   Play,
   RotateCcw,
@@ -51,7 +52,7 @@ const HOVER_CARD_H = 170;
 const LINE = "border-foreground/25";
 
 type GlossToken = { s: number; e: number; surface: string; lemma?: string; gloss: string; kind: "word" | "expression" };
-type GlossLine = { text: string; tokens: GlossToken[] };
+type GlossLine = { text: string; tokens: GlossToken[]; en?: string };
 
 type Speaker = keyof typeof SPEAKER_LABEL;
 type Turn = { speaker: Speaker; text: string; url: string };
@@ -108,6 +109,8 @@ export default function TcfMockTab() {
   const [{ answers, checked }, setProgress] = useState<Persisted>(() => loadPersisted(examId));
   const [transcriptOpen, setTranscriptOpen] = useState<Record<number, boolean>>({});
   const [docOpen, setDocOpen] = useState<Record<number, boolean>>({});
+  // English stays hidden by default, as in Reading: work out the French first.
+  const [showEnglish, setShowEnglish] = useState(false);
   const [explanations, setExplanations] = useState<Record<number, string>>({});
   const [showResults, setShowResults] = useState(false);
 
@@ -587,6 +590,7 @@ export default function TcfMockTab() {
                           </span>
                         )}
                         {glossQ.isError && <span className="text-[11px] text-red-700">glossaire indisponible</span>}
+                        {glossLines?.some(l => l.en) && <EnglishToggle on={showEnglish} onToggle={() => setShowEnglish(v => !v)} />}
                       </div>
                       <div className="space-y-1.5">
                         {transcriptLines.map((line, i) => (
@@ -597,6 +601,7 @@ export default function TcfMockTab() {
                             ) : (
                               line.text
                             )}
+                            {showEnglish && glossLines?.[i]?.en && <span className="mt-0.5 block text-[13px] italic leading-snug text-muted-foreground/80">{glossLines[i].en}</span>}
                           </p>
                         ))}
                       </div>
@@ -614,6 +619,7 @@ export default function TcfMockTab() {
                           </span>
                         )}
                         {docGlossQ.isError && <span className="text-[11px] text-red-700">glossaire indisponible</span>}
+                        {docGlossLines?.some(l => l.en) && <EnglishToggle on={showEnglish} onToggle={() => setShowEnglish(v => !v)} />}
                       </div>
                       <div className="space-y-1.5">
                         {docLines.map((text, i) => (
@@ -623,6 +629,7 @@ export default function TcfMockTab() {
                             ) : (
                               text
                             )}
+                            {showEnglish && docGlossLines?.[i]?.en && <span className="mt-0.5 block text-[13px] italic leading-snug text-muted-foreground/80">{docGlossLines[i].en}</span>}
                           </p>
                         ))}
                       </div>
@@ -807,6 +814,22 @@ export default function TcfMockTab() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Same "Show English" switch as the Reading tab, per panel. */
+function EnglishToggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-pressed={on}
+      className={cn(
+        "ml-auto flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-semibold transition-colors",
+        on ? "border-speaking bg-speaking-surface text-speaking" : "border-foreground/25 text-muted-foreground hover:bg-muted"
+      )}
+    >
+      <Languages className="h-3 w-3" /> English
+    </button>
   );
 }
 

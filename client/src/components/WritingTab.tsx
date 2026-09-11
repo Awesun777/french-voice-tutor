@@ -15,6 +15,7 @@
  * Checking runs on Gemini Flash (thinking off) for ~1-2s turnaround.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,14 @@ const KIND_COLOR: Record<string, string> = {
   grammar: "bg-amber-600",
   spelling: "bg-rose-600",
   translation: "bg-emerald-600",
+};
+
+// Shown in the hold-press explanation box when the checker's note is empty.
+const KIND_NOTE: Record<string, string> = {
+  accent: "Accent restored — the accented form is the correct French spelling here.",
+  grammar: "Grammar fix — this form agrees with the rest of the sentence.",
+  spelling: "Spelling fix — this is the standard French spelling.",
+  translation: "The French translation of the text you wrapped in backticks.",
 };
 
 interface Fix { before: string; after: string; kind: "accent" | "grammar" | "spelling" | "translation"; note: string }
@@ -150,6 +159,12 @@ export default function WritingTab() {
    *  same fragment still comes through. */
   const ignoredRef = useRef<Set<string>>(new Set());
   const [marks, setMarks] = useState<Mark[]>([]);
+  // Hold-press on a fix chip expands it into an explanation box. Keyed by
+  // before→after so the box follows its fix through repositions.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const expandedKeyRef = useRef<string | null>(null); expandedKeyRef.current = expandedKey;
+  const pressTimer = useRef<number | null>(null);
+  const longPressFired = useRef(false);
   const [checking, setChecking] = useState(false);
   const [isEmpty, setIsEmpty] = useState(true);
   // ── Handwriting font ────────────────────────────────────────────────────────
@@ -343,6 +358,16 @@ export default function WritingTab() {
     onEdited();
   }, [onEdited]);
 
+  // Pressing anywhere outside the expanded explanation box collapses it.
+  useEffect(() => {
+    if (!expandedKey) return;
+    const onDoc = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement | null)?.closest?.("[data-fix-chip]")) setExpandedKey(null);
+    };
+    document.addEventListener("pointerdown", onDoc, true);
+    return () => document.removeEventListener("pointerdown", onDoc, true);
+  }, [expandedKey]);
+
   // ── Applying fixes ──────────────────────────────────────────────────────────
   const applyFix = useCallback((fix: Fix) => {
     const root = editorRef.current;
@@ -353,6 +378,7 @@ export default function WritingTab() {
     range.insertNode(document.createTextNode(fix.after));
     root.normalize();
     setFixes((fs) => fs.filter((f) => f !== fix));
+    setExpandedKey(null);
     lastCheckedRef.current = editorText().trim(); // applied text counts as checked
     setSaveState("dirty");
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -372,6 +398,14 @@ export default function WritingTab() {
     let altDown = false;
     let chorded = false;
     const onDown = (e: KeyboardEvent) => {
+      // An expanded explanation box swallows the first Escape; the second
+      // then ignores the suggestions as usual.
+      if (e.key === "Escape" && expandedKeyRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        setExpandedKey(null);
+        return;
+      }
       if (e.key === "Escape" && fixesRef.current.length > 0) {
         e.preventDefault();
         e.stopPropagation();
@@ -800,27 +834,80 @@ export default function WritingTab() {
 
             {/* Inline fix overlays: a soft underline under the word, and a
                 chip floating right above it — click to accept in place. */}
-            {marks.map((m, i) => (
-              <div key={`${m.fix.before}-${i}`}>
-                <div
-                  className={cn("absolute pointer-events-none rounded-full opacity-70", KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar)}
-                  style={{ left: m.left, top: m.top + m.height - 2, width: Math.max(m.width, 8), height: 2 }}
-                />
-                <button
-                  onClick={() => applyFix(m.fix)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  title={`${m.fix.note || m.fix.kind}${i === 0 ? " — or tap ⌥" : ""}`}
-                  className={cn(
-                    "absolute z-20 flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold text-white shadow-md hover:scale-105 transition-transform whitespace-nowrap",
-                    KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar
-                  )}
-                  style={{ left: m.left, top: m.top - 26 }}
-                >
-                  {m.fix.after}
-                  {i === 0 && <kbd className="font-mono text-[9px] border border-white/50 rounded px-0.5 leading-tight">⌥</kbd>}
-                </button>
-              </div>
-            ))}
+            {marks.map((m, i) => {
+              const key = `${m.fix.before}→${m.fix.after}`;
+              const expanded = expandedKey === key;
+              const clearPress = () => {
+                if (pressTimer.current !== null) { window.clearTimeout(pressTimer.current); pressTimer.current = null; }
+              };
+              return (
+                <div key={`${m.fix.before}-${i}`}>
+                  <div
+                    className={cn("absolute pointer-events-none rounded-full opacity-70", KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar)}
+                    style={{ left: m.left, top: m.top + m.height - 2, width: Math.max(m.width, 8), height: 2 }}
+                  />
+                  {/* Hold the chip (~0.4s) to expand it into a short "why"
+                      box; a plain click still accepts the fix in place. */}
+                  <button
+                    data-fix-chip
+                    onMouseDown={(e) => e.preventDefault()}
+                    onPointerDown={() => {
+                      longPressFired.current = false;
+                      clearPress();
+                      pressTimer.current = window.setTimeout(() => {
+                        longPressFired.current = true;
+                        setExpandedKey(key);
+                      }, 400);
+                    }}
+                    onPointerUp={clearPress}
+                    onPointerLeave={clearPress}
+                    onPointerCancel={clearPress}
+                    onClick={() => {
+                      if (longPressFired.current) { longPressFired.current = false; return; }
+                      applyFix(m.fix);
+                    }}
+                    title={`${m.fix.note || m.fix.kind} — hold for why${i === 0 ? ", or tap ⌥" : ""}`}
+                    className={cn(
+                      "absolute z-20 flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold text-white shadow-md hover:scale-105 transition-transform whitespace-nowrap select-none",
+                      KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar,
+                      expanded && "opacity-0 pointer-events-none"
+                    )}
+                    style={{ left: m.left, top: m.top - 26 }}
+                  >
+                    {m.fix.after}
+                    {i === 0 && <kbd className="font-mono text-[9px] border border-white/50 rounded px-0.5 leading-tight">⌥</kbd>}
+                  </button>
+                  <AnimatePresence>
+                    {expanded && (
+                      <motion.button
+                        data-fix-chip
+                        initial={{ opacity: 0, scale: 0.55, y: "-100%" }}
+                        animate={{ opacity: 1, scale: 1, y: "-100%" }}
+                        exit={{ opacity: 0, scale: 0.75, y: "-100%" }}
+                        transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => applyFix(m.fix)}
+                        className={cn(
+                          "absolute z-30 block text-left rounded-xl px-3.5 py-2.5 text-white shadow-[0_16px_38px_-10px_rgb(0_0_0_/_0.45)] w-max max-w-[280px] cursor-pointer",
+                          KIND_COLOR[m.fix.kind] ?? KIND_COLOR.grammar
+                        )}
+                        style={{ left: m.left, top: m.top - 4, transformOrigin: "bottom left" }}
+                      >
+                        <span className="block text-sm font-bold">
+                          {m.fix.kind === "translation" ? m.fix.before.replace(/`/g, "") + " → " : ""}{m.fix.after}
+                        </span>
+                        <span className="mt-1 block text-[11px] font-medium leading-snug text-white/90">
+                          {m.fix.note || KIND_NOTE[m.fix.kind]}
+                        </span>
+                        <span className="mt-1.5 block text-[10px] font-semibold uppercase tracking-wide text-white/60">
+                          Click to accept
+                        </span>
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         </div>
 
