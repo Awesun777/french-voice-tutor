@@ -94,7 +94,7 @@ Extrais TOUS les items présents sur la page, dans l'ordre. Réponds en JSON str
     "question": "<texte de la question ou de la phrase à compléter, tel qu'imprimé, sinon null>",
     "choices": ["<A>", "<B>", "<C>", "<D>"],
     "has_image": <true si un document visuel (photo, extrait de presse, affiche…) est imprimé sous ce numéro>,
-    "image_text": "<si has_image, transcris fidèlement tout le texte lisible dans le document, sinon null>"}
+    "image_text": "<si has_image : transcris fidèlement tout le texte lisible dans le document ; si c'est une photo sans texte, décris-la en une ou deux phrases précédées de « Photo : » (personnes, lieu, action, objets) ; sinon null>"}
  ]}
 Règles : recopie les textes exactement (accents, ponctuation), sans la lettre A/B/C/D devant chaque choix. Si les choix A B C D sont imprimés sans texte (item audio), mets quatre chaînes vides. Ne mets jamais la mention « Validé par CIE » dans image_text. Ne commente pas, n'invente rien. Une page peut contenir 0 item (feuille de réponses, page de garde) : items = []."""
 
@@ -124,7 +124,7 @@ def extract_items(doc: pymupdf.Document, cache_dir: Path | None):
     current_consigne: str | None = None
     for pno in range(len(doc)):
         page = doc[pno]
-        cache = cache_dir / f"page{pno + 1}.v2.json" if cache_dir else None
+        cache = cache_dir / f"page{pno + 1}.v3.json" if cache_dir else None
         if cache and cache.exists():
             data = json.loads(cache.read_text())
         else:
@@ -391,6 +391,7 @@ def main():
     ap.add_argument("--upload", action="store_true")
     ap.add_argument("--reuse", help="reuse an earlier --out JSON (skip vision/audio) and just upload")
     ap.add_argument("--cache-dir", help="directory for per-page vision results (re-runs skip the API)")
+    ap.add_argument("--reuse-audio", help="take clips + transcripts from an earlier --out JSON instead of re-splitting/transcribing")
     a = ap.parse_args()
 
     title = f"TV5MONDE — Entraînement n°{a.series}"
@@ -418,7 +419,15 @@ def main():
             key = {"oral": "compréhension orale", "structure": "structure de la langue", "ecrit": "compréhension écrite"}[rec["section"]]
             rec["consigne"] = consignes.get(key)
 
-    segs = split_audio(mp3, 15)
+    if a.reuse_audio:
+        prev = {it["n"]: it for it in json.load(open(os.path.expanduser(a.reuse_audio)))["items"]}
+        for n in range(1, 16):
+            for k in ("audio_b64", "audio_mime", "audio_seconds", "audio_bounds", "transcript"):
+                items[n][k] = prev[n].get(k)
+        log("audio: reused clips and transcripts from " + a.reuse_audio)
+        segs = []
+    else:
+        segs = split_audio(mp3, 15)
     with tempfile.TemporaryDirectory() as td:
         for i, (s, e) in enumerate(segs, start=1):
             clip = Path(td) / f"q{i}.mp3"

@@ -148,10 +148,24 @@ function parseChoices(json: string): string[] {
   return choices.slice(0, 4);
 }
 
+/** For spoken-choice items, recover "A. …" … "D. …" from the transcript so
+ *  the texts can be shown once the answer is checked. */
+function choicesFromTranscript(transcript: string | null): string[] | null {
+  if (!transcript) return null;
+  const out: string[] = [];
+  for (const letter of ["A", "B", "C", "D"]) {
+    const m = new RegExp(`(?:^|\\n)${letter}\\.\\s*([^\\n]+)`).exec(transcript);
+    if (!m) return null;
+    out.push(m[1].trim());
+  }
+  return out;
+}
+
 function viewOfTv5(row: Tv5Light): TcfItemView {
   const section = (["oral", "structure", "ecrit"].includes(row.section) ? row.section : "oral") as TcfSection;
-  const choices = parseChoices(row.choicesJson);
+  let choices = parseChoices(row.choicesJson);
   const spoken = row.spokenChoices === 1 || choices.every(c => !c.trim());
+  if (spoken) choices = choicesFromTranscript(row.transcript) ?? choices;
   return {
     n: row.n,
     section,
